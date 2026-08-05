@@ -60,22 +60,20 @@ cd shell-frontend && npm test
 ### 构建发布版
 
 ```bash
-cd shell-native && ../shell-frontend/node_modules/.bin/tauri build --bundles app
-ditto -c -k --sequesterRsrc --keepParent \
-  target/release/bundle/macos/aIdea.app \
-  /tmp/aIdea_0.1.0_aarch64.app.zip
+cd shell-native && CI=true ../shell-frontend/node_modules/.bin/tauri build --bundles dmg
+ls -lh target/release/bundle/dmg/*.dmg
 ```
 
 ### GitHub 发布、下载与更新
 
-aIdea 首版只发布 macOS Apple Silicon 未签名 `.app.zip`，不依赖 Apple Developer 账号。发布步骤：
+aIdea 首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Developer 账号。发布步骤：
 
 1. 修改 `shell-native/tauri.conf.json` 的 `version`，例如 `0.1.0`。
 2. 提交并推送代码后创建同版本 tag，例如 `v0.1.0`。
-3. GitHub Actions 自动构建 `.app.zip` 并创建 GitHub Release。
-4. 用户从 Release 的 Assets 下载 `.app.zip`，解压后将 `aIdea.app` 拖入 Applications，首次打开时按 macOS 提示确认。
+3. GitHub Actions 自动构建 `.dmg` 并创建 GitHub Release。
+4. 用户从 Release 的 Assets 下载 `.dmg`，打开后将 `aIdea.app` 拖入 Applications，首次打开时按 macOS 提示确认。
 
-更新采用手动方式：下载新版本 `.app.zip`，退出旧版 aIdea，用新版本替换旧应用。未签名应用暂不启用应用内静默更新，避免绕过 macOS 安全提示或留下半更新状态。
+更新采用手动方式：下载新版本 `.dmg`，退出旧版 aIdea，用新版本替换旧应用。未签名应用暂不启用应用内静默更新，避免绕过 macOS 安全提示或留下半更新状态。
 
 ## 添加子应用
 

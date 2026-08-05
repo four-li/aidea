@@ -11,6 +11,8 @@ permissions:
 jobs:
   release:
     runs-on: macos-14
+    env:
+      CI: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,13 +39,10 @@ jobs:
 
       - name: 构建 macOS Apple Silicon 应用
         working-directory: shell-native
-        run: ../shell-frontend/node_modules/.bin/tauri build --bundles app
-
-      - name: 压缩应用
-        run: ditto -c -k --sequesterRsrc --keepParent shell-native/target/release/bundle/macos/aIdea.app aIdea_${GITHUB_REF_NAME}_aarch64.app.zip
+        run: ../shell-frontend/node_modules/.bin/tauri build --bundles dmg
 
       - name: 发布 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: aIdea_*_aarch64.app.zip
+          files: shell-native/target/release/bundle/dmg/*.dmg

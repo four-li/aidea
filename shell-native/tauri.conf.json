@@ -32,7 +32,7 @@
     "macOS": {
       "entitlements": "entitlements.plist"
     },
-    "targets": ["app"],
+    "targets": ["dmg"],
     "icon": ["icons/icon.icns"]
   }
 }
