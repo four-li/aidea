@@ -6,6 +6,21 @@ UI 视觉、组件、交互、配色和无障碍约定统一维护在 [docs/ui-s
 
 外部设计库仅可作为视觉和交互原则参考；不得引入第二套组件、token、图标或主题体系。项目仍以 `docs/ui-spec.md`、shadcn/ui、Tailwind CSS 和 lucide-react 为唯一实现基线。
 
+## 开发前文档路由
+
+根据任务类型先阅读对应文档，再修改代码：
+
+| 任务 | 必读文档 |
+|---|---|
+| 修改页面视觉、组件、交互或无障碍 | [docs/ui-spec.md](docs/ui-spec.md) |
+| 新增或修改内置子应用 | 本文件的「内置子应用规范」、[docs/ui-spec.md](docs/ui-spec.md)；涉及持久化时再读 [docs/app-storage-spec.md](docs/app-storage-spec.md) |
+| 新增或修改 SQLite、缓存、持久化数据 | [docs/app-data-layout.md](docs/app-data-layout.md)、[docs/app-storage-spec.md](docs/app-storage-spec.md) |
+| 开发可安装的 owned/external 子应用 | [docs/app-package-spec.md](docs/app-package-spec.md)、[docs/app-data-layout.md](docs/app-data-layout.md)；涉及 UI 时再读 [docs/ui-spec.md](docs/ui-spec.md) |
+| 修改应用 manifest、应用安装或生命周期 | 本文件的「Manifest 规范」「应用管理与覆盖配置」、[docs/app-package-spec.md](docs/app-package-spec.md) |
+| 修改 Rust IPC、Keychain 或网络请求 | 本文件的「shell-native 模块规范」；涉及凭据或持久化时再读 [docs/app-storage-spec.md](docs/app-storage-spec.md) |
+
+文档之间有冲突时，以更具体的专项文档为准；新增约定应更新对应专项文档，不把详细规则复制到本文件。
+
 ## 工程配置
 
 | 工具 | 配置文件 | 说明 |

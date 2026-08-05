@@ -19,6 +19,9 @@
 ```text
 aIdea/
 ├── shell.config.json
+├── databases/
+│   ├── shell.db
+│   └── <builtin-app-id>.db
 ├── apps/
 │   ├── installed/<app-id>/manifest.yaml
 │   └── local/<app-id>.yaml
@@ -29,6 +32,7 @@ aIdea/
 ```
 
 - `shell.config.json`：主题、应用 overrides、AI 历史元数据等用户级配置。
+- `databases/`：aIdea 壳和内置子应用的 SQLite 数据库。具体边界、迁移和备份规则见 [app-storage-spec.md](app-storage-spec.md)。
 - `apps/installed/`：通过 GitHub 等来源安装的应用 manifest；源码目录由 manifest 的 `path` 指向。
 - `apps/local/`：用户手工添加的本地应用 manifest。
 - `runtime/`：aIdea 自己产生的进程状态和临时运行信息，不存放子应用业务数据库。
