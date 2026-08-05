@@ -29,9 +29,6 @@
   },
   "bundle": {
     "active": true,
-    "macOS": {
-      "entitlements": "entitlements.plist"
-    },
     "targets": ["dmg"],
     "icon": ["icons/icon.icns"]
   }
