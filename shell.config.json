@@ -1,0 +1,13 @@
+{
+  "theme": "auto",
+  "data_dir": ".runtime",
+  "log_dir": ".runtime/logs",
+  "overrides": {
+    "dashboard": {
+      "name": "统计页"
+    }
+  },
+  "ai_history": {
+    "items": []
+  }
+}

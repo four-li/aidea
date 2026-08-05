@@ -1,0 +1,23 @@
+# Rust
+shell-native/target/
+shell-native/Cargo.lock
+
+# Node
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Runtime
+.runtime/
+shell.config.local.json
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# 日志
+*.log

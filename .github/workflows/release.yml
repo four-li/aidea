@@ -1,0 +1,49 @@
+name: 发布 aIdea
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+          cache-dependency-path: shell-frontend/package-lock.json
+
+      - name: 安装前端依赖
+        run: npm ci --prefix shell-frontend
+
+      - name: 校验 tag 与应用版本一致
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          config_version="$(python3 -c 'import json; print(json.load(open("shell-native/tauri.conf.json"))["version"])')"
+          test "$tag_version" = "$config_version" || {
+            echo "tag 版本 $tag_version 与 tauri.conf.json 版本 $config_version 不一致"
+            exit 1
+          }
+
+      - name: 构建 macOS Apple Silicon 应用
+        working-directory: shell-native
+        run: ../shell-frontend/node_modules/.bin/tauri build --bundles app
+
+      - name: 压缩应用
+        run: ditto -c -k --sequesterRsrc --keepParent shell-native/target/release/bundle/macos/aIdea.app aIdea_${GITHUB_REF_NAME}_aarch64.app.zip
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: aIdea_*_aarch64.app.zip

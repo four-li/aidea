@@ -1,0 +1,9 @@
+id: dashboard
+name: Dashboard
+version: 0.1.0
+category: 核心
+path: shell-frontend/src/builtin-apps/dashboard
+status: active
+ui:
+  mode: builtin
+  icon: LayoutDashboard

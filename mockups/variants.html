@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>aIdea Mockup Variants</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a;
+    color: #e6edf3;
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #e6edf3; }
+  .hint { font-size: 13px; color: #7d8590; margin-bottom: 32px; }
+  .variants { display: flex; flex-direction: column; gap: 48px; }
+  .variant { border: 1px solid #30363d; border-radius: 10px; overflow: hidden; }
+  .variant-label {
+    padding: 12px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .variant-label .name { font-size: 14px; font-weight: 600; color: #e6edf3; }
+  .variant-label .desc { font-size: 12px; color: #7d8590; }
+
+  /* 共用 window */
+  .window {
+    width: 100%;
+    height: 560px;
+    background: #0d1117;
+    display: flex;
+    position: relative;
+    border-radius: 0 0 9px 9px;
+    overflow: hidden;
+  }
+
+  /* macOS 顶栏圆点（装饰） */
+  .window::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 28px;
+    background: #161b22;
+    border-bottom: 1px solid #21262d;
+    z-index: 5;
+  }
+
+  /* ========= 变体 A: 极简图标栏 48px ========= */
+  .v-a .sidebar {
+    width: 48px;
+    background: #0a0c10;
+    border-right: 1px solid #21262d;
+    padding-top: 28px;
+    display: flex; flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    z-index: 6;
+  }
+  .v-a .icon-btn {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: #7d8590;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .v-a .icon-btn:hover { background: #21262d; color: #e6edf3; }
+  .v-a .icon-btn.active { background: #1f6feb22; color: #58a6ff; }
+  .v-a .icon-btn.active::before {
+    content: ""; position: absolute; left: 0;
+    width: 2px; height: 18px; background: #58a6ff; border-radius: 0 2px 2px 0;
+    margin-left: -8px;
+  }
+  .v-a .icon-btn { position: relative; }
+  .v-a .sidebar-sep { width: 24px; height: 1px; background: #21262d; margin: 8px 0; }
+  .v-a .main {
+    flex: 1;
+    display: flex; flex-direction: column;
+    padding-top: 28px;
+  }
+  .v-a .tabs {
+    height: 32px;
+    background: #0d1117;
+    border-bottom: 1px solid #21262d;
+    display: flex; align-items: stretch;
+    padding: 0 8px;
+  }
+  .v-a .tab {
+    padding: 0 12px;
+    display: flex; align-items: center;
+    font-size: 12px; color: #7d8590;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .v-a .tab.active { color: #e6edf3; border-bottom-color: #58a6ff; }
+  .v-a .tab-add { color: #484f58; padding: 0 8px; }
+  .v-a .stage {
+    flex: 1;
+    background: #0d1117;
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .v-a .stage-content {
+    padding: 16px;
+    color: #7d8590;
+    font-size: 12px;
+  }
+  .v-a .status {
+    height: 22px;
+    background: #0a0c10;
+    border-top: 1px solid #21262d;
+    display: flex; align-items: center;
+    padding: 0 12px;
+    font-size: 11px;
+    color: #7d8590;
+    gap: 16px;
+  }
+  .v-a .dot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; }
+  .v-a .dot.idle { background: #484f58; }
+
+  /* ========= 变体 B: 固定窄栏 64px + 文字 ========= */
+  .v-b .sidebar {
+    width: 64px;
+    background: #0a0c10;
+    border-right: 1px solid #21262d;
+    padding-top: 28px;
+    display: flex; flex-direction: column;
+    z-index: 6;
+  }
+  .v-b .nav-item {
+    padding: 8px 6px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 3px;
+    color: #7d8590;
+    font-size: 9px;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+  .v-b .nav-item:hover { background: #161b22; color: #e6edf3; }
+  .v-b .nav-item.active {
+    background: #1f6feb15;
+    color: #58a6ff;
+    border-left-color: #58a6ff;
+  }
+  .v-b .nav-icon { font-size: 14px; }
+  .v-b .nav-label { font-size: 9px; line-height: 1.2; text-align: center; }
+  .v-b .nav-sep { height: 1px; background: #21262d; margin: 6px 8px; }
+  .v-b .main { flex: 1; display: flex; flex-direction: column; padding-top: 28px; }
+  .v-b .tabs {
+    height: 30px; background: #0d1117;
+    border-bottom: 1px solid #21262d;
+    display: flex; padding: 0 8px;
+  }
+  .v-b .tab {
+    padding: 0 12px; display: flex; align-items: center;
+    font-size: 12px; color: #7d8590;
+    border-bottom: 2px solid transparent;
+  }
+  .v-b .tab.active { color: #e6edf3; border-bottom-color: #58a6ff; }
+  .v-b .stage { flex: 1; padding: 16px; color: #7d8590; font-size: 12px; }
+  .v-b .status {
+    height: 22px; background: #0a0c10;
+    border-top: 1px solid #21262d;
+    display: flex; align-items: center;
+    padding: 0 12px; font-size: 11px;
+    color: #7d8590; gap: 16px;
+  }
+  .v-b .dot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; }
+
+  /* ========= 变体 C: 永久展开 168px ========= */
+  .v-c .sidebar {
+    width: 168px;
+    background: #0a0c10;
+    border-right: 1px solid #21262d;
+    padding-top: 28px;
+    display: flex; flex-direction: column;
+    z-index: 6;
+  }
+  .v-c .sidebar-header {
+    padding: 8px 12px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #484f58;
+  }
+  .v-c .nav-item {
+    padding: 6px 12px;
+    display: flex; align-items: center;
+    gap: 8px;
+    color: #7d8590;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+  .v-c .nav-item:hover { background: #161b22; color: #e6edf3; }
+  .v-c .nav-item.active {
+    background: #1f6feb15;
+    color: #58a6ff;
+    border-left-color: #58a6ff;
+  }
+  .v-c .nav-icon { font-size: 13px; width: 14px; text-align: center; }
+  .v-c .nav-status {
+    margin-left: auto;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #3fb950;
+  }
+  .v-c .nav-status.idle { background: #484f58; }
+  .v-c .nav-sep {
+    padding: 6px 12px 4px;
+    font-size: 10px; color: #484f58;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin-top: 8px;
+  }
+  .v-c .main { flex: 1; display: flex; flex-direction: column; padding-top: 28px; }
+  .v-c .tabs {
+    height: 30px; background: #0d1117;
+    border-bottom: 1px solid #21262d;
+    display: flex; padding: 0 8px;
+  }
+  .v-c .tab {
+    padding: 0 12px; display: flex; align-items: center;
+    font-size: 12px; color: #7d8590;
+    border-bottom: 2px solid transparent;
+  }
+  .v-c .tab.active { color: #e6edf3; border-bottom-color: #58a6ff; }
+  .v-c .stage { flex: 1; padding: 16px; color: #7d8590; font-size: 12px; }
+  .v-c .status {
+    height: 22px; background: #0a0c10;
+    border-top: 1px solid #21262d;
+    display: flex; align-items: center;
+    padding: 0 12px; font-size: 11px;
+    color: #7d8590; gap: 16px;
+  }
+  .v-c .dot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; }
+
+  /* 模拟子应用舞台内容（共用） */
+  .stage-mock {
+    background: #0d1117;
+    height: 100%;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    color: #7d8590;
+    font-size: 11px;
+  }
+  .stage-mock .panel {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 10px;
+  }
+  .stage-mock .panel-title {
+    font-size: 11px; color: #e6edf3; font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .stage-mock .row {
+    display: flex; justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid #21262d;
+  }
+  .stage-mock .row:last-child { border-bottom: 0; }
+  .stage-mock .mono { font-family: "SF Mono", Menlo, monospace; font-size: 10px; }
+  .stage-mock .bar {
+    height: 4px; background: #21262d; border-radius: 2px;
+    margin-top: 4px; overflow: hidden;
+  }
+  .stage-mock .bar > i { display: block; height: 100%; background: #58a6ff; }
+
+  .legend {
+    margin-top: 40px;
+    padding: 16px;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #7d8590;
+    line-height: 1.7;
+  }
+  .legend strong { color: #e6edf3; }
+</style>
+</head>
+<body>
+
+<h1>aIdea 紧凑深色风格 — 3 个变体</h1>
+<div class="hint">三个变体都是深色 + 紧凑，区别在侧边栏处理方式。滚到底部有对比说明。</div>
+
+<div class="variants">
+
+  <!-- 变体 A -->
+  <div class="variant">
+    <div class="variant-label">
+      <span class="name">变体 A · 极简图标栏（48px，hover 展开）</span>
+      <span class="desc">最紧凑，舞台最大化。侧边栏 hover 时浮出 200px 文字层</span>
+    </div>
+    <div class="window v-a">
+      <div class="sidebar">
+        <div class="icon-btn">⚙</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn active">📋</div>
+        <div class="icon-btn">📈</div>
+        <div class="icon-btn">🔧</div>
+        <div class="icon-btn">🌐</div>
+        <div class="icon-btn">+</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn">📁</div>
+      </div>
+      <div class="main">
+        <div class="tabs">
+          <div class="tab active">Atlas</div>
+          <div class="tab">Stock</div>
+          <div class="tab">DevTools</div>
+          <div class="tab-add">+</div>
+        </div>
+        <div class="stage">
+          <div class="stage-mock">
+            <div class="panel" style="grid-column: 1 / -1;">
+              <div class="panel-title">Atlas · Issue 列表</div>
+              <div class="row"><span>#2003 订单发货接口对接</span><span class="mono">ushopal</span></div>
+              <div class="row"><span>#2006 ERP 金额同步异常</span><span class="mono">ushopal</span></div>
+              <div class="row"><span>#2010 库存同步性能优化</span><span class="mono">atlas</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">进程状态</div>
+              <div class="row"><span>Atlas</span><span style="color:#3fb950">● running</span></div>
+              <div class="row"><span>Stock</span><span style="color:#484f58">○ idle</span></div>
+              <div class="row"><span>OpenWebUI</span><span style="color:#3fb950">● running</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">系统资源</div>
+              <div class="row"><span>CPU</span><span>23%</span></div>
+              <div class="bar"><i style="width:23%"></i></div>
+              <div class="row" style="margin-top:6px"><span>MEM</span><span>412MB</span></div>
+              <div class="bar"><i style="width:38%; background:#3fb950"></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="status">
+          <span><span class="dot"></span> 2 running</span>
+          <span>Atlas: localhost:5317</span>
+          <span style="margin-left:auto">⌘K 命令面板</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 变体 B -->
+  <div class="variant">
+    <div class="variant-label">
+      <span class="name">变体 B · 固定窄栏 + 文字（64px）</span>
+      <span class="desc">永远显示图标+缩写文字，不用 hover。状态点直接在侧边栏</span>
+    </div>
+    <div class="window v-b">
+      <div class="sidebar">
+        <div class="nav-item">
+          <span class="nav-icon">⚙</span>
+          <span class="nav-label">设置</span>
+        </div>
+        <div class="nav-sep"></div>
+        <div class="nav-item active">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Atlas</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">📈</span>
+          <span class="nav-label">Stock</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🔧</span>
+          <span class="nav-label">Tools</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🌐</span>
+          <span class="nav-label">WebUI</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">+</span>
+          <span class="nav-label">添加</span>
+        </div>
+        <div class="nav-sep"></div>
+        <div class="nav-item">
+          <span class="nav-icon">📁</span>
+          <span class="nav-label">文件</span>
+        </div>
+      </div>
+      <div class="main">
+        <div class="tabs">
+          <div class="tab active">Atlas</div>
+          <div class="tab">Stock</div>
+          <div class="tab">DevTools</div>
+          <div class="tab-add">+</div>
+        </div>
+        <div class="stage">
+          <div class="stage-mock">
+            <div class="panel" style="grid-column: 1 / -1;">
+              <div class="panel-title">Atlas · Issue 列表</div>
+              <div class="row"><span>#2003 订单发货接口对接</span><span class="mono">ushopal</span></div>
+              <div class="row"><span>#2006 ERP 金额同步异常</span><span class="mono">ushopal</span></div>
+              <div class="row"><span>#2010 库存同步性能优化</span><span class="mono">atlas</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">进程状态</div>
+              <div class="row"><span>Atlas</span><span style="color:#3fb950">● running</span></div>
+              <div class="row"><span>Stock</span><span style="color:#484f58">○ idle</span></div>
+              <div class="row"><span>OpenWebUI</span><span style="color:#3fb950">● running</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">系统资源</div>
+              <div class="row"><span>CPU</span><span>23%</span></div>
+              <div class="bar"><i style="width:23%"></i></div>
+              <div class="row" style="margin-top:6px"><span>MEM</span><span>412MB</span></div>
+              <div class="bar"><i style="width:38%; background:#3fb950"></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="status">
+          <span><span class="dot"></span> 2 running</span>
+          <span>Atlas: localhost:5317</span>
+          <span style="margin-left:auto">⌘K 命令面板</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 变体 C -->
+  <div class="variant">
+    <div class="variant-label">
+      <span class="name">变体 C · 永久展开（168px，含运行状态）</span>
+      <span class="desc">侧边栏更宽但信息密度高：图标+全名+运行状态点。最像 VS Code</span>
+    </div>
+    <div class="window v-c">
+      <div class="sidebar">
+        <div class="sidebar-header">应用</div>
+        <div class="nav-item active">
+          <span class="nav-icon">📋</span>
+          <span>Atlas</span>
+          <span class="nav-status"></span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">📈</span>
+          <span>Stock Assistant</span>
+          <span class="nav-status idle"></span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🔧</span>
+          <span>DevTools</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🌐</span>
+          <span>OpenWebUI</span>
+          <span class="nav-status"></span>
+        </div>
+        <div class="nav-item" style="color:#484f58">
+          <span class="nav-icon">+</span>
+          <span>添加子应用</span>
+        </div>
+        <div class="nav-sep">系统</div>
+        <div class="nav-item">
+          <span class="nav-icon">📁</span>
+          <span>文件浏览</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">⚙</span>
+          <span>设置</span>
+        </div>
+      </div>
+      <div class="main">
+        <div class="tabs">
+          <div class="tab active">Atlas</div>
+          <div class="tab">Stock</div>
+          <div class="tab">DevTools</div>
+          <div class="tab-add">+</div>
+        </div>
+        <div class="stage">
+          <div class="stage-mock">
+            <div class="panel" style="grid-column: 1 / -1;">
+              <div class="panel-title">Atlas · Issue 列表</div>
+              <div class="row"><span>#2003 订单发货接口对接</span><span class="mono">ushopal</span></div>
+              <div class="row"><span>#2006 ERP 金额同步异常</span><span class="mono">ushopal</span></div>
+              <div class="row"><span>#2010 库存同步性能优化</span><span class="mono">atlas</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">进程状态</div>
+              <div class="row"><span>Atlas</span><span style="color:#3fb950">● running</span></div>
+              <div class="row"><span>Stock</span><span style="color:#484f58">○ idle</span></div>
+              <div class="row"><span>OpenWebUI</span><span style="color:#3fb950">● running</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">系统资源</div>
+              <div class="row"><span>CPU</span><span>23%</span></div>
+              <div class="bar"><i style="width:23%"></i></div>
+              <div class="row" style="margin-top:6px"><span>MEM</span><span>412MB</span></div>
+              <div class="bar"><i style="width:38%; background:#3fb950"></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="status">
+          <span><span class="dot"></span> 2 running</span>
+          <span>Atlas: localhost:5317</span>
+          <span style="margin-left:auto">⌘K 命令面板</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <strong>三个变体的核心差异：</strong><br>
+  <strong>A · 极简图标栏（48px）</strong>：最紧凑，舞台最大。但 hover 才出文字，新手可能记不住图标含义；适合熟练用户。<br>
+  <strong>B · 固定窄栏 + 文字（64px）</strong>：永远显示图标+缩写，不用 hover。紧凑性和可读性的平衡。状态点在侧边栏外（底部状态栏）。<br>
+  <strong>C · 永久展开（168px）</strong>：侧边栏最宽但信息密度高，直接看到图标+全名+运行状态点。最像 VS Code，最直观，但占舞台 168px。<br><br>
+  <strong>共同点</strong>：顶栏 28px（仅 macOS 红绿圆点装饰）+ Tab 栏 30px + 状态栏 22px，主区域 100% 给子应用。
+</div>
+
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "aidea",
+  "private": true,
+  "scripts": {
+    "dev": "cd shell-native && PATH=\"$PWD/../shell-frontend/node_modules/.bin:$PATH\" tauri dev",
+    "test": "cd shell-native && cargo test && cd ../shell-frontend && npm test"
+  }
+}

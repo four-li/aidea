@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>aIdea 极简布局最终方案</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a;
+    color: #e6edf3;
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .hint { font-size: 13px; color: #7d8590; margin-bottom: 32px; line-height: 1.6; }
+  .scenes { display: flex; flex-direction: column; gap: 48px; }
+  .scene { border: 1px solid #30363d; border-radius: 10px; overflow: hidden; }
+  .scene-label {
+    padding: 12px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .scene-label .name { font-size: 14px; font-weight: 600; color: #e6edf3; }
+  .scene-label .desc { font-size: 12px; color: #7d8590; }
+
+  /* 整体壳：极简 */
+  .window {
+    width: 100%;
+    height: 620px;
+    background: #0d1117;
+    display: flex;
+    position: relative;
+    border-radius: 0 0 9px 9px;
+    overflow: hidden;
+  }
+  .sidebar {
+    width: 48px;
+    background: #0a0c10;
+    border-right: 1px solid #21262d;
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 0;
+    z-index: 6;
+    flex-shrink: 0;
+  }
+  /* macOS 拖拽区 + 红绿圆点 */
+  .traffic {
+    height: 28px;
+    width: 100%;
+    display: flex; align-items: center;
+    padding-left: 10px;
+    gap: 6px;
+    -webkit-app-region: drag;
+  }
+  .traffic .dot {
+    width: 11px; height: 11px; border-radius: 50%;
+  }
+  .traffic .dot.close { background: #ff5f57; }
+  .traffic .dot.min { background: #febc2e; }
+  .traffic .dot.max { background: #28c840; }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: #7d8590;
+    font-size: 14px;
+    cursor: pointer;
+    position: relative;
+    margin: 2px 0;
+  }
+  .icon-btn:hover { background: #21262d; color: #e6edf3; }
+  .icon-btn.active {
+    background: #1f6feb22;
+    color: #58a6ff;
+  }
+  .icon-btn.active::before {
+    content: "";
+    position: absolute; left: -8px;
+    width: 2px; height: 18px;
+    background: #58a6ff;
+    border-radius: 0 2px 2px 0;
+  }
+  /* 运行状态点 */
+  .icon-btn .run-dot {
+    position: absolute;
+    right: 4px; bottom: 4px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #3fb950;
+    border: 1.5px solid #0a0c10;
+  }
+  .icon-btn .run-dot.idle { background: #484f58; }
+  .sidebar-sep { width: 24px; height: 1px; background: #21262d; margin: 8px 0; }
+
+  .main {
+    flex: 1;
+    background: #0d1117;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ===== Scene 1: Atlas 内容区（左菜单树 + 右列表）===== */
+  .atlas-content {
+    height: 100%;
+    display: flex;
+  }
+  .atlas-menu {
+    width: 220px;
+    background: #0a0c10;
+    border-right: 1px solid #21262d;
+    padding: 8px 0;
+    font-size: 12px;
+    color: #7d8590;
+    overflow-y: auto;
+  }
+  .atlas-menu .menu-section {
+    padding: 8px 12px 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #484f58;
+  }
+  .atlas-menu .menu-item {
+    padding: 5px 12px 5px 24px;
+    cursor: pointer;
+    display: flex; align-items: center;
+    gap: 6px;
+  }
+  .atlas-menu .menu-item:hover { background: #161b22; color: #e6edf3; }
+  .atlas-menu .menu-item.active {
+    background: #1f6feb15;
+    color: #58a6ff;
+    border-left: 2px solid #58a6ff;
+    padding-left: 22px;
+  }
+  .atlas-menu .menu-item.l1 {
+    padding-left: 12px;
+    font-weight: 500;
+    color: #e6edf3;
+  }
+  .atlas-menu .menu-item.l1.active { padding-left: 10px; }
+  .atlas-menu .badge {
+    margin-left: auto;
+    background: #21262d;
+    color: #7d8590;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+  }
+  .atlas-menu .chevron { font-size: 9px; color: #484f58; }
+  .atlas-main {
+    flex: 1;
+    padding: 16px 20px;
+    overflow-y: auto;
+    color: #e6edf3;
+    font-size: 12px;
+  }
+  .atlas-main h2 {
+    font-size: 14px; font-weight: 600;
+    margin-bottom: 12px;
+    display: flex; align-items: center;
+    gap: 8px;
+  }
+  .atlas-main h2 .count {
+    color: #7d8590; font-size: 12px; font-weight: 400;
+  }
+  .issue-row {
+    padding: 10px 0;
+    border-bottom: 1px solid #21262d;
+    display: flex; gap: 12px;
+    align-items: flex-start;
+  }
+  .issue-row:hover { background: #161b22; }
+  .issue-id {
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: #58a6ff;
+    background: #1f6feb15;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .issue-info { flex: 1; }
+  .issue-title { color: #e6edf3; margin-bottom: 4px; }
+  .issue-meta { color: #7d8590; font-size: 11px; display: flex; gap: 12px; }
+  .issue-status {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .issue-status.doing { background: #dbab0922; color: #d29922; }
+  .issue-status.todo { background: #1f6feb22; color: #58a6ff; }
+  .issue-status.review { background: #a371f722; color: #a371f7; }
+
+  /* ===== Scene 2: DevTools（简单左右布局，JSON 格式化）===== */
+  .devtools-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .devtools-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid #21262d;
+    display: flex; gap: 8px; align-items: center;
+    font-size: 12px;
+    color: #7d8590;
+  }
+  .devtools-tab {
+    padding: 4px 10px;
+    background: #161b22;
+    border-radius: 4px;
+    color: #7d8590;
+    cursor: pointer;
+  }
+  .devtools-tab.active {
+    background: #1f6feb22;
+    color: #58a6ff;
+  }
+  .devtools-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  .devtools-pane {
+    flex: 1;
+    padding: 12px;
+    overflow: auto;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: #e6edf3;
+    white-space: pre;
+    line-height: 1.6;
+  }
+  .devtools-pane.left {
+    border-right: 1px solid #21262d;
+    color: #7d8590;
+  }
+  .devtools-pane .key { color: #79c0ff; }
+  .devtools-pane .str { color: #a5d6ff; }
+  .devtools-pane .num { color: #d2a8ff; }
+  .devtools-pane .bool { color: #ff7b72; }
+  .devtools-divider {
+    width: 1px; background: #21262d;
+  }
+
+  /* ===== Scene 3: Stock（自定义复杂布局，跟 aidea 无关）===== */
+  .stock-content {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 180px 1fr 240px;
+    gap: 0;
+  }
+  .stock-watchlist {
+    background: #0a0c10;
+    border-right: 1px solid #21262d;
+    padding: 10px;
+    font-size: 12px;
+  }
+  .stock-watchlist h3 {
+    font-size: 11px; color: #484f58;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .stock-item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex; justify-content: space-between;
+    margin-bottom: 2px;
+  }
+  .stock-item:hover { background: #161b22; }
+  .stock-item.active { background: #1f6feb22; color: #58a6ff; }
+  .stock-item .code { font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: #7d8590; }
+  .stock-item.active .code { color: #58a6ff; }
+  .stock-item .price { font-family: "SF Mono", Menlo, monospace; font-size: 11px; }
+  .stock-item .up { color: #f85149; }
+  .stock-item .down { color: #3fb950; }
+  .stock-chart {
+    padding: 16px;
+    overflow: auto;
+  }
+  .stock-chart h2 {
+    font-size: 14px; font-weight: 600;
+    display: flex; align-items: baseline; gap: 12px;
+    margin-bottom: 4px;
+  }
+  .stock-chart .price-now {
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 22px; color: #f85149;
+  }
+  .stock-chart .change {
+    font-size: 12px; color: #f85149;
+  }
+  .stock-chart .meta { color: #7d8590; font-size: 11px; margin-bottom: 16px; }
+  .chart-area {
+    height: 240px;
+    background:
+      linear-gradient(to bottom, transparent 0%, #1f6feb08 100%),
+      repeating-linear-gradient(to bottom, transparent 0, transparent 39px, #21262d 39px, #21262d 40px),
+      repeating-linear-gradient(to right, transparent 0, transparent 59px, #21262d 59px, #21262d 60px);
+    border: 1px solid #21262d;
+    border-radius: 4px;
+    position: relative;
+  }
+  .chart-line {
+    position: absolute;
+    top: 30%; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(to top, #f8514922, transparent);
+    border-bottom: 2px solid #f85149;
+    clip-path: polygon(0% 80%, 10% 60%, 25% 70%, 40% 40%, 55% 50%, 70% 25%, 85% 35%, 100% 15%, 100% 100%, 0% 100%);
+  }
+  .stock-orders {
+    background: #0a0c10;
+    border-left: 1px solid #21262d;
+    padding: 10px;
+    font-size: 11px;
+  }
+  .stock-orders h3 {
+    font-size: 11px; color: #484f58;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .order-row {
+    padding: 5px 0;
+    border-bottom: 1px solid #21262d;
+    display: flex; justify-content: space-between;
+    color: #7d8590;
+  }
+  .order-row .price { font-family: "SF Mono", Menlo, monospace; }
+  .order-row .buy { color: #f85149; }
+  .order-row .sell { color: #3fb950; }
+
+  .legend {
+    margin-top: 40px;
+    padding: 16px;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #7d8590;
+    line-height: 1.7;
+  }
+  .legend strong { color: #e6edf3; }
+  .legend ul { margin: 6px 0 6px 18px; }
+</style>
+</head>
+<body>
+
+<h1>aIdea 极简布局 — 内容区 100% 给子应用</h1>
+<div class="hint">
+  去掉 Tab 栏和状态栏。侧边栏 48px（顶部 28px 是 macOS 拖拽区 + 红绿圆点），其余 100% 给子应用自由布局。<br>
+  运行状态用侧边栏图标右下角的小绿点表示（●运行中，灰点=未运行）。<br>
+  下方三个场景演示不同子应用内部布局完全自由：Atlas 左菜单+右列表 / DevTools 左右两栏 / Stock 三栏复杂布局。
+</div>
+
+<div class="scenes">
+
+  <!-- 场景 1: Atlas -->
+  <div class="scene">
+    <div class="scene-label">
+      <span class="name">场景 1 · Atlas（左菜单树 + 右列表）</span>
+      <span class="desc">子应用自己设计内部布局，Aidea 不干预</span>
+    </div>
+    <div class="window">
+      <div class="sidebar">
+        <div class="traffic">
+          <div class="dot close"></div>
+          <div class="dot min"></div>
+          <div class="dot max"></div>
+        </div>
+        <div class="icon-btn">⚙</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn active">📋<div class="run-dot"></div></div>
+        <div class="icon-btn">📈<div class="run-dot idle"></div></div>
+        <div class="icon-btn">🔧</div>
+        <div class="icon-btn">🌐<div class="run-dot"></div></div>
+        <div class="icon-btn" style="color:#484f58">+</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn">📁</div>
+      </div>
+      <div class="main">
+        <div class="atlas-content">
+          <div class="atlas-menu">
+            <div class="menu-section">项目管理</div>
+            <div class="menu-item l1"><span class="chevron">▾</span> ushopal</div>
+            <div class="menu-item active">我的 Issues <span class="badge">3</span></div>
+            <div class="menu-item">我的 PRs <span class="badge">1</span></div>
+            <div class="menu-item">项目 Checks</div>
+            <div class="menu-item l1"><span class="chevron">▸</span> atlas</div>
+            <div class="menu-item l1"><span class="chevron">▸</span> erp-api-i18n</div>
+            <div class="menu-section">工作流</div>
+            <div class="menu-item">Issue 看板</div>
+            <div class="menu-item">提交记录</div>
+            <div class="menu-item">Handoff 文档</div>
+            <div class="menu-section">三方</div>
+            <div class="menu-item">GitLab</div>
+            <div class="menu-item">Redmine</div>
+            <div class="menu-item">Gitea</div>
+          </div>
+          <div class="atlas-main">
+            <h2>我的 Issues <span class="count">· 3 个未关闭</span></h2>
+            <div class="issue-row">
+              <span class="issue-id">#2003</span>
+              <div class="issue-info">
+                <div class="issue-title">订单发货接口对接（TikTok Shop）</div>
+                <div class="issue-meta">
+                  <span>ushopal</span>
+                  <span>3 天前更新</span>
+                  <span>分配给我</span>
+                </div>
+              </div>
+              <span class="issue-status doing">进行中</span>
+            </div>
+            <div class="issue-row">
+              <span class="issue-id">#2006</span>
+              <div class="issue-info">
+                <div class="issue-title">ERP 金额同步异常 — BC 申报金额问题</div>
+                <div class="issue-meta">
+                  <span>ushopal</span>
+                  <span>1 天前更新</span>
+                  <span>分配给我</span>
+                </div>
+              </div>
+              <span class="issue-status todo">待开始</span>
+            </div>
+            <div class="issue-row">
+              <span class="issue-id">#2010</span>
+              <div class="issue-info">
+                <div class="issue-title">库存同步性能优化（V2 接口迁移）</div>
+                <div class="issue-meta">
+                  <span>atlas</span>
+                  <span>5 小时前更新</span>
+                  <span>分配给我</span>
+                </div>
+              </div>
+              <span class="issue-status review">待审核</span>
+            </div>
+            <div class="issue-row">
+              <span class="issue-id">#2012</span>
+              <div class="issue-info">
+                <div class="issue-title">小红书订单列表分页参数修复</div>
+                <div class="issue-meta">
+                  <span>ushopal</span>
+                  <span>2 小时前</span>
+                  <span>创建</span>
+                </div>
+              </div>
+              <span class="issue-status todo">待开始</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 场景 2: DevTools -->
+  <div class="scene">
+    <div class="scene-label">
+      <span class="name">场景 2 · DevTools（简单左右两栏，JSON 格式化）</span>
+      <span class="desc">内置轻量工具，仍是壳前端的一部分，但布局完全自定义</span>
+    </div>
+    <div class="window">
+      <div class="sidebar">
+        <div class="traffic">
+          <div class="dot close"></div>
+          <div class="dot min"></div>
+          <div class="dot max"></div>
+        </div>
+        <div class="icon-btn">⚙</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn">📋<div class="run-dot"></div></div>
+        <div class="icon-btn">📈<div class="run-dot idle"></div></div>
+        <div class="icon-btn active">🔧</div>
+        <div class="icon-btn">🌐<div class="run-dot"></div></div>
+        <div class="icon-btn" style="color:#484f58">+</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn">📁</div>
+      </div>
+      <div class="main">
+        <div class="devtools-content">
+          <div class="devtools-header">
+            <div class="devtools-tab active">JSON 格式化</div>
+            <div class="devtools-tab">时间戳转换</div>
+            <div class="devtools-tab">Base64</div>
+            <div class="devtools-tab">URL 编解码</div>
+            <div class="devtools-tab">颜色转换</div>
+          </div>
+          <div class="devtools-body">
+            <div class="devtools-pane left">{
+  "name": "aIdea",
+  "version": "0.1.0",
+  "apps": [
+    { "id": "atlas", "path": "/Users/me/atlas" },
+    { "id": "stock", "path": "/Users/me/Desktop/app/stock" }
+  ],
+  "settings": {
+    "theme": "dark",
+    "autostart": ["atlas"]
+  }
+}</div>
+            <div class="devtools-pane">{
+  <span class="key">"name"</span>: <span class="str">"aIdea"</span>,
+  <span class="key">"version"</span>: <span class="str">"0.1.0"</span>,
+  <span class="key">"apps"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="str">"atlas"</span>,
+      <span class="key">"path"</span>: <span class="str">"/Users/me/atlas"</span>
+    },
+    {
+      <span class="key">"id"</span>: <span class="str">"stock"</span>,
+      <span class="key">"path"</span>: <span class="str">"/Users/me/Desktop/app/stock"</span>
+    }
+  ],
+  <span class="key">"settings"</span>: {
+    <span class="key">"theme"</span>: <span class="str">"dark"</span>,
+    <span class="key">"autostart"</span>: [<span class="str">"atlas"</span>]
+  }
+}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 场景 3: Stock -->
+  <div class="scene">
+    <div class="scene-label">
+      <span class="name">场景 3 · Stock 助手（三栏复杂布局）</span>
+      <span class="desc">0->1 全栈子应用，完全自定义布局，跟 Aidea 只通过 manifest 契约对接</span>
+    </div>
+    <div class="window">
+      <div class="sidebar">
+        <div class="traffic">
+          <div class="dot close"></div>
+          <div class="dot min"></div>
+          <div class="dot max"></div>
+        </div>
+        <div class="icon-btn">⚙</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn">📋<div class="run-dot"></div></div>
+        <div class="icon-btn active">📈<div class="run-dot"></div></div>
+        <div class="icon-btn">🔧</div>
+        <div class="icon-btn">🌐<div class="run-dot"></div></div>
+        <div class="icon-btn" style="color:#484f58">+</div>
+        <div class="sidebar-sep"></div>
+        <div class="icon-btn">📁</div>
+      </div>
+      <div class="main">
+        <div class="stock-content">
+          <div class="stock-watchlist">
+            <h3>自选股</h3>
+            <div class="stock-item active">
+              <span>
+                <div>贵州茅台</div>
+                <div class="code">600519</div>
+              </span>
+              <span class="price up">1689.50</span>
+            </div>
+            <div class="stock-item">
+              <span>
+                <div>宁德时代</div>
+                <div class="code">300750</div>
+              </span>
+              <span class="price down">186.20</span>
+            </div>
+            <div class="stock-item">
+              <span>
+                <div>比亚迪</div>
+                <div class="code">002594</div>
+              </span>
+              <span class="price up">245.80</span>
+            </div>
+            <div class="stock-item">
+              <span>
+                <div>中芯国际</div>
+                <div class="code">688981</div>
+              </span>
+              <span class="price down">52.30</span>
+            </div>
+            <div class="stock-item">
+              <span>
+                <div>隆基绿能</div>
+                <div class="code">601012</div>
+              </span>
+              <span class="price up">21.45</span>
+            </div>
+          </div>
+          <div class="stock-chart">
+            <h2>
+              贵州茅台
+              <span class="price-now">1689.50</span>
+              <span class="change">+12.30 (+0.73%)</span>
+            </h2>
+            <div class="meta">600519 · 上海证券交易所 · 实时</div>
+            <div class="chart-area">
+              <div class="chart-line"></div>
+            </div>
+          </div>
+          <div class="stock-orders">
+            <h3>五档盘口</h3>
+            <div style="color:#484f58; font-size:10px; margin-bottom:4px">卖五</div>
+            <div class="order-row"><span class="price sell">1690.00</span><span>200</span></div>
+            <div class="order-row"><span class="price sell">1689.80</span><span>150</span></div>
+            <div class="order-row"><span class="price sell">1689.60</span><span>320</span></div>
+            <div class="order-row"><span class="price sell">1689.55</span><span>80</span></div>
+            <div class="order-row"><span class="price sell">1689.50</span><span>500</span></div>
+            <div style="color:#484f58; font-size:10px; margin:8px 0 4px">买五</div>
+            <div class="order-row"><span class="price buy">1689.45</span><span>180</span></div>
+            <div class="order-row"><span class="price buy">1689.40</span><span>260</span></div>
+            <div class="order-row"><span class="price buy">1689.35</span><span>90</span></div>
+            <div class="order-row"><span class="price buy">1689.30</span><span>410</span></div>
+            <div class="order-row"><span class="price buy">1689.25</span><span>120</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <strong>极简布局要点：</strong>
+  <ul>
+    <li><strong>侧边栏 48px</strong>：顶部 28px 是 macOS 拖拽区（红绿圆点），下方是应用图标。运行中应用的图标右下角有绿色小点。</li>
+    <li><strong>无 Tab 栏、无状态栏</strong>：切换应用走侧边栏，运行状态走图标小点。主区域 100% 高度给子应用。</li>
+    <li><strong>子应用内容区布局完全自由</strong>：Atlas 用左菜单+右列表，DevTools 用左右两栏，Stock 用三栏复杂布局。Aidea 不干预。</li>
+    <li><strong>主区域占比</strong>：1440x900 屏幕，主区域约 1372x872（97%），舞台基本完全给子应用。</li>
+  </ul>
+</div>
+
+</body>
+</html>

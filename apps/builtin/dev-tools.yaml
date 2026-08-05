@@ -1,0 +1,9 @@
+id: dev-tools
+name: DevTools
+version: 0.3.0
+category: 开发
+path: shell-frontend/src/builtin-apps/dev-tools
+status: active
+ui:
+  mode: builtin
+  icon: Wrench
