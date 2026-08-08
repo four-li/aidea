@@ -41,9 +41,21 @@ pub fn load_official_plugins() -> AppResult<Vec<OfficialPlugin>> {
     let resources = std::env::current_exe()?
         .parent()
         .and_then(Path::parent)
-        .map(|path| path.join("Resources/plugin-markets/official"))
+        .map(|path| path.join("Resources"))
         .ok_or_else(|| AppError::Config("无法定位官方插件市场资源目录".into()))?;
-    load_from_dir(&resources)
+    load_from_dir(&bundled_market_dir(&resources)?)
+}
+
+fn bundled_market_dir(resources: &Path) -> AppResult<std::path::PathBuf> {
+    let direct = resources.join("plugin-markets/official");
+    if direct.exists() {
+        return Ok(direct);
+    }
+    let tauri_resource = resources.join("_up_/plugin-markets/official");
+    if tauri_resource.exists() {
+        return Ok(tauri_resource);
+    }
+    Err(AppError::Config("未找到官方插件市场资源目录".into()))
 }
 
 fn load_from_dir(directory: &Path) -> AppResult<Vec<OfficialPlugin>> {
@@ -143,7 +155,7 @@ fn validate_command(command: &[String], id: &str) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_from_dir, load_official_plugins};
+    use super::{bundled_market_dir, load_from_dir, load_official_plugins};
     use std::fs;
 
     #[test]
@@ -174,5 +186,15 @@ mod tests {
     fn 官方市场包含股票助手() {
         let plugins = load_official_plugins().unwrap();
         assert!(plugins.iter().any(|plugin| plugin.id == "stock-assistant"));
+    }
+
+    #[test]
+    fn dmg资源目录使用_tauri_up_路径() {
+        let resources =
+            std::env::temp_dir().join(format!("aidea-resources-{}", uuid::Uuid::new_v4()));
+        let market = resources.join("_up_/plugin-markets/official");
+        fs::create_dir_all(&market).unwrap();
+        assert_eq!(bundled_market_dir(&resources).unwrap(), market);
+        fs::remove_dir_all(resources).unwrap();
     }
 }
