@@ -8,6 +8,7 @@ import type {
   AiHttpResponse,
   AiTestConfig,
 } from '../types/ai-test';
+import type { MailAccount, MailMessageDetail, MailMessagePage, MailMessageQuery, SaveMailAccountRequest, SyncResult, MailSyncTask } from '../types/mail';
 
 export const ipc = {
   /** 列出所有已加载的子应用（已合并用户 overrides） */
@@ -50,4 +51,21 @@ export const ipc = {
     invoke<AiTestConfig>('load_ai_config', { id }),
   /** 删除历史元数据和对应 Keychain API Key。 */
   deleteAiConfig: (id: string): Promise<void> => invoke<void>('delete_ai_config', { id }),
+  listMailAccounts: (): Promise<MailAccount[]> => invoke('list_mail_accounts'),
+  saveMailAccount: (request: SaveMailAccountRequest): Promise<MailAccount> => invoke('save_mail_account', { request }),
+  loadMailAccountSecret: (id: string): Promise<string> => invoke('load_mail_account_secret', { id }),
+  testMailAccountConnection: (request: SaveMailAccountRequest): Promise<void> =>
+    invoke('test_mail_account_connection', { request }),
+  deleteMailAccount: (id: string): Promise<void> => invoke('delete_mail_account', { id }),
+  syncMailAccounts: (): Promise<SyncResult> => invoke('sync_mail_accounts'),
+  syncMailHistory: (request: { since: number; until?: number | null }): Promise<SyncResult> => invoke('sync_mail_history', { request }),
+  cancelMailSync: (): Promise<void> => invoke('cancel_mail_sync'),
+  listMailSyncTasks: (): Promise<MailSyncTask[]> => invoke('list_mail_sync_tasks'),
+  listMailMessages: (query: MailMessageQuery = {}): Promise<MailMessagePage> =>
+    invoke('list_mail_messages', { query }),
+  getMailMessage: (id: number): Promise<MailMessageDetail> => invoke('get_mail_message', { id }),
+  markMailRead: (id: number): Promise<void> => invoke('mark_mail_read', { id }),
+  markMailUnread: (id: number): Promise<void> => invoke('mark_mail_unread', { id }),
+  moveMailToDeleted: (id: number): Promise<void> => invoke('move_mail_to_deleted', { id }),
+  openMailWebmail: (accountId: string): Promise<void> => invoke('open_mail_webmail', { accountId }),
 };

@@ -33,6 +33,18 @@ fn dev_tools_应为_builtin_模式且无_process() {
 }
 
 #[test]
+fn 邮件管理应为_builtin_模式且无_process() {
+    prepare_data_dir();
+    let manifests = load_all_manifests().expect("加载 manifest 失败");
+    let mail_manager = manifests
+        .iter()
+        .find(|manifest| manifest.id == "mail-manager")
+        .expect("应能找到邮件管理");
+    assert_eq!(mail_manager.ui.mode, UiMode::Builtin);
+    assert!(mail_manager.process.is_none(), "邮件管理不应有 process 段");
+}
+
+#[test]
 fn 应从用户数据目录加载本地_manifest() {
     prepare_data_dir();
     let root = std::env::var("AIDEA_DATA_DIR").expect("缺少测试数据目录");

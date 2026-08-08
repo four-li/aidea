@@ -12,6 +12,9 @@ pub enum AppError {
     #[error("JSON 解析错误: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("数据库错误: {0}")]
+    Database(#[from] rusqlite::Error),
+
     #[error("配置错误: {0}")]
     Config(String),
 
@@ -23,6 +26,9 @@ pub enum AppError {
 
     #[error("网络错误: {0}")]
     Network(String),
+
+    #[error("邮件错误: {0}")]
+    Mail(String),
 }
 
 // 让 AppError 能通过 Tauri IPC 序列化返回前端

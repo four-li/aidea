@@ -36,7 +36,10 @@ pub struct AiSavedConfig {
 }
 
 fn ai_config_id(api_key: &str, base_url: &str) -> String {
-    format!("{:x}", Sha256::digest(format!("{}\u{1f}{}", api_key, base_url)))
+    format!(
+        "{:x}",
+        Sha256::digest(format!("{}\u{1f}{}", api_key, base_url))
+    )
 }
 
 fn api_key_hint(api_key: &str) -> String {
@@ -52,8 +55,8 @@ fn api_key_hint(api_key: &str) -> String {
 }
 
 fn validate_ai_url(value: &str) -> AppResult<reqwest::Url> {
-    let url = reqwest::Url::parse(value)
-        .map_err(|e| AppError::Config(format!("URL 无效: {}", e)))?;
+    let url =
+        reqwest::Url::parse(value).map_err(|e| AppError::Config(format!("URL 无效: {}", e)))?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err(AppError::Config("仅支持 HTTP(S) URL".to_string()));
     }
@@ -126,7 +129,12 @@ pub async fn save_ai_config(config: AiSavedConfig) -> AppResult<()> {
 #[tauri::command]
 pub async fn delete_ai_config(id: String) -> AppResult<()> {
     let mut shell_config = load_config()?;
-    if !shell_config.ai_history.items.iter().any(|item| item.id == id) {
+    if !shell_config
+        .ai_history
+        .items
+        .iter()
+        .any(|item| item.id == id)
+    {
         return Err(AppError::Config("历史配置不存在".to_string()));
     }
     shell_config.ai_history.items.retain(|item| item.id != id);

@@ -197,6 +197,7 @@ pub fn data_root() -> AppResult<PathBuf> {
 pub fn ensure_data_dirs() -> AppResult<PathBuf> {
     let root = data_root()?;
     for path in [
+        root.join("databases"),
         root.join("apps/local"),
         root.join("apps/installed"),
         root.join("runtime/processes"),

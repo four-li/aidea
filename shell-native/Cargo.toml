@@ -33,3 +33,10 @@ block2 = "0.6"
 objc2 = "0.6"
 objc2-foundation = "0.3"
 sha2 = "0.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+mailparse = "0.15"
+ammonia = "4"
+chrono = "0.4"
+imap = "2.4"
+native-tls = "0.2"

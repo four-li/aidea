@@ -5,6 +5,23 @@ import type { AppState } from '../types/manifest';
 
 const POLL_INTERVAL_MS = 2000; // 2 秒轮询一次
 
+export function appStatesEqual(
+  current: Record<string, AppState>,
+  next: Record<string, AppState>
+): boolean {
+  const currentIds = Object.keys(current);
+  if (currentIds.length !== Object.keys(next).length) return false;
+  return currentIds.every((id) => {
+    const currentState = current[id];
+    const nextState = next[id];
+    return (
+      nextState !== undefined &&
+      currentState.status === nextState.status &&
+      currentState.pid === nextState.pid
+    );
+  });
+}
+
 export function useProcessStatus(enabled: boolean) {
   const [states, setStates] = useState<Record<string, AppState>>({});
   const [loading, setLoading] = useState(true);
@@ -16,7 +33,7 @@ export function useProcessStatus(enabled: boolean) {
       for (const s of result) {
         map[s.id] = s;
       }
-      setStates(map);
+      setStates((current) => (appStatesEqual(current, map) ? current : map));
     } catch (e) {
       // 静默失败，轮询不抛错到 UI
       console.error('轮询进程状态失败:', e);

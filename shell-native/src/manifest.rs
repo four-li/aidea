@@ -7,6 +7,7 @@ use std::path::PathBuf;
 const BUILTIN_MANIFESTS: &[&str] = &[
     include_str!("../../apps/builtin/dashboard.yaml"),
     include_str!("../../apps/builtin/dev-tools.yaml"),
+    include_str!("../../apps/builtin/mail-manager.yaml"),
 ];
 
 /// UI 接入模式

@@ -75,7 +75,16 @@ aIdea 首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Dev
 
 更新采用手动方式：下载新版本 `.dmg`，退出旧版 aIdea，用新版本替换旧应用。未签名应用暂不启用应用内静默更新，避免绕过 macOS 安全提示或留下半更新状态。
 
-如果 macOS 显示“aIdea 已损坏，无法打开”，通常是 Gatekeeper（macOS 的应用安全检查）拦截了从浏览器下载的未签名应用，并不代表下载文件真的损坏。请先退出提示，把应用拖到 `Applications`，然后在“系统设置 → 隐私与安全性”中找到拦截提示并点击“仍要打开”。如果没有这个按钮，可以在终端执行一次：
+如果 macOS 在双击 `.dmg` 时显示“aIdea 已损坏，无法打开”，通常是 Gatekeeper（macOS 的应用安全检查）拦截了从浏览器下载的未签名应用，并不代表下载文件真的损坏。先关闭提示，在终端移除 DMG 的下载隔离标记，再重新打开 DMG：
+
+```bash
+xattr -d com.apple.quarantine ~/Desktop/aIdea_0.1.2_aarch64.dmg
+open ~/Desktop/aIdea_0.1.2_aarch64.dmg
+```
+
+然后把 `aIdea.app` 拖入 `Applications`。如果仍被拦截，再在“系统设置 → 隐私与安全性”中点击“仍要打开”。
+
+如果应用已经拖入 `Applications` 但仍无法打开，可以执行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/aIdea.app

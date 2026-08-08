@@ -1,5 +1,7 @@
 use crate::error::{AppError, AppResult};
-use security_framework::passwords::{delete_generic_password, get_generic_password, set_generic_password};
+use security_framework::passwords::{
+    delete_generic_password, get_generic_password, set_generic_password,
+};
 
 const SERVICE: &str = "com.aidea.ai-model-tester";
 

@@ -2,6 +2,7 @@
 import type { AppManifest } from '../types/manifest';
 import { DashboardPage } from '../builtin-apps/dashboard';
 import { DevToolsPage } from '../builtin-apps/dev-tools';
+import { MailManagerPage } from '../builtin-apps/mail-manager';
 
 interface Props {
   app: AppManifest;
@@ -11,6 +12,7 @@ export function BuiltinPage({ app }: Props) {
   // 根据 app.id 直接渲染对应组件，不用懒加载避免加载问题
   if (app.id === 'dashboard') return <DashboardPage />;
   if (app.id === 'dev-tools') return <DevToolsPage />;
+  if (app.id === 'mail-manager') return <MailManagerPage />;
 
   // 未知的 builtin 应用，显示占位提示
   return (

@@ -3,6 +3,10 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod mac_auth;
+pub mod mail_keychain;
+pub mod mail_runtime;
+pub mod mail_store;
+pub mod mail_sync;
 pub mod manifest;
 pub mod process;
 
@@ -29,6 +33,21 @@ pub fn run() {
             commands::ai::list_ai_configs,
             commands::ai::load_ai_config,
             commands::ai::delete_ai_config,
+            commands::mail::save_mail_account,
+            commands::mail::load_mail_account_secret,
+            commands::mail::test_mail_account_connection,
+            commands::mail::list_mail_accounts,
+            commands::mail::delete_mail_account,
+            commands::mail::sync_mail_accounts,
+            commands::mail::sync_mail_history,
+            commands::mail::cancel_mail_sync,
+            commands::mail::list_mail_sync_tasks,
+            commands::mail::list_mail_messages,
+            commands::mail::get_mail_message,
+            commands::mail::mark_mail_read,
+            commands::mail::mark_mail_unread,
+            commands::mail::move_mail_to_deleted,
+            commands::mail::open_mail_webmail,
         ])
         .setup(move |_app| {
             config::migrate_legacy_data()
@@ -38,6 +57,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 start_autostart_apps(&m).await;
             });
+            mail_runtime::start_all(_app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())
