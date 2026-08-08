@@ -21,3 +21,6 @@ shell.config.local.json
 
 # 日志
 *.log
+
+# Superpowers 本地临时状态
+.superpowers/
