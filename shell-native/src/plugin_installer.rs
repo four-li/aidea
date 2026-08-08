@@ -4,6 +4,8 @@ use crate::manifest::{AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode};
 use crate::plugin_market::{load_official_plugins, OfficialPlugin};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
@@ -17,6 +19,13 @@ pub struct InstalledPlugin {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PluginInstallProgress {
+    pub id: String,
+    pub phase: String,
+    pub message: String,
+}
+
 fn install_root(id: &str) -> AppResult<PathBuf> {
     Ok(data_root()?.join("apps/installed").join(id))
 }
@@ -26,6 +35,10 @@ fn record_path(id: &str) -> AppResult<PathBuf> {
     Ok(install_root(id)?.join("install-state.yaml"))
 }
 
+fn install_log_path(id: &str) -> AppResult<PathBuf> {
+    Ok(data_root()?.join("logs").join(id).join("install.log"))
+}
+
 fn plugin(id: &str) -> AppResult<OfficialPlugin> {
     load_official_plugins()?
         .into_iter()
@@ -33,7 +46,52 @@ fn plugin(id: &str) -> AppResult<OfficialPlugin> {
         .ok_or_else(|| AppError::AppNotFound(id.to_string()))
 }
 
-async fn run(program: &str, args: &[String], cwd: &Path) -> AppResult<()> {
+fn clone_args(def: &OfficialPlugin, staging: &Path, use_http_1_1: bool) -> Vec<String> {
+    let mut args = Vec::new();
+    if use_http_1_1 {
+        args.extend(["-c".into(), "http.version=HTTP/1.1".into()]);
+    }
+    args.extend([
+        "clone".into(),
+        "--no-checkout".into(),
+        def.repository.clone(),
+        staging.to_string_lossy().into_owned(),
+    ]);
+    args
+}
+
+fn is_http2_transport_error(error: &AppError) -> bool {
+    matches!(error, AppError::Process(message) if message.contains("HTTP2 framing") || message.contains("HTTP/2 framing"))
+}
+
+fn read_log_tail(path: &Path) -> AppResult<String> {
+    if !path.exists() {
+        return Ok(String::from("安装日志不存在"));
+    }
+    let content = fs::read_to_string(path)?;
+    let lines: Vec<&str> = content.lines().rev().take(200).collect();
+    let mut result = lines.into_iter().rev().collect::<Vec<_>>().join("\n");
+    if !result.is_empty() {
+        result.push('\n');
+    }
+    Ok(result)
+}
+
+fn report_progress(
+    def: &OfficialPlugin,
+    on_progress: &mut (dyn FnMut(PluginInstallProgress) + Send),
+    phase: &str,
+    message: &str,
+) {
+    on_progress(PluginInstallProgress {
+        id: def.id.clone(),
+        phase: phase.into(),
+        message: message.into(),
+    });
+}
+
+async fn run(program: &str, args: &[String], cwd: &Path, log: &mut File) -> AppResult<()> {
+    writeln!(log, "$ {program} {}", args.join(" "))?;
     let output = Command::new(program)
         .args(args)
         .current_dir(cwd)
@@ -42,6 +100,20 @@ async fn run(program: &str, args: &[String], cwd: &Path) -> AppResult<()> {
         .output()
         .await
         .map_err(|error| AppError::Process(format!("执行 {program} 失败: {error}")))?;
+    if !output.stdout.is_empty() {
+        writeln!(
+            log,
+            "{}",
+            String::from_utf8_lossy(&output.stdout).trim_end()
+        )?;
+    }
+    if !output.stderr.is_empty() {
+        writeln!(
+            log,
+            "{}",
+            String::from_utf8_lossy(&output.stderr).trim_end()
+        )?;
+    }
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(AppError::Process(format!(
@@ -52,26 +124,51 @@ async fn run(program: &str, args: &[String], cwd: &Path) -> AppResult<()> {
     Ok(())
 }
 
-async fn install_inner(def: &OfficialPlugin) -> AppResult<InstalledPlugin> {
+async fn install_inner(
+    def: &OfficialPlugin,
+    on_progress: &mut (dyn FnMut(PluginInstallProgress) + Send),
+) -> AppResult<InstalledPlugin> {
     let root = install_root(&def.id)?;
     fs::create_dir_all(&root)?;
+    let log_path = install_log_path(&def.id)?;
+    let log_parent = log_path
+        .parent()
+        .ok_or_else(|| AppError::Config("无法定位插件安装日志目录".into()))?;
+    fs::create_dir_all(log_parent)?;
+    let mut log = File::create(&log_path)?;
+    writeln!(log, "开始安装官方插件 {}", def.id)?;
     let staging = root.join(format!("staging-{}", Uuid::new_v4()));
     let old_source = root.join("source");
     let result = async {
+        report_progress(def, on_progress, "cloning", "正在拉取源码…");
+        let clone_result = run("git", &clone_args(def, &staging, false), &root, &mut log).await;
+        if let Err(error) = clone_result {
+            if !is_http2_transport_error(&error) {
+                return Err(error);
+            }
+            writeln!(log, "检测到 HTTP/2 传输错误，使用 HTTP/1.1 重试一次")?;
+            if staging.exists() {
+                fs::remove_dir_all(&staging)?;
+            }
+            report_progress(
+                def,
+                on_progress,
+                "cloning",
+                "HTTP/2 连接异常，正在兼容重试…",
+            );
+            run("git", &clone_args(def, &staging, true), &root, &mut log).await?;
+        }
+        report_progress(def, on_progress, "checkout", "正在切换固定版本…");
         run(
             "git",
-            &[
-                "clone".into(),
-                "--no-checkout".into(),
-                def.repository.clone(),
-                staging.to_string_lossy().into_owned(),
-            ],
-            &root,
+            &["checkout".into(), def.revision.clone()],
+            &staging,
+            &mut log,
         )
         .await?;
-        run("git", &["checkout".into(), def.revision.clone()], &staging).await?;
         for command in &def.install {
-            run(&command[0], &command[1..], &staging).await?;
+            report_progress(def, on_progress, "installing", "正在安装依赖…");
+            run(&command[0], &command[1..], &staging, &mut log).await?;
         }
         let backup = root.join(format!("source-backup-{}", Uuid::new_v4()));
         if old_source.exists() {
@@ -93,17 +190,35 @@ async fn install_inner(def: &OfficialPlugin) -> AppResult<InstalledPlugin> {
             status: "installed".into(),
         };
         fs::write(record_path(&def.id)?, serde_yaml::to_string(&installed)?)?;
+        writeln!(log, "安装完成")?;
+        report_progress(def, on_progress, "completed", "安装完成");
         Ok(installed)
     }
     .await;
     if result.is_err() && staging.exists() {
         let _ = fs::remove_dir_all(&staging);
     }
+    if let Err(error) = &result {
+        let _ = writeln!(log, "安装失败: {error}");
+        report_progress(def, on_progress, "failed", "安装失败");
+    }
     result
 }
 
 pub async fn install(id: &str) -> AppResult<InstalledPlugin> {
-    install_inner(&plugin(id)?).await
+    install_with_progress(id, |_| {}).await
+}
+
+pub async fn install_with_progress(
+    id: &str,
+    mut on_progress: impl FnMut(PluginInstallProgress) + Send,
+) -> AppResult<InstalledPlugin> {
+    install_inner(&plugin(id)?, &mut on_progress).await
+}
+
+pub fn read_install_log(id: &str) -> AppResult<String> {
+    let _ = plugin(id)?;
+    read_log_tail(&install_log_path(id)?)
 }
 
 pub fn list_installed() -> AppResult<Vec<InstalledPlugin>> {
@@ -205,9 +320,15 @@ pub async fn uninstall(id: &str) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{installed_app_manifest, InstalledPlugin};
+    use super::{
+        clone_args, installed_app_manifest, is_http2_transport_error, read_log_tail,
+        InstalledPlugin,
+    };
+    use crate::error::AppError;
     use crate::plugin_market::{OfficialPlugin, OfficialProcess};
+    use std::fs;
     use std::path::Path;
+    use uuid::Uuid;
 
     #[test]
     fn 安装记录可序列化() {
@@ -245,5 +366,56 @@ mod tests {
         assert_eq!(manifest.id, "demo");
         assert_eq!(manifest.ui.mode, crate::manifest::UiMode::Webview);
         assert!(manifest.process.is_some());
+    }
+
+    #[test]
+    fn http_2_错误时才使用_http_1_1_重试() {
+        let definition = OfficialPlugin {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "1".into(),
+            icon: "Package".into(),
+            repository: "https://example.com/demo.git".into(),
+            revision: "abc".into(),
+            runtime: "node".into(),
+            install: vec![],
+            process: OfficialProcess {
+                command: vec!["node".into(), "server.js".into()],
+                working_directory: ".".into(),
+                ready_url: "http://127.0.0.1:43120/health".into(),
+            },
+            update_notes: String::new(),
+        };
+
+        let default_args = clone_args(&definition, Path::new("/tmp/demo"), false);
+        let retry_args = clone_args(&definition, Path::new("/tmp/demo"), true);
+
+        assert_eq!(default_args[0], "clone");
+        assert_eq!(retry_args[..3], ["-c", "http.version=HTTP/1.1", "clone"]);
+        assert!(is_http2_transport_error(&AppError::Process(
+            "git 执行失败: curl 16 Error in the HTTP2 framing layer".into()
+        )));
+        assert!(!is_http2_transport_error(&AppError::Process(
+            "git 执行失败: repository not found".into()
+        )));
+    }
+
+    #[test]
+    fn 安装日志只读取末尾_200_行() {
+        let path = std::env::temp_dir().join(format!("aidea-install-log-{}.log", Uuid::new_v4()));
+        let content = (0..205)
+            .map(|index| format!("line-{index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, content).unwrap();
+
+        let log = read_log_tail(&path).unwrap();
+
+        assert!(!log.contains("line-0\n"));
+        assert!(log.contains("line-5"));
+        assert!(log.contains("line-204"));
+        fs::remove_file(path).unwrap();
     }
 }

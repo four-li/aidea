@@ -4,6 +4,9 @@
   "description": "aIdea 默认权限",
   "windows": ["main"],
   "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text"
   ]

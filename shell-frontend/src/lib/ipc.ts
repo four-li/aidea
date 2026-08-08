@@ -18,6 +18,8 @@ export const ipc = {
   listInstalledOfficialPlugins: (): Promise<InstalledPlugin[]> => invoke('list_installed_official_plugins'),
   installOfficialPlugin: (id: string): Promise<InstalledPlugin> => invoke('install_official_plugin', { id }),
   updateOfficialPlugin: (id: string): Promise<InstalledPlugin> => invoke('update_official_plugin', { id }),
+  readOfficialPluginInstallLog: (id: string): Promise<string> =>
+    invoke('read_official_plugin_install_log', { id }),
   uninstallOfficialPlugin: (id: string): Promise<void> => invoke('uninstall_official_plugin', { id }),
   /** 保存设置页创建的本地应用 manifest */
   saveAppManifest: (manifest: AppManifest): Promise<void> =>

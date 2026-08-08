@@ -15,7 +15,9 @@ use process::{start_autostart_apps, ProcessManager};
 
 pub fn run() {
     let manager = ProcessManager::default();
-    tauri::Builder::default()
+    let startup_manager = manager.clone();
+    let shutdown_manager = manager.clone();
+    let app = tauri::Builder::default()
         .manage(manager.clone())
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
@@ -24,6 +26,7 @@ pub fn run() {
             commands::shell::list_installed_official_plugins,
             commands::shell::install_official_plugin,
             commands::shell::update_official_plugin,
+            commands::shell::read_official_plugin_install_log,
             commands::shell::uninstall_official_plugin,
             commands::shell::save_app_manifest,
             commands::shell::get_shell_config,
@@ -59,13 +62,18 @@ pub fn run() {
             config::migrate_legacy_data()
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
             // 启动 autostart 子应用（clone manager move 进 async task）
-            let m = manager.clone();
+            let m = startup_manager.clone();
             tauri::async_runtime::spawn(async move {
                 start_autostart_apps(&m).await;
             });
             mail_runtime::start_all(_app.handle().clone());
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
+    app.run(move |_app, event| {
+        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+            tauri::async_runtime::block_on(shutdown_manager.stop_all());
+        }
+    });
 }

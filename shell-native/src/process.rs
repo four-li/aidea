@@ -76,6 +76,7 @@ impl ProcessManager {
         if !working_dir.starts_with(&source) || !working_dir.is_dir() {
             return Err(AppError::Process(format!("{} 工作目录无效", plugin.id)));
         }
+        ensure_ready_port_available(&plugin.process.ready_url)?;
         let log_dir = crate::config::data_root()?.join("logs").join(&plugin.id);
         std::fs::create_dir_all(&log_dir)?;
         let log_path = log_dir.join("plugin.log");
@@ -277,6 +278,14 @@ impl ProcessManager {
         Ok(())
     }
 
+    /// aIdea 退出时停止所有由壳启动的子进程，避免端口和后台服务残留。
+    pub async fn stop_all(&self) {
+        let ids: Vec<String> = self.table.lock().unwrap().entries.keys().cloned().collect();
+        for id in ids {
+            let _ = self.stop(&id).await;
+        }
+    }
+
     /// 查询状态
     pub fn is_running(&self, id: &str) -> AppResult<bool> {
         let table = self.table.lock().unwrap();
@@ -367,6 +376,24 @@ async fn wait_until_ready(url: &str) -> AppResult<()> {
     }
 }
 
+fn ensure_ready_port_available(url: &str) -> AppResult<()> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| AppError::Process(format!("健康检查地址无效: {error}")))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| AppError::Process("健康检查地址缺少主机名".into()))?;
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| AppError::Process("健康检查地址缺少端口".into()))?;
+    std::net::TcpListener::bind((host, port))
+        .map(|_| ())
+        .map_err(|error| {
+            AppError::Process(format!(
+                "端口 {host}:{port} 已被占用，无法启动插件: {error}"
+            ))
+        })
+}
+
 /// 启动所有 autostart=true 的子应用
 pub async fn start_autostart_apps(manager: &ProcessManager) {
     let manifests = match crate::manifest::load_all_manifests() {
@@ -384,5 +411,26 @@ pub async fn start_autostart_apps(manager: &ProcessManager) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_ready_port_available, ProcessManager};
+
+    #[tokio::test]
+    async fn 没有子进程时停止全部不会失败() {
+        ProcessManager::default().stop_all().await;
+    }
+
+    #[test]
+    fn 已占用的健康检查端口会在启动前报错() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let error = ensure_ready_port_available(&format!("http://127.0.0.1:{port}/health"))
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains(&format!("端口 127.0.0.1:{port} 已被占用")));
     }
 }

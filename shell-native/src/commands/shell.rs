@@ -2,7 +2,7 @@ use crate::config::{load_config, save_config, AppOverride, ShellConfig};
 use crate::error::{AppError, AppResult};
 use crate::manifest::{find_manifest, load_all_manifests, save_manifest, AppManifest};
 use crate::process::{AppState, ProcessManager};
-use tauri::State;
+use tauri::{Emitter, State};
 
 #[tauri::command]
 pub async fn list_apps() -> AppResult<Vec<AppManifest>> {
@@ -23,19 +23,32 @@ pub async fn list_installed_official_plugins(
 #[tauri::command]
 pub async fn install_official_plugin(
     id: String,
+    app: tauri::AppHandle,
 ) -> AppResult<crate::plugin_installer::InstalledPlugin> {
-    crate::plugin_installer::install(&id).await
+    crate::plugin_installer::install_with_progress(&id, move |progress| {
+        let _ = app.emit("official-plugin-install-progress", progress);
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn update_official_plugin(
     id: String,
     manager: State<'_, ProcessManager>,
+    app: tauri::AppHandle,
 ) -> AppResult<crate::plugin_installer::InstalledPlugin> {
     if manager.is_running(&id)? {
         manager.stop(&id).await?;
     }
-    crate::plugin_installer::install(&id).await
+    crate::plugin_installer::install_with_progress(&id, move |progress| {
+        let _ = app.emit("official-plugin-install-progress", progress);
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn read_official_plugin_install_log(id: String) -> AppResult<String> {
+    crate::plugin_installer::read_install_log(&id)
 }
 
 #[tauri::command]

@@ -19,6 +19,11 @@
 ├── app-data/<app-id>/
 ├── logs/<app-id>/
 ├── runtime/
+│   ├── market-cache/<catalog-file-stem>/
+│   │   ├── aidea.yaml
+│   │   └── metadata.json
+│   ├── processes/
+│   └── state/
 └── backups/
 ```
 
@@ -27,7 +32,7 @@
 - `databases/secrets.db` 是平台本地加密存储的内部数据库，插件不得直接读写。
 - `apps/installed/<app-id>/` 是 aIdea 管理的安装状态、源码和更新临时目录；安装状态使用 `install-state.yaml`，不能与本地可启动应用的 `manifest.yaml` 混用。
 - `app-data/<app-id>/` 和 `logs/<app-id>/` 属于插件业务数据与日志。更新和默认卸载不得删除它们。
-- `runtime/` 只存短期进程状态和临时运行信息，不存业务数据库。
+- `runtime/` 只存短期进程状态、市场定义缓存和临时运行信息，不存业务数据库。市场缓存只保存公开的应用定义与刷新元数据，不保存 Git 凭据。
 - `backups/` 存放迁移前的数据备份。
 
 日志和缓存的系统位置分别为：
