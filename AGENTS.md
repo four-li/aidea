@@ -6,17 +6,17 @@
 - **内置插件**：代码直接位于 aIdea 仓库，随 aIdea 一起构建、发布和更新。
 - **官方插件**：独立 GitHub 或 GitLab 仓库的自研应用，由 aIdea 官方插件市场预设接入定义；当前只开发内置插件与官方插件。
 - **官方插件市场**：随 aIdea 发布的 `plugin-markets/official/` 插件定义集合，不是远程市场服务。官方插件仓库不要求提供 `aidea.yaml`。
-- **平台组件**：aIdea 可选提供的数据目录、日志目录、安全凭据、通知和命令行入口。官方插件通过注入的环境变量和 `aidea` 命令使用，不依赖 SDK。
+- **平台组件**：aIdea 可选提供的数据目录、日志目录、本地加密存储、通知和命令行入口。官方插件通过注入的环境变量和 `aidea` 命令使用，不依赖 SDK。
 - aIdea 管理官方插件的安装、更新、卸载、启动、停止、健康检查、WebView、日志和状态；插件管理自己的业务代码、业务数据、配置、迁移、网络请求和业务 UI。
 - 官方插件卸载默认只删除源码、依赖和运行环境，保留业务数据；删除数据必须由用户单独确认。
 - 当前不实现第三方插件市场、自定义插件安装、自动发现、插件 SDK 或多作者权限系统；需要这些能力时先单独设计。
-- 官方插件目录、运行与平台组件的详细契约以 `docs/app/` 下的专项文档为准；在完成迁移前继续遵守本文件「开发前文档路由」指向的现有文档。
+- 官方插件目录、运行与平台组件的详细契约以 `docs/app/` 下的专项文档为准。
 
 ## UI 规范
 
-UI 视觉、组件、交互、配色和无障碍约定统一维护在 [docs/ui-spec.md](docs/ui-spec.md)。本仓库内的 UI 修改必须先遵守该文档，外部独立子项目也只需读取该文档，不引用本仓库的 UI 套件。
+UI 视觉、组件、交互、配色和无障碍约定统一维护在 [docs/app/ui.md](docs/app/ui.md)。本仓库内的 UI 修改必须先遵守该文档，外部独立子项目也只需读取该文档，不引用本仓库的 UI 套件。
 
-外部设计库仅可作为视觉和交互原则参考；不得引入第二套组件、token、图标或主题体系。项目仍以 `docs/ui-spec.md`、shadcn/ui、Tailwind CSS 和 lucide-react 为唯一实现基线。
+外部设计库仅可作为视觉和交互原则参考；不得引入第二套组件、token、图标或主题体系。项目仍以 `docs/app/ui.md`、shadcn/ui、Tailwind CSS 和 lucide-react 为唯一实现基线。
 
 ## 开发前文档路由
 
@@ -24,12 +24,12 @@ UI 视觉、组件、交互、配色和无障碍约定统一维护在 [docs/ui-s
 
 | 任务 | 必读文档 |
 |---|---|
-| 修改页面视觉、组件、交互或无障碍 | [docs/ui-spec.md](docs/ui-spec.md) |
-| 新增或修改内置子应用 | 本文件的「内置子应用规范」、[docs/ui-spec.md](docs/ui-spec.md)；涉及持久化时再读 [docs/app-storage-spec.md](docs/app-storage-spec.md) |
-| 新增或修改 SQLite、缓存、持久化数据 | [docs/app-data-layout.md](docs/app-data-layout.md)、[docs/app-storage-spec.md](docs/app-storage-spec.md) |
-| 开发可安装的 owned/external 子应用 | [docs/app-package-spec.md](docs/app-package-spec.md)、[docs/app-data-layout.md](docs/app-data-layout.md)；涉及 UI 时再读 [docs/ui-spec.md](docs/ui-spec.md) |
-| 修改应用 manifest、应用安装或生命周期 | 本文件的「Manifest 规范」「应用管理与覆盖配置」、[docs/app-package-spec.md](docs/app-package-spec.md) |
-| 修改 Rust IPC、Keychain 或网络请求 | 本文件的「shell-native 模块规范」；涉及凭据或持久化时再读 [docs/app-storage-spec.md](docs/app-storage-spec.md) |
+| 修改页面视觉、组件、交互或无障碍 | [docs/app/ui.md](docs/app/ui.md) |
+| 新增或修改内置子应用 | 本文件的「内置子应用规范」、[docs/app/ui.md](docs/app/ui.md)；涉及持久化时再读 [docs/app/storage.md](docs/app/storage.md) |
+| 新增或修改 SQLite、缓存、持久化数据 | [docs/app/data-layout.md](docs/app/data-layout.md)、[docs/app/storage.md](docs/app/storage.md) |
+| 开发可安装的官方插件 | [docs/app/package-spec.md](docs/app/package-spec.md)、[docs/app/data-layout.md](docs/app/data-layout.md)；涉及 UI 时再读 [docs/app/ui.md](docs/app/ui.md) |
+| 修改应用 manifest、应用安装或生命周期 | 本文件的「Manifest 规范」「应用管理与覆盖配置」、[docs/app/package-spec.md](docs/app/package-spec.md)、[docs/app/marketplace.md](docs/app/marketplace.md) |
+| 修改 Rust IPC、本地加密存储、Touch ID 或网络请求 | 本文件的「shell-native 模块规范」；涉及凭据或持久化时再读 [docs/app/storage.md](docs/app/storage.md) |
 
 文档之间有冲突时，以更具体的专项文档为准；新增约定应更新对应专项文档，不把详细规则复制到本文件。
 
@@ -157,7 +157,7 @@ shell-native/src/
 ├── config.rs
 ├── manifest.rs
 ├── process.rs
-├── ai_keychain.rs
+├── secret_store.rs
 ├── mac_auth.rs
 └── commands/
     ├── mod.rs

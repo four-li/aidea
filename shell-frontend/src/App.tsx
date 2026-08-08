@@ -13,7 +13,7 @@ import type { AppManifest } from './types/manifest';
 const APP_ORDER_STORAGE_KEY = 'aidea-app-order';
 
 function App() {
-  const { apps, loading, error } = useApps();
+  const { apps, loading, error, refresh: refreshApps } = useApps();
   const { activeAppId, selectApp } = useActiveApp();
   const { states, refresh } = useProcessStatus(apps.length > 0);
   const { mode: themeMode, setTheme } = useTheme();
@@ -103,7 +103,7 @@ function App() {
         onThemeChange={setTheme}
         open={showSettings}
         onOpenChange={setShowSettings}
-        onAppsChanged={refresh}
+        onAppsChanged={refreshApps}
       />
       <Toaster />
     </div>

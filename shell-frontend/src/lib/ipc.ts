@@ -9,10 +9,16 @@ import type {
   AiTestConfig,
 } from '../types/ai-test';
 import type { MailAccount, MailMessageDetail, MailMessagePage, MailMessageQuery, SaveMailAccountRequest, SyncResult, MailSyncTask } from '../types/mail';
+import type { InstalledPlugin, OfficialPlugin } from '../types/plugin-market';
 
 export const ipc = {
   /** 列出所有已加载的子应用（已合并用户 overrides） */
   listApps: (): Promise<AppManifest[]> => invoke<AppManifest[]>('list_apps'),
+  listOfficialPlugins: (): Promise<OfficialPlugin[]> => invoke('list_official_plugins'),
+  listInstalledOfficialPlugins: (): Promise<InstalledPlugin[]> => invoke('list_installed_official_plugins'),
+  installOfficialPlugin: (id: string): Promise<InstalledPlugin> => invoke('install_official_plugin', { id }),
+  updateOfficialPlugin: (id: string): Promise<InstalledPlugin> => invoke('update_official_plugin', { id }),
+  uninstallOfficialPlugin: (id: string): Promise<void> => invoke('uninstall_official_plugin', { id }),
   /** 保存设置页创建的本地应用 manifest */
   saveAppManifest: (manifest: AppManifest): Promise<void> =>
     invoke<void>('save_app_manifest', { manifest }),
@@ -41,7 +47,7 @@ export const ipc = {
   /** 通过 Rust 后端发送模板渲染后的 HTTP 请求，避免 Key 暴露给 WebView 网络层 */
   sendAiHttpRequest: (request: AiHttpRequest): Promise<AiHttpResponse> =>
     invoke<AiHttpResponse>('send_ai_http_request', { request }),
-  /** 保存 Key 到 macOS 钥匙串，历史文件不含 Key。 */
+  /** 加密保存 Key，历史文件不含 Key。 */
   saveAiConfig: (config: AiTestConfig): Promise<void> => invoke<void>('save_ai_config', { config }),
   /** 获取不含 Key 的历史配置元数据。 */
   listAiConfigs: (): Promise<AiConfigHistoryItem[]> =>
@@ -49,7 +55,7 @@ export const ipc = {
   /** 经 macOS 系统认证后读取历史 Key。 */
   loadAiConfig: (id: string): Promise<AiTestConfig> =>
     invoke<AiTestConfig>('load_ai_config', { id }),
-  /** 删除历史元数据和对应 Keychain API Key。 */
+  /** 删除历史元数据和对应的加密 API Key。 */
   deleteAiConfig: (id: string): Promise<void> => invoke<void>('delete_ai_config', { id }),
   listMailAccounts: (): Promise<MailAccount[]> => invoke('list_mail_accounts'),
   saveMailAccount: (request: SaveMailAccountRequest): Promise<MailAccount> => invoke('save_mail_account', { request }),

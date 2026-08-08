@@ -1,14 +1,15 @@
-pub mod ai_keychain;
 pub mod commands;
 pub mod config;
 pub mod error;
 pub mod mac_auth;
-pub mod mail_keychain;
 pub mod mail_runtime;
 pub mod mail_store;
 pub mod mail_sync;
 pub mod manifest;
+pub mod plugin_installer;
+pub mod plugin_market;
 pub mod process;
+pub mod secret_store;
 
 use process::{start_autostart_apps, ProcessManager};
 
@@ -19,6 +20,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             commands::shell::list_apps,
+            commands::shell::list_official_plugins,
+            commands::shell::list_installed_official_plugins,
+            commands::shell::install_official_plugin,
+            commands::shell::update_official_plugin,
+            commands::shell::uninstall_official_plugin,
             commands::shell::save_app_manifest,
             commands::shell::get_shell_config,
             commands::shell::save_app_override,

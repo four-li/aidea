@@ -73,7 +73,7 @@ mod ai_history_tests {
 
 const AI_HISTORY_LIMIT: usize = 20;
 
-/// AI 历史配置仅存元数据，API Key 保存在 macOS 钥匙串。
+/// AI 历史配置仅存元数据，API Key 由平台本地加密存储管理。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiConfigHistoryItem {
     pub id: String,
@@ -91,7 +91,7 @@ pub struct AiConfigHistory {
 }
 
 impl AiConfigHistory {
-    /// 返回被替换或超出历史上限的钥匙串 ID，调用方负责同步删除。
+    /// 返回被替换或超出历史上限的配置 ID，调用方负责同步删除对应敏感值。
     pub fn insert(&mut self, item: AiConfigHistoryItem) -> Vec<String> {
         let mut removed: Vec<String> = self
             .items

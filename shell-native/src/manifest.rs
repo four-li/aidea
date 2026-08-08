@@ -131,6 +131,8 @@ pub fn load_all_manifests() -> AppResult<Vec<AppManifest>> {
         }
     }
 
+    manifests.extend(crate::plugin_installer::list_installed_app_manifests()?);
+
     for entry in std::fs::read_dir(data_root.join("apps/installed"))? {
         let path = entry?.path().join("manifest.yaml");
         if !path.exists() {

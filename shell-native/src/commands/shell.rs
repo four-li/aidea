@@ -10,6 +10,46 @@ pub async fn list_apps() -> AppResult<Vec<AppManifest>> {
 }
 
 #[tauri::command]
+pub async fn list_official_plugins() -> AppResult<Vec<crate::plugin_market::OfficialPlugin>> {
+    crate::plugin_market::load_official_plugins()
+}
+
+#[tauri::command]
+pub async fn list_installed_official_plugins(
+) -> AppResult<Vec<crate::plugin_installer::InstalledPlugin>> {
+    crate::plugin_installer::list_installed()
+}
+
+#[tauri::command]
+pub async fn install_official_plugin(
+    id: String,
+) -> AppResult<crate::plugin_installer::InstalledPlugin> {
+    crate::plugin_installer::install(&id).await
+}
+
+#[tauri::command]
+pub async fn update_official_plugin(
+    id: String,
+    manager: State<'_, ProcessManager>,
+) -> AppResult<crate::plugin_installer::InstalledPlugin> {
+    if manager.is_running(&id)? {
+        manager.stop(&id).await?;
+    }
+    crate::plugin_installer::install(&id).await
+}
+
+#[tauri::command]
+pub async fn uninstall_official_plugin(
+    id: String,
+    manager: State<'_, ProcessManager>,
+) -> AppResult<()> {
+    if manager.is_running(&id)? {
+        manager.stop(&id).await?;
+    }
+    crate::plugin_installer::uninstall(&id).await
+}
+
+#[tauri::command]
 pub async fn save_app_manifest(manifest: AppManifest) -> AppResult<()> {
     save_manifest(&manifest)
 }
@@ -45,6 +85,9 @@ fn is_empty_override(o: &AppOverride) -> bool {
 
 #[tauri::command]
 pub async fn start_app(id: String, manager: State<'_, ProcessManager>) -> AppResult<u32> {
+    if let Ok(plugin) = crate::plugin_installer::installed_definition(&id) {
+        return manager.start_official(&plugin).await;
+    }
     manager.start(&id).await
 }
 

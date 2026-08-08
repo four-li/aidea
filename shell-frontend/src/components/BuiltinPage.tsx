@@ -3,6 +3,7 @@ import type { AppManifest } from '../types/manifest';
 import { DashboardPage } from '../builtin-apps/dashboard';
 import { DevToolsPage } from '../builtin-apps/dev-tools';
 import { MailManagerPage } from '../builtin-apps/mail-manager';
+import { PluginMarketPage } from '../builtin-apps/plugin-market';
 
 interface Props {
   app: AppManifest;
@@ -13,6 +14,7 @@ export function BuiltinPage({ app }: Props) {
   if (app.id === 'dashboard') return <DashboardPage />;
   if (app.id === 'dev-tools') return <DevToolsPage />;
   if (app.id === 'mail-manager') return <MailManagerPage />;
+  if (app.id === 'plugin-market') return <PluginMarketPage />;
 
   // 未知的 builtin 应用，显示占位提示
   return (

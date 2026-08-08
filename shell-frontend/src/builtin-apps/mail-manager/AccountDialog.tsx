@@ -84,7 +84,7 @@ export function AccountDialog({ open, account, onOpenChange, onSaved }: Props) {
       set('secret', secret);
       setShowSecret(true);
     } catch (error) {
-      toast.error('读取已保存凭据失败', { description: String(error) });
+      toast.error('需要重新保存凭据', { description: String(error) });
     } finally {
       setLoadingSecret(false);
     }
@@ -150,7 +150,9 @@ export function AccountDialog({ open, account, onOpenChange, onSaved }: Props) {
           <DialogDescription>
             {loadingSecret
               ? '正在通过 macOS 身份验证读取凭据…'
-              : '密码或授权码只存入 macOS 钥匙串；点击眼睛查看已保存内容时需要本机认证。'}
+              : account
+                ? '升级前已添加的账户，请重新输入并保存密码或授权码后再同步。'
+                : '密码或授权码会加密保存在本机；点击眼睛查看已保存内容时需要本机认证。'}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">

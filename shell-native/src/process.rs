@@ -3,6 +3,7 @@
 // 不做：健康检查、崩溃自动重启、资源监控、启动顺序/依赖
 use crate::error::{AppError, AppResult};
 use crate::manifest::{find_manifest, UiMode};
+use crate::plugin_market::OfficialPlugin;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -62,6 +63,77 @@ impl Default for ProcessManager {
 }
 
 impl ProcessManager {
+    /// 启动官方插件。命令与参数由市场定义提供，不经 shell 解析。
+    pub async fn start_official(&self, plugin: &OfficialPlugin) -> AppResult<u32> {
+        if self.is_running(&plugin.id)? {
+            return self
+                .get_pid(&plugin.id)
+                .ok_or_else(|| AppError::Process(format!("{} 已运行但 PID 丢失", plugin.id)));
+        }
+
+        let source = crate::plugin_installer::source_dir(&plugin.id)?;
+        let working_dir = source.join(&plugin.process.working_directory);
+        if !working_dir.starts_with(&source) || !working_dir.is_dir() {
+            return Err(AppError::Process(format!("{} 工作目录无效", plugin.id)));
+        }
+        let log_dir = crate::config::data_root()?.join("logs").join(&plugin.id);
+        std::fs::create_dir_all(&log_dir)?;
+        let log_path = log_dir.join("plugin.log");
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)?;
+        let app_data_dir = crate::config::data_root()?
+            .join("app-data")
+            .join(&plugin.id);
+        std::fs::create_dir_all(&app_data_dir)?;
+
+        let program = resolve_program(&plugin.process.command[0]);
+        let mut child = Command::new(&program)
+            .args(&plugin.process.command[1..])
+            .current_dir(&working_dir)
+            .env("AIDEA_APP_ID", &plugin.id)
+            .env("AIDEA_APP_DATA_DIR", &app_data_dir)
+            .env("AIDEA_APP_LOG_DIR", &log_dir)
+            .stdout(Stdio::from(log_file.try_clone()?))
+            .stderr(Stdio::from(log_file))
+            .spawn()
+            .map_err(|error| {
+                AppError::Process(format!(
+                    "启动 {} 失败（{}）: {}",
+                    plugin.id,
+                    program.display(),
+                    error
+                ))
+            })?;
+        let pid = child
+            .id()
+            .ok_or_else(|| AppError::Process(format!("获取 {} PID 失败", plugin.id)))?;
+        let (kill_tx, kill_rx) = oneshot::channel::<()>();
+        let id = plugin.id.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = child.wait() => eprintln!("子应用 {} (pid={}) 已退出", id, pid),
+                _ = kill_rx => {}
+            }
+        });
+        self.table.lock().unwrap().entries.insert(
+            plugin.id.clone(),
+            ProcessEntry {
+                pid,
+                kill_tx: Some(kill_tx),
+            },
+        );
+        if let Err(error) = wait_until_ready(&plugin.process.ready_url).await {
+            let _ = self.stop(&plugin.id).await;
+            return Err(AppError::Process(format!(
+                "{} 服务未就绪: {}",
+                plugin.id, error
+            )));
+        }
+        Ok(pid)
+    }
+
     /// 启动子应用
     pub async fn start(&self, id: &str) -> AppResult<u32> {
         // 已运行则直接返回 pid

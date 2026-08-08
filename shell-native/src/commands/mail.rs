@@ -98,7 +98,7 @@ pub async fn save_mail_account(request: SaveMailAccountRequest) -> AppResult<Mai
             return Err(AppError::Config("新建邮件账户必须填写密码或授权码".into()));
         }
     } else {
-        crate::mail_keychain::save(&id, &request.secret)?;
+        crate::secret_store::save("mail-manager", &secret_key(&id), &request.secret)?;
     }
     let username = if request.username.trim().is_empty() {
         request.email.clone()
@@ -143,7 +143,7 @@ pub fn load_mail_account_secret(id: String) -> AppResult<String> {
         .account(&id)?
         .ok_or_else(|| AppError::Mail("邮件账户不存在".into()))?;
     crate::mac_auth::authenticate_local_user("查看已保存的邮件凭据")?;
-    crate::mail_keychain::load(&account.keychain_id)
+    crate::secret_store::load("mail-manager", &secret_key(&account.id))
 }
 
 #[tauri::command]
@@ -189,9 +189,13 @@ pub async fn delete_mail_account(id: String) -> AppResult<()> {
     let account = store.account(&id)?;
     store.delete_account(&id)?;
     if let Some(account) = account {
-        crate::mail_keychain::delete(&account.keychain_id)?;
+        crate::secret_store::delete("mail-manager", &secret_key(&account.id))?;
     }
     Ok(())
+}
+
+fn secret_key(account_id: &str) -> String {
+    format!("account:{account_id}")
 }
 
 #[tauri::command]

@@ -1,5 +1,4 @@
 use crate::error::{AppError, AppResult};
-use crate::mail_keychain;
 use crate::mail_store::{
     FolderSync, MailAccountRecord, MailFolderInput, MailMessageInput, MailStore,
 };
@@ -240,7 +239,7 @@ fn sync_account(
     if account.tls_mode != "tls" {
         return Err(AppError::Config("第一阶段仅支持 TLS IMAP".into()));
     }
-    let secret = mail_keychain::load(&account.keychain_id)?;
+    let secret = crate::secret_store::load("mail-manager", &secret_key(&account.id))?;
     let tls = native_tls::TlsConnector::builder()
         .build()
         .map_err(|error| AppError::Network(format!("创建 TLS 连接失败: {}", error)))?;
@@ -516,7 +515,7 @@ fn move_message_to_deleted_blocking(message_id: i64) -> AppResult<()> {
 fn login(
     account: &MailAccountRecord,
 ) -> AppResult<imap::Session<native_tls::TlsStream<std::net::TcpStream>>> {
-    let secret = mail_keychain::load(&account.keychain_id)?;
+    let secret = crate::secret_store::load("mail-manager", &secret_key(&account.id))?;
     login_with_credentials(
         &account.imap_host,
         account.imap_port,
@@ -544,6 +543,10 @@ pub fn login_with_credentials(
     client
         .login(username, secret)
         .map_err(|error| AppError::Network(format!("IMAP 登录失败: {}", error.0)))
+}
+
+fn secret_key(account_id: &str) -> String {
+    format!("account:{account_id}")
 }
 
 fn sync_folder(

@@ -34,7 +34,11 @@ export function ContentArea({ apps, activeApp, states }: Props) {
       ))}
 
       {/* builtin / none 子应用：按需渲染 */}
-      {activeApp.ui.mode === 'builtin' && <BuiltinPage app={activeApp} />}
+      {activeApp.ui.mode === 'builtin' && (
+        <div className="absolute inset-0 min-h-0">
+          <BuiltinPage app={activeApp} />
+        </div>
+      )}
       {activeApp.ui.mode === 'none' && (
         <div className="flex-1 flex items-center justify-center bg-background">
           <p className="text-muted-foreground text-sm">

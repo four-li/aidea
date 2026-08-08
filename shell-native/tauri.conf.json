@@ -29,6 +29,9 @@
   },
   "bundle": {
     "active": true,
+    "resources": [
+      "../plugin-markets"
+    ],
     "targets": [
       "dmg"
     ],

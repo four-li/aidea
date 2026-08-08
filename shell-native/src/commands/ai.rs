@@ -103,7 +103,7 @@ pub async fn save_ai_config(config: AiSavedConfig) -> AppResult<()> {
         return Err(AppError::Config("API Key 和 Base URL 不能为空".to_string()));
     }
     let id = ai_config_id(&config.api_key, &config.base_url);
-    crate::ai_keychain::save(&id, &config.api_key)?;
+    crate::secret_store::save("shell", &secret_key(&id), &config.api_key)?;
     let saved_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| AppError::Config(error.to_string()))?
@@ -120,7 +120,7 @@ pub async fn save_ai_config(config: AiSavedConfig) -> AppResult<()> {
     save_config(&shell_config)?;
     for removed_id in removed_ids {
         if removed_id != item_id {
-            crate::ai_keychain::delete(&removed_id)?;
+            crate::secret_store::delete("shell", &secret_key(&removed_id))?;
         }
     }
     Ok(())
@@ -139,7 +139,7 @@ pub async fn delete_ai_config(id: String) -> AppResult<()> {
     }
     shell_config.ai_history.items.retain(|item| item.id != id);
     save_config(&shell_config)?;
-    crate::ai_keychain::delete(&id)
+    crate::secret_store::delete("shell", &secret_key(&id))
 }
 
 #[tauri::command]
@@ -156,11 +156,15 @@ pub fn load_ai_config(id: String) -> AppResult<AiSavedConfig> {
         .into_iter()
         .find(|item| item.id == id)
         .ok_or_else(|| AppError::Config("历史配置不存在".to_string()))?;
-    // 先通过 macOS 指纹认证（5 分钟内复用已认证的 LAContext），再读取钥匙串
+    // 先通过 macOS 指纹认证（5 分钟内复用已认证的 LAContext），再读取本地加密值。
     crate::mac_auth::authenticate_local_user("查看已保存的 AI 配置")?;
     Ok(AiSavedConfig {
-        api_key: crate::ai_keychain::load(&item.id)?,
+        api_key: crate::secret_store::load("shell", &secret_key(&item.id))?,
         base_url: item.base_url,
         model: item.model,
     })
+}
+
+fn secret_key(id: &str) -> String {
+    format!("ai:{id}")
 }

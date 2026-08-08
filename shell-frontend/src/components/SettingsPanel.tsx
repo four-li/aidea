@@ -26,6 +26,7 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { IconPicker } from './IconPicker';
+import { PluginMarketPage } from '../builtin-apps/plugin-market';
 
 interface Props {
   apps: AppManifest[];
@@ -38,6 +39,7 @@ interface Props {
 
 type SettingsCategory =
   | 'apps'
+  | 'official-plugins'
   | 'account'
   | 'general'
   | 'appearance'
@@ -54,6 +56,7 @@ interface CategoryDef {
 
 const CATEGORIES: CategoryDef[] = [
   { id: 'apps', label: '应用管理', icon: <LayoutGrid size={18} /> },
+  { id: 'official-plugins', label: '官方插件', icon: <LayoutGrid size={18} /> },
   { id: 'account', label: '账号', icon: <User size={18} /> },
   { id: 'general', label: '通用', icon: <Settings size={18} /> },
   { id: 'appearance', label: '外观', icon: <Palette size={18} /> },
@@ -130,6 +133,9 @@ export function SettingsPanel({
             <div className="flex-1 overflow-auto px-8 py-6">
               {activeCategory === 'apps' && (
                 <AppsManagement apps={apps} onAppsChanged={onAppsChanged} />
+              )}
+              {activeCategory === 'official-plugins' && (
+                <PluginMarketPage onAppsChanged={onAppsChanged} />
               )}
               {activeCategory === 'account' && <AccountSettings />}
               {activeCategory === 'general' && <GeneralSettings />}
