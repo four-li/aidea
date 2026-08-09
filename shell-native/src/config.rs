@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 mod ai_history_tests {
-    use super::{AiConfigHistory, AiConfigHistoryItem};
+    use super::{app_data_dir, AiConfigHistory, AiConfigHistoryItem, AppUserSettings, StartupMode};
 
     #[test]
     fn history_replaces_matching_id_and_returns_evicted_ids() {
@@ -69,6 +69,21 @@ mod ai_history_tests {
         assert_eq!(history.items.len(), 2);
         assert_eq!(history.items[0].model, "gpt-test");
     }
+
+    #[test]
+    fn 官方应用默认可见且手动启动() {
+        let settings = AppUserSettings::default();
+
+        assert!(settings.visible);
+        assert_eq!(settings.startup_mode, StartupMode::Manual);
+    }
+
+    #[test]
+    fn app_data_dir_rejects_path_segments() {
+        assert!(app_data_dir("../escape").is_err());
+        assert!(app_data_dir("nested/app").is_err());
+        assert!(app_data_dir("dev-tools").is_ok());
+    }
 }
 
 const AI_HISTORY_LIMIT: usize = 20;
@@ -126,6 +141,42 @@ pub struct AppOverride {
     pub start: Option<String>,
 }
 
+/// 官方应用的启动策略。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StartupMode {
+    Manual,
+    WithAidea,
+}
+
+impl Default for StartupMode {
+    fn default() -> Self {
+        Self::Manual
+    }
+}
+
+/// 用户对单个应用的运行偏好，不写回应用 manifest 或市场定义。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppUserSettings {
+    #[serde(default = "default_visible")]
+    pub visible: bool,
+    #[serde(default)]
+    pub startup_mode: StartupMode,
+}
+
+fn default_visible() -> bool {
+    true
+}
+
+impl Default for AppUserSettings {
+    fn default() -> Self {
+        Self {
+            visible: true,
+            startup_mode: StartupMode::Manual,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShellConfig {
     /// 主题：强制 auto（跟随系统）
@@ -143,6 +194,10 @@ pub struct ShellConfig {
     /// 用户对子应用的覆盖配置，key = app id
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, AppOverride>,
+
+    /// 已安装或内置应用的用户级显示与启动偏好。
+    #[serde(default)]
+    pub app_settings: BTreeMap<String, AppUserSettings>,
 
     /// AI 调试器历史配置，不含 API Key。
     #[serde(default)]
@@ -166,6 +221,7 @@ impl Default for ShellConfig {
             data_dir: default_data_dir(),
             log_dir: default_log_dir(),
             overrides: BTreeMap::new(),
+            app_settings: BTreeMap::new(),
             ai_history: AiConfigHistory::default(),
         }
     }
@@ -191,6 +247,18 @@ pub fn data_root() -> AppResult<PathBuf> {
     dirs::data_dir()
         .map(|path| path.join("aIdea"))
         .ok_or_else(|| crate::error::AppError::Config("无法定位 macOS 用户数据目录".into()))
+}
+
+/// 返回应用自己的持久化目录，不允许应用 ID 逃出 aIdea 数据根目录。
+pub fn app_data_dir(app_id: &str) -> AppResult<PathBuf> {
+    if app_id.is_empty()
+        || app_id == "."
+        || app_id == ".."
+        || app_id.chars().any(|value| value.is_control() || value == '/' || value == '\\')
+    {
+        return Err(crate::error::AppError::Config("应用 ID 无效".into()));
+    }
+    Ok(data_root()?.join("app-data").join(app_id))
 }
 
 /// 创建 aIdea 的用户数据目录。

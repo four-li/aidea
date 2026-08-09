@@ -7,3 +7,6 @@ status: active
 ui:
   mode: builtin
   icon: Wrench
+settings:
+  enabled: true
+  reset_command: [builtin, dev-tools]

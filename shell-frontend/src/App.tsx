@@ -98,12 +98,12 @@ function App() {
       </div>
       <LogPanel app={logApp} onClose={() => setLogApp(null)} />
       <SettingsPanel
-        apps={apps}
         themeMode={themeMode}
         onThemeChange={setTheme}
         open={showSettings}
         onOpenChange={setShowSettings}
         onAppsChanged={refreshApps}
+        onShowLog={setLogApp}
       />
       <Toaster />
     </div>

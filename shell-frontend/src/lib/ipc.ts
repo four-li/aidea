@@ -1,6 +1,6 @@
 // Tauri IPC 封装，所有前端调用 Rust 命令都走这里
 import { invoke } from '@tauri-apps/api/core';
-import type { AppManifest, AppState, AppOverride, ShellConfig } from '../types/manifest';
+import type { AppManifest, AppState, AppOverride, AppUserSettings, ShellConfig } from '../types/manifest';
 import type { NetworkInfo } from '../types/network';
 import type {
   AiConfigHistoryItem,
@@ -10,11 +10,13 @@ import type {
 } from '../types/ai-test';
 import type { MailAccount, MailMessageDetail, MailMessagePage, MailMessageQuery, SaveMailAccountRequest, SyncResult, MailSyncTask } from '../types/mail';
 import type { InstalledPlugin, OfficialPlugin } from '../types/plugin-market';
+import type { DevToolsSettings } from '../types/dev-tools';
 
 export const ipc = {
   /** 列出所有已加载的子应用（已合并用户 overrides） */
   listApps: (): Promise<AppManifest[]> => invoke<AppManifest[]>('list_apps'),
   listOfficialPlugins: (): Promise<OfficialPlugin[]> => invoke('list_official_plugins'),
+  refreshOfficialPlugins: (): Promise<OfficialPlugin[]> => invoke('refresh_official_plugins'),
   listInstalledOfficialPlugins: (): Promise<InstalledPlugin[]> => invoke('list_installed_official_plugins'),
   installOfficialPlugin: (id: string): Promise<InstalledPlugin> => invoke('install_official_plugin', { id }),
   updateOfficialPlugin: (id: string): Promise<InstalledPlugin> => invoke('update_official_plugin', { id }),
@@ -34,6 +36,9 @@ export const ipc = {
 
   /** 删除单个子应用的覆盖配置，恢复 manifest 默认 */
   resetAppOverride: (id: string): Promise<void> => invoke<void>('reset_app_override', { id }),
+  resetAppSettings: (id: string): Promise<void> => invoke<void>('reset_app_settings', { id }),
+  saveAppUserSettings: (id: string, settings: AppUserSettings): Promise<void> =>
+    invoke<void>('save_app_user_settings', { id, settings }),
 
   /** 启动子应用，返回 pid */
   startApp: (id: string): Promise<number> => invoke<number>('start_app', { id }),
@@ -43,6 +48,11 @@ export const ipc = {
 
   /** 查询所有子应用的进程状态 */
   getAppStates: (): Promise<AppState[]> => invoke<AppState[]>('get_app_states'),
+  readAppLog: (id: string): Promise<string> => invoke<string>('read_app_log', { id }),
+
+  getDevToolsSettings: (): Promise<DevToolsSettings> => invoke('get_dev_tools_settings'),
+  saveDevToolsSettings: (settings: DevToolsSettings): Promise<void> =>
+    invoke('save_dev_tools_settings', { settings }),
 
   /** 查询本机网络信息：内网 IP 列表 + 公网 IP 详情 */
   getNetworkInfo: (): Promise<NetworkInfo> => invoke<NetworkInfo>('get_network_info'),

@@ -12,12 +12,10 @@ fn 应能加载_apps_目录下的所有_yaml() {
     // 内置 manifest 编译进 Rust，不依赖源码目录或用户配置。
     let manifests = load_all_manifests().expect("加载 manifest 失败");
     assert!(manifests.len() >= 2, "至少应有两个内置子应用");
-
-    let dashboard = manifests
-        .iter()
-        .find(|m| m.id == "dashboard")
-        .expect("应能找到 dashboard");
-    assert_eq!(dashboard.ui.mode, UiMode::Builtin);
+    assert!(
+        !manifests.iter().any(|manifest| manifest.id == "dashboard"),
+        "统计页不应作为内置应用加载"
+    );
 }
 
 #[test]
@@ -88,6 +86,5 @@ fn 首次启动迁移旧配置和本地_manifest() {
     let root = std::env::var("AIDEA_DATA_DIR").expect("缺少测试数据目录");
     let root = std::path::Path::new(&root);
     assert!(root.join("shell.config.json").exists());
-    assert!(root.join("apps/local/atlas.yaml").exists());
     assert!(root.join(".migration-v1").exists());
 }

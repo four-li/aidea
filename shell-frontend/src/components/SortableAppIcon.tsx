@@ -35,6 +35,7 @@ export function SortableAppIcon({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+  const issue = app.issue ?? state?.issue;
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
@@ -48,7 +49,9 @@ export function SortableAppIcon({
           onClick={onClick}
           className={cn(
             'h-full px-3.5 flex items-center gap-2 text-tab flex-shrink-0 transition-colors',
-            active
+            issue
+              ? 'text-muted-foreground opacity-60 hover:bg-card/50'
+              : active
               ? 'bg-card text-foreground'
               : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
           )}

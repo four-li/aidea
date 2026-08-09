@@ -25,6 +25,9 @@ process:
   command: [node, node_modules/vite/bin/vite.js, --host, 127.0.0.1, --port, '43120']
   working_directory: .
   ready_url: http://127.0.0.1:43120/health
+settings:
+  enabled: true
+  reset_command: [node, scripts/reset-config.mjs]
 update_notes: 首期使用本地 mock 行情。
 ```
 
@@ -39,6 +42,8 @@ update_notes: 首期使用本地 mock 行情。
 - `runtime`：运行时说明，例如 `node` 或 `system`。
 - `install`：可选安装命令数组，每项均为程序和参数数组。
 - `process.command`：启动命令数组；`working_directory` 默认 `.`；`ready_url` 为本地就绪检查地址。
+- `settings.enabled`：是否提供设置页；设置页地址固定为应用服务的 `/settings`，aIdea 不读取字段 schema。
+- `settings.reset_command`：可选的重置命令数组，使用应用源码目录为工作目录，并通过 `AIDEA_APP_ID`、`AIDEA_APP_DATA_DIR` 和 `AIDEA_APP_LOG_DIR` 获得运行上下文。命令只能重置配置，不能删除整个 `app-data/<app-id>/`。
 - `update_notes`：本版本在市场中展示的更新说明。
 
 ## 运行和网络约束
@@ -62,6 +67,8 @@ update_notes: 首期使用本地 mock 行情。
 
 `source/` 是当前运行版本，`staging/` 是更新准备目录。更新必须先完成新版本的依赖安装和健康检查，再替换当前源码。插件业务数据不放在 `source/`；位置和保留规则见 [data-layout.md](data-layout.md)。
 
+`install-state.yaml` 由 aIdea 写入安装版本、固定 revision 和定义快照。定义快照只用于离线恢复已安装应用的启动、展示和卸载，不会替代市场刷新；发现新版本仍以市场返回的版本为准。
+
 ## 平台注入
 
 官方应用启动时可获得下列环境变量：
@@ -74,4 +81,8 @@ AIDEA_APP_LOG_DIR
 
 `AIDEA_COMMAND` 要等平台 CLI 实现后才会提供，当前应用不得依赖它。
 
+官方应用的平台通信边界见 [platform.md](platform.md) 和 [platform-cli.md](platform-cli.md)：不得直接调用 Tauri IPC；只有在对应命令已经在平台 CLI 契约中定义并由目标 aIdea 版本提供后，应用才能依赖该命令。
+
 应用可以选择使用 aIdea 数据目录；一旦使用，数据库迁移和数据兼容仍由应用自己负责。
+
+卸载默认只删除 `source/`、依赖和运行时记录，保留 `app-data/<app-id>/`。重新安装同一 `id` 后，应用应读取旧配置并执行自己的迁移。重置设置由 aIdea 发起 Touch ID 后执行，不等同于卸载或删除业务数据。

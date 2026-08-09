@@ -1,8 +1,8 @@
 // 日志面板：使用 shadcn Sheet 从底部滑出
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from './ui/sheet';
+import { ipc } from '../lib/ipc';
 import type { AppManifest } from '../types/manifest';
 
 interface Props {
@@ -21,7 +21,7 @@ export function LogPanel({ app, onClose }: Props) {
     const fetchLog = async () => {
       if (!app) return;
       try {
-        const content = await invoke<string>('read_app_log', { id: app.id });
+        const content = await ipc.readAppLog(app.id);
         if (!cancelled) setLogs(content || '日志为空');
       } catch (e) {
         if (!cancelled) setLogs(`读取日志失败: ${e}`);

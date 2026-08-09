@@ -17,11 +17,11 @@ describe('loadVisibleApps', () => {
   it('只返回 status=active 的子应用', async () => {
     const mockApps: AppManifest[] = [
       {
-        id: 'atlas',
-        name: 'Atlas',
+        id: 'sample-app',
+        name: '示例应用',
         version: '0.1.0',
         category: 'dev-workflow',
-        path: '/Users/me/atlas',
+        path: '/tmp/sample-app',
         status: 'active',
         ui: { mode: 'webview', url: 'http://localhost:5317' },
         process: {
@@ -40,11 +40,49 @@ describe('loadVisibleApps', () => {
         ui: { mode: 'webview', url: 'http://localhost:9999' },
       },
     ];
-    vi.mocked(invoke).mockResolvedValue(mockApps);
+    vi.mocked(invoke).mockResolvedValueOnce(mockApps).mockResolvedValueOnce({ app_settings: {} });
 
     const result = await loadVisibleApps();
     expect(result).toHaveLength(1);
-    expect(result[0].id).toBe('atlas');
+    expect(result[0].id).toBe('sample-app');
+  });
+
+  it('隐藏应用不会出现在可见应用列表', async () => {
+    const mockApps: AppManifest[] = [
+      {
+        id: 'sample-app',
+        name: '示例应用',
+        version: '0.1.0',
+        category: 'tools',
+        path: '/tmp/sample-app',
+        status: 'active',
+        ui: { mode: 'webview', url: 'http://127.0.0.1:1' },
+      },
+    ];
+    vi.mocked(invoke)
+      .mockResolvedValueOnce(mockApps)
+      .mockResolvedValueOnce({
+        app_settings: { 'sample-app': { visible: false, startup_mode: 'manual' } },
+      });
+
+    await expect(loadVisibleApps()).resolves.toEqual([]);
+  });
+
+  it('旧配置缺少 app_settings 时仍能加载应用', async () => {
+    const mockApps: AppManifest[] = [
+      {
+        id: 'sample-app',
+        name: '示例应用',
+        version: '0.1.0',
+        category: 'tools',
+        path: '/tmp/sample-app',
+        status: 'active',
+        ui: { mode: 'builtin' },
+      },
+    ];
+    vi.mocked(invoke).mockResolvedValueOnce(mockApps).mockResolvedValueOnce({});
+
+    await expect(loadVisibleApps()).resolves.toEqual(mockApps);
   });
 
   it('invoke 失败时抛出原始错误', async () => {

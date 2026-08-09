@@ -1,27 +1,27 @@
 # aIdea
 
-本地桌面壳应用，统一管理多个子应用（atlas、stock 助手、openwebui 等）。
+本地桌面壳应用，统一管理内置应用和官方应用。
 
 ## 技术栈
 
 - Tauri 2 + React 18 + TypeScript + Tailwind CSS 3 + Vite
-- Rust 侧：serde / serde_yaml / tokio / libc
-- Node.js 24.14.0、Python 3.14.4（仅第三方 Python 子应用需要）
+- Rust 侧：serde / serde_yaml / tokio / rusqlite / reqwest
+- Node.js 版本见 [.nvmrc](.nvmrc)
 
 ## 目录结构
 
 ```
 aIdea/
 ├── apps/builtin/         # 随 aIdea 发布的内置应用 manifest
+├── plugin-markets/       # 随 aIdea 发布的官方应用收录目录
 ├── shell-frontend/       # 壳前端（React）
 ├── shell-native/         # 壳 Rust 内核（Tauri）
-├── docs/ui-spec.md       # UI 规范（外部项目由 AI 阅读后遵守）
-├── .runtime/             # 运行时文件（gitignore）
+├── docs/app/             # 平台、插件、数据、存储和 UI 规范
 └── docs/                 # 文档
 ```
 
-用户配置和第三方应用 manifest 保存在
-`~/Library/Application Support/aIdea/`，详见 [数据目录规范](docs/app-data-layout.md)。
+用户配置、安装状态、日志和业务数据保存在
+`~/Library/Application Support/aIdea/`，详见 [数据目录规范](docs/app/data-layout.md)。
 
 ## 开发
 
@@ -94,39 +94,27 @@ xattr -dr com.apple.quarantine /Applications/aIdea.app
 
 ## 添加子应用
 
-1. 在 aIdea 设置页添加本地目录，manifest 会保存到用户数据目录的 `apps/local/`
-2. 按 spec 文档填写 manifest 字段
-3. 重启 aIdea，子应用自动出现在侧边栏
+当前只开发内置应用和官方应用，第三方市场、自定义安装、自动发现和插件 SDK 不属于现行能力。
 
-### Manifest 示例
+- 内置应用：代码放在 `shell-frontend/src/builtin-apps/<app-id>/`，manifest 放在 `apps/builtin/`。
+- 官方应用：独立仓库根目录提供 `aidea.yaml`，aIdea 仓库只在 `plugin-markets/official/` 收录仓库地址。
+- 具体契约见 [平台规范](docs/app/platform.md)、[官方应用接入契约](docs/app/package-spec.md) 和 [市场规范](docs/app/marketplace.md)。
+
+### 内置应用 Manifest 示例
 
 ```yaml
-id: atlas
-name: Atlas CLI
+id: dev-tools
+name: DevTools
 version: 0.1.0
-category: dev-workflow
-path: /Users/me/atlas        # 绝对路径
-status: active                   # active | disabled | deprecated
+category: 开发
+path: shell-frontend/src/builtin-apps/dev-tools
+status: active
 
 ui:
-  mode: webview                  # webview | builtin | none
-  url: http://127.0.0.1:51130
-  icon: /Users/me/atlas/assets/icon.png   # 可选，加载失败回退首字母
-
-process:                         # 可选，纯前端子应用不写此段
-  start: "python3 /Users/me/atlas/bin/atlas web"
-  stop: SIGTERM
-  autostart: false
-  working_dir: /Users/me/atlas
-  log_file: /Users/me/atlas/logs/atlas.log
+  mode: builtin
+  icon: Wrench
 ```
 
 ## 设计文档
 
-详见 [docs/superpowers/specs/2026-07-30-aidea-shell-design.md](docs/superpowers/specs/2026-07-30-aidea-shell-design.md)
-
-## 当前版本
-
-Phase 1-3：壳骨架 + Manifest 系统 + 进程管理（最小可运行版本）
-
-Phase 4-6 待实现：内置工具 / 主题双套 / 设置页 / 快捷键 / 打磨
+以 [AGENTS.md](AGENTS.md) 和 [docs/app/](docs/app/) 下的专项文档为准；历史方案保留在 `docs/superpowers/`。

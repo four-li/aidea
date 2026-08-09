@@ -1,40 +1,25 @@
-// 设置弹出窗：使用 shadcn Dialog + Button + Input + Label
+// 设置弹出窗：使用 shadcn Dialog + Button
 // 布局：左侧分类菜单 + 右侧内容区，卡片分组，无分割线
 import { useState } from 'react';
-import {
-  Settings,
-  Info,
-  User,
-  Palette,
-  Bell,
-  Shield,
-  Code,
-  LayoutGrid,
-  Lock,
-  Plus,
-} from 'lucide-react';
-import { toast } from 'sonner';
+import { Settings, Info, User, Palette, Bell, Shield, Code, LayoutGrid, Lock } from 'lucide-react';
 import type { ThemeMode } from '../hooks/useTheme';
-import type { AppManifest, AppOverride } from '../types/manifest';
-import { ipc } from '../lib/ipc';
+import type { AppManifest } from '../types/manifest';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { IconPicker } from './IconPicker';
 import { PluginMarketPage } from '../builtin-apps/plugin-market';
+import { AppManagementPage } from './AppManagementPage';
 
 interface Props {
-  apps: AppManifest[];
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAppsChanged: () => void;
+  onShowLog: (app: AppManifest) => void;
 }
 
 type SettingsCategory =
@@ -56,7 +41,7 @@ interface CategoryDef {
 
 const CATEGORIES: CategoryDef[] = [
   { id: 'apps', label: '应用管理', icon: <LayoutGrid size={18} /> },
-  { id: 'official-plugins', label: '官方插件', icon: <LayoutGrid size={18} /> },
+  { id: 'official-plugins', label: '应用市场', icon: <LayoutGrid size={18} /> },
   { id: 'account', label: '账号', icon: <User size={18} /> },
   { id: 'general', label: '通用', icon: <Settings size={18} /> },
   { id: 'appearance', label: '外观', icon: <Palette size={18} /> },
@@ -73,12 +58,12 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; desc: string }[] = [
 ];
 
 export function SettingsPanel({
-  apps,
   themeMode,
   onThemeChange,
   open,
   onOpenChange,
   onAppsChanged,
+  onShowLog,
 }: Props) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('apps');
   const activeLabel = CATEGORIES.find((c) => c.id === activeCategory)?.label ?? '';
@@ -132,7 +117,11 @@ export function SettingsPanel({
 
             <div className="flex-1 overflow-auto px-8 py-6">
               {activeCategory === 'apps' && (
-                <AppsManagement apps={apps} onAppsChanged={onAppsChanged} />
+                <AppManagementPage
+                  onAppsChanged={onAppsChanged}
+                  onOpenMarket={() => setActiveCategory('official-plugins')}
+                  onShowLog={onShowLog}
+                />
               )}
               {activeCategory === 'official-plugins' && (
                 <PluginMarketPage onAppsChanged={onAppsChanged} />
@@ -151,282 +140,6 @@ export function SettingsPanel({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ── 应用管理 ───
-
-function AppsManagement({
-  apps,
-  onAppsChanged,
-}: {
-  apps: AppManifest[];
-  onAppsChanged: () => void;
-}) {
-  const [selectedId, setSelectedId] = useState<string | null>(apps[0]?.id ?? null);
-  const [adding, setAdding] = useState(false);
-  const [newApp, setNewApp] = useState({
-    id: 'atlas',
-    name: 'Atlas',
-    path: '/Users/me/atlas',
-    url: 'http://127.0.0.1:51130',
-    start: 'python3 /Users/me/atlas/bin/atlas web',
-    icon: '',
-  });
-  const [editing, setEditing] = useState<AppOverride>(() => {
-    const first = apps[0];
-    if (!first) return {};
-    return {
-      name: first.name,
-      icon: first.ui.icon ?? '',
-      url: first.ui.url ?? '',
-      start: first.process?.start ?? '',
-    };
-  });
-  const [saving, setSaving] = useState(false);
-
-  const selectedApp = apps.find((a) => a.id === selectedId) ?? null;
-
-  const handleAdd = async () => {
-    setSaving(true);
-    try {
-      await ipc.saveAppManifest({
-        id: newApp.id.trim(),
-        name: newApp.name.trim(),
-        version: '0.1.0',
-        category: 'dev-workflow',
-        path: newApp.path.trim(),
-        status: 'active',
-        ui: { mode: 'webview', url: newApp.url.trim(), icon: newApp.icon.trim() || undefined },
-        process: {
-          start: newApp.start.trim(),
-          stop: 'SIGTERM',
-          autostart: false,
-          working_dir: newApp.path.trim(),
-          log_file: `${newApp.path.trim()}/logs/${newApp.id.trim()}.log`,
-        },
-      });
-      toast.success('应用已添加', { description: '重启 aIdea 后生效' });
-      setAdding(false);
-      onAppsChanged();
-    } catch (e) {
-      toast.error('添加失败', { description: String(e) });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const selectApp = (app: AppManifest) => {
-    setSelectedId(app.id);
-    setEditing({
-      name: app.name,
-      icon: app.ui.icon ?? '',
-      url: app.ui.url ?? '',
-      start: app.process?.start ?? '',
-    });
-  };
-
-  const handleSave = async () => {
-    if (!selectedApp) return;
-    setSaving(true);
-    try {
-      const ovr: AppOverride = {};
-      if (editing.name && editing.name !== selectedApp.name) ovr.name = editing.name;
-      if (editing.icon && editing.icon !== (selectedApp.ui.icon ?? '')) ovr.icon = editing.icon;
-      if (editing.url && editing.url !== (selectedApp.ui.url ?? '')) ovr.url = editing.url;
-      if (editing.start && editing.start !== (selectedApp.process?.start ?? ''))
-        ovr.start = editing.start;
-      await ipc.saveAppOverride(selectedApp.id, ovr);
-      toast.success('已保存', { description: '重启 aIdea 后生效' });
-      onAppsChanged();
-    } catch (e) {
-      toast.error('保存失败', { description: String(e) });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = async () => {
-    if (!selectedApp) return;
-    setSaving(true);
-    try {
-      await ipc.resetAppOverride(selectedApp.id);
-      toast.success('已恢复默认');
-      onAppsChanged();
-    } catch (e) {
-      toast.error('恢复失败', { description: String(e) });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="flex gap-8 h-full">
-      {/* 左侧应用列表 */}
-      <div className="w-56 flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-foreground">已安装应用</h3>
-          <Button size="icon" variant="ghost" onClick={() => setAdding(true)} title="添加本地应用">
-            <Plus size={16} />
-          </Button>
-        </div>
-        <div className="space-y-0.5">
-          {apps.map((app) => (
-            <button
-              key={app.id}
-              onClick={() => selectApp(app)}
-              className={cn(
-                'w-full px-3 py-2.5 rounded-lg text-left text-sm flex items-center gap-3 transition-colors',
-                selectedId === app.id
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-              )}
-            >
-              <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
-                {app.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="truncate">{app.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 右侧编辑表单 */}
-      <div className="flex-1 min-w-0">
-        {adding ? (
-          <>
-            <h3 className="text-sm font-semibold text-foreground mb-4">添加本地应用</h3>
-            <div className="bg-card rounded-lg p-6 space-y-5">
-              <div>
-                <Label htmlFor="new-app-id">应用 ID</Label>
-                <Input
-                  id="new-app-id"
-                  value={newApp.id}
-                  onChange={(e) => setNewApp({ ...newApp, id: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="new-app-name">显示名称</Label>
-                <Input
-                  id="new-app-name"
-                  value={newApp.name}
-                  onChange={(e) => setNewApp({ ...newApp, name: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="new-app-path">项目目录</Label>
-                <Input
-                  id="new-app-path"
-                  value={newApp.path}
-                  onChange={(e) => setNewApp({ ...newApp, path: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="new-app-url">Web 地址</Label>
-                <Input
-                  id="new-app-url"
-                  value={newApp.url}
-                  onChange={(e) => setNewApp({ ...newApp, url: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="new-app-start">启动命令</Label>
-                <Input
-                  id="new-app-start"
-                  value={newApp.start}
-                  onChange={(e) => setNewApp({ ...newApp, start: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="new-app-icon">图标路径（可选）</Label>
-                <Input
-                  id="new-app-icon"
-                  value={newApp.icon}
-                  onChange={(e) => setNewApp({ ...newApp, icon: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-3 mt-6">
-              <Button onClick={handleAdd} disabled={saving}>
-                {saving ? '保存中...' : '添加'}
-              </Button>
-              <Button variant="outline" onClick={() => setAdding(false)} disabled={saving}>
-                取消
-              </Button>
-            </div>
-          </>
-        ) : selectedApp ? (
-          <>
-            <h3 className="text-sm font-semibold text-foreground mb-4">编辑 {selectedApp.name}</h3>
-            <div className="bg-card rounded-lg p-6 space-y-5">
-              <div>
-                <Label htmlFor="app-name">显示名称</Label>
-                <Input
-                  id="app-name"
-                  value={editing.name ?? ''}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                  placeholder={selectedApp.name}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="app-icon">图标</Label>
-                <div className="mt-1.5">
-                  <IconPicker
-                    value={editing.icon ?? ''}
-                    onChange={(v) => setEditing({ ...editing, icon: v })}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  留空用首字母占位；也可填写图片路径（含 / 或 .）
-                </p>
-              </div>
-              <div>
-                <Label htmlFor="app-url">URL</Label>
-                <Input
-                  id="app-url"
-                  value={editing.url ?? ''}
-                  onChange={(e) => setEditing({ ...editing, url: e.target.value })}
-                  placeholder={selectedApp.ui.url ?? '仅 webview 模式'}
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">webview 模式子应用的访问地址</p>
-              </div>
-              <div>
-                <Label htmlFor="app-start">启动命令</Label>
-                <Input
-                  id="app-start"
-                  value={editing.start ?? ''}
-                  onChange={(e) => setEditing({ ...editing, start: e.target.value })}
-                  placeholder={selectedApp.process?.start ?? '无进程'}
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  process.start 命令，仅对有进程的子应用生效
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 mt-6">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? '保存中...' : '保存'}
-              </Button>
-              <Button variant="outline" onClick={handleReset} disabled={saving}>
-                恢复默认
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="text-sm text-muted-foreground">选择左侧应用开始编辑</div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -610,24 +323,7 @@ function NotificationsSettings() {
 }
 
 function PrivacySettings() {
-  return (
-    <div>
-      <Section title="数据收集">
-        <ToggleItem
-          label="发送使用统计"
-          description="帮助我们改进产品（匿名数据）"
-          defaultChecked={false}
-          disabled
-        />
-        <ToggleItem
-          label="崩溃报告"
-          description="自动发送崩溃日志以帮助修复问题"
-          defaultChecked={true}
-          disabled
-        />
-      </Section>
-    </div>
-  );
+  return <p className="text-sm text-foreground">aIdea 本地应用不收集任何用户数据。</p>;
 }
 
 function AdvancedSettings() {

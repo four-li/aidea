@@ -11,6 +11,11 @@ export interface UiConfig {
   icon?: string;
 }
 
+export interface SettingsConfig {
+  enabled: boolean;
+  reset_command?: string[];
+}
+
 export interface ProcessConfig {
   start: string;
   stop: string | Record<string, string>; // StopMethod 是 untagged enum
@@ -27,13 +32,22 @@ export interface AppManifest {
   path: string;
   status: AppStatus;
   ui: UiConfig;
+  settings?: SettingsConfig;
   process?: ProcessConfig;
+  issue?: AppIssue;
 }
 
 export interface AppState {
   id: string;
   status: ProcessStatus;
   pid: number | null;
+  issue?: AppIssue;
+}
+
+export interface AppIssue {
+  level: 'warning';
+  message: string;
+  updated_at: number;
 }
 
 export interface ShellConfig {
@@ -41,6 +55,14 @@ export interface ShellConfig {
   data_dir: string;
   log_dir: string;
   overrides: Record<string, AppOverride>;
+  app_settings: Record<string, AppUserSettings>;
+}
+
+export type StartupMode = 'manual' | 'with-aidea';
+
+export interface AppUserSettings {
+  visible: boolean;
+  startup_mode: StartupMode;
 }
 
 // 用户对子应用的覆盖配置，全可选，null 表示清除

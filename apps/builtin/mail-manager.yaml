@@ -7,3 +7,5 @@ status: active
 ui:
   mode: builtin
   icon: Mail
+settings:
+  enabled: true

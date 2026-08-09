@@ -67,10 +67,7 @@ export function TopBar({
   };
 
   return (
-    <div
-      className="h-topbar bg-background flex items-center overflow-hidden"
-      data-tauri-drag-region
-    >
+    <div className="h-topbar bg-background flex items-center overflow-hidden">
       {/* macOS 拖拽区（红绿圆点浮在这里） */}
       <div className="w-20 h-full flex-shrink-0" data-tauri-drag-region />
 

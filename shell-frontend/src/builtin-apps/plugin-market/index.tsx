@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { FileText, Package, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -22,10 +23,16 @@ interface InstallProgress {
   message: string;
 }
 
+export function pluginActionLabel(plugin: OfficialPlugin, isInstalled: boolean): string {
+  if (!isInstalled) return '安装';
+  return plugin.update_available ? '更新' : '已安装';
+}
+
 export function PluginMarketPage({ onAppsChanged }: Props) {
   const [plugins, setPlugins] = useState<OfficialPlugin[]>([]);
   const [installed, setInstalled] = useState<InstalledPlugin[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installStage, setInstallStage] = useState<string | null>(null);
   const [failedPluginId, setFailedPluginId] = useState<string | null>(null);
@@ -46,8 +53,28 @@ export function PluginMarketPage({ onAppsChanged }: Props) {
     }
   };
 
+  const refreshMarket = async () => {
+    setError(null);
+    setRefreshing(true);
+    try {
+      const [market, records] = await Promise.all([
+        ipc.refreshOfficialPlugins(),
+        ipc.listInstalledOfficialPlugins(),
+      ]);
+      setPlugins(market);
+      setInstalled(records);
+    } catch (value) {
+      setError(String(value));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    void load();
+    void (async () => {
+      await load();
+      await refreshMarket();
+    })();
   }, []);
 
   useEffect(() => {
@@ -107,11 +134,17 @@ export function PluginMarketPage({ onAppsChanged }: Props) {
     <div className="flex h-full flex-col bg-background">
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
         <div>
-          <h1 className="text-base font-medium text-foreground">官方插件</h1>
-          <p className="mt-1 text-xs text-muted-foreground">由 aIdea 发布版本和安装定义</p>
+          <h1 className="text-base font-medium text-foreground">应用市场</h1>
+          <p className="mt-1 text-xs text-muted-foreground">由官方应用仓库提供版本和安装定义</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => void load()} aria-label="刷新">
-          <RefreshCw size={16} />
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={refreshing}
+          onClick={() => void refreshMarket()}
+          aria-label="刷新"
+        >
+          <RefreshCw className={refreshing ? 'animate-spin' : undefined} size={16} />
         </Button>
       </div>
       {error && (
@@ -144,14 +177,19 @@ export function PluginMarketPage({ onAppsChanged }: Props) {
                     <div className="flex items-center justify-between gap-2">
                       <h2 className="text-sm font-medium text-foreground">{plugin.name}</h2>
                       <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant={record ? 'outline' : 'default'}
-                          disabled={busy === plugin.id}
-                          onClick={() => void install(plugin, Boolean(record))}
-                        >
-                          {busy === plugin.id ? '处理中' : record ? '更新' : '安装'}
-                        </Button>
+                        {(!record || plugin.update_available) && (
+                          <Button
+                            size="sm"
+                            variant={record ? 'outline' : 'default'}
+                            disabled={busy === plugin.id}
+                            onClick={() => void install(plugin, Boolean(record))}
+                          >
+                            {busy === plugin.id
+                              ? '处理中'
+                              : pluginActionLabel(plugin, Boolean(record))}
+                          </Button>
+                        )}
+                        {record && !plugin.update_available && <Badge variant="secondary">已安装</Badge>}
                         {record && (
                           <Button
                             size="icon"
@@ -168,7 +206,11 @@ export function PluginMarketPage({ onAppsChanged }: Props) {
                     <p className="mt-1 text-xs text-muted-foreground">{plugin.description}</p>
                     <p className="mt-2 text-xs text-muted-foreground">
                       v{plugin.version} · {plugin.category}
+                      {record && ` · 已安装 v${record.version}`}
                     </p>
+                    {record && plugin.update_available && plugin.update_notes && (
+                      <p className="mt-2 text-xs text-muted-foreground">{plugin.update_notes}</p>
+                    )}
                     {busy === plugin.id && installStage && (
                       <p className="mt-2 text-xs text-primary" role="status">
                         {installStage}

@@ -7,20 +7,20 @@ describe('WebviewFrame', () => {
     render(
       <WebviewFrame
         app={{
-          id: 'atlas',
-          name: 'Atlas',
+          id: 'sample-app',
+          name: '示例应用',
           version: '0.1.0',
           category: 'dev-workflow',
-          path: '/Users/me/atlas',
+          path: '/tmp/sample-app',
           status: 'active',
           ui: { mode: 'webview', url: 'http://127.0.0.1:51130' },
-          process: { start: 'atlas web', stop: 'SIGTERM', autostart: false },
+          process: { start: 'sample-app web', stop: 'SIGTERM', autostart: false },
         }}
-        state={{ id: 'atlas', status: 'stopped', pid: null }}
-      />
+        state={{ id: 'sample-app', status: 'stopped', pid: null }}
+      />,
     );
 
-    expect(screen.queryByTitle('Atlas')).not.toBeInTheDocument();
-    expect(screen.getByText('Atlas 服务未启动')).toBeInTheDocument();
+    expect(screen.queryByTitle('示例应用')).not.toBeInTheDocument();
+    expect(screen.getByText('示例应用 服务未启动')).toBeInTheDocument();
   });
 });

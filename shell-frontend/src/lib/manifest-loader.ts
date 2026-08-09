@@ -4,7 +4,11 @@ import type { AppManifest, AppStatus } from '../types/manifest';
 
 /** 加载所有子应用，过滤掉 disabled（不显示在侧边栏） */
 export async function loadVisibleApps(): Promise<AppManifest[]> {
-  const all = await ipc.listApps();
+  const [all, config] = await Promise.all([ipc.listApps(), ipc.getShellConfig()]);
+  const appSettings = config.app_settings ?? {};
   // 仅 active 显示在侧边栏，disabled 不显示但保留配置记录
-  return all.filter((app) => app.status === ('active' as AppStatus));
+  return all.filter(
+    (app) =>
+      app.status === ('active' as AppStatus) && appSettings[app.id]?.visible !== false,
+  );
 }

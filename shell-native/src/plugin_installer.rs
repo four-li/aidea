@@ -1,7 +1,9 @@
 use crate::config::data_root;
 use crate::error::{AppError, AppResult};
-use crate::manifest::{AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode};
-use crate::plugin_market::{load_official_plugins, OfficialPlugin};
+use crate::manifest::{
+    AppIssue, AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode,
+};
+use crate::plugin_market::{load_cached_official_plugins, load_official_plugins, OfficialPlugin};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
@@ -17,6 +19,9 @@ pub struct InstalledPlugin {
     pub version: String,
     pub revision: String,
     pub status: String,
+    /// 安装时保存的定义快照，市场离线时仍可启动和卸载。
+    #[serde(default)]
+    pub definition: Option<OfficialPlugin>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -24,6 +29,33 @@ pub struct PluginInstallProgress {
     pub id: String,
     pub phase: String,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginUpdateStatus {
+    Installed,
+    UpdateAvailable,
+}
+
+pub fn plugin_update_status(installed_version: &str, market_version: &str) -> PluginUpdateStatus {
+    match (
+        parse_version(installed_version),
+        parse_version(market_version),
+    ) {
+        (Some(installed), Some(market)) if market > installed => {
+            PluginUpdateStatus::UpdateAvailable
+        }
+        _ => PluginUpdateStatus::Installed,
+    }
+}
+
+fn parse_version(value: &str) -> Option<[u64; 3]> {
+    let core = value.split_once('-').map_or(value, |(core, _)| core);
+    let mut parts = core.split('.').map(str::parse::<u64>);
+    match (parts.next()?, parts.next()?, parts.next()?, parts.next()) {
+        (Ok(major), Ok(minor), Ok(patch), None) => Some([major, minor, patch]),
+        _ => None,
+    }
 }
 
 fn install_root(id: &str) -> AppResult<PathBuf> {
@@ -40,6 +72,13 @@ fn install_log_path(id: &str) -> AppResult<PathBuf> {
 }
 
 fn plugin(id: &str) -> AppResult<OfficialPlugin> {
+    if let Some(plugin) = load_cached_official_plugins()
+        .ok()
+        .and_then(|plugins| plugins.into_iter().find(|item| item.id == id))
+    {
+        return Ok(plugin);
+    }
+    // 在官方应用仓库发布 aidea.yaml 前，保留旧收录定义以兼容已安装应用。
     load_official_plugins()?
         .into_iter()
         .find(|item| item.id == id)
@@ -188,6 +227,7 @@ async fn install_inner(
             version: def.version.clone(),
             revision: def.revision.clone(),
             status: "installed".into(),
+            definition: Some(def.clone()),
         };
         fs::write(record_path(&def.id)?, serde_yaml::to_string(&installed)?)?;
         writeln!(log, "安装完成")?;
@@ -240,17 +280,66 @@ pub fn list_installed() -> AppResult<Vec<InstalledPlugin>> {
 
 /// 已安装的官方插件由市场定义派生为壳可展示的 WebView 应用。
 pub fn list_installed_app_manifests() -> AppResult<Vec<AppManifest>> {
-    let definitions = load_official_plugins()?;
-    let records = list_installed()?;
-    records
-        .iter()
-        .filter_map(|record| {
-            definitions
-                .iter()
-                .find(|definition| definition.id == record.id)
-        })
-        .map(|definition| installed_app_manifest(definition, &source_dir(&definition.id)?))
-        .collect()
+    let mut manifests = Vec::new();
+    let root = data_root()?.join("apps/installed");
+    if !root.exists() {
+        return Ok(manifests);
+    }
+    for entry in fs::read_dir(root)? {
+        let id = entry?.file_name().to_string_lossy().into_owned();
+        let path = record_path(&id)?;
+        if !path.exists() {
+            continue;
+        }
+        let record = match serde_yaml::from_str(&fs::read_to_string(&path)?) {
+            Ok(record) => record,
+            Err(error) => {
+                manifests.push(unavailable_app_manifest(
+                    &InstalledPlugin {
+                        id,
+                        version: "未知".into(),
+                        revision: String::new(),
+                        status: "invalid".into(),
+                        definition: None,
+                    },
+                    AppError::Config(format!("读取安装记录失败: {error}")),
+                ));
+                continue;
+            }
+        };
+        match installed_definition_from_record(&record) {
+            Ok(definition) => {
+                manifests.push(installed_app_manifest(&definition, &source_dir(&definition.id)?)?);
+            }
+            Err(error) => manifests.push(unavailable_app_manifest(&record, error)),
+        }
+    }
+    Ok(manifests)
+}
+
+fn unavailable_app_manifest(record: &InstalledPlugin, error: AppError) -> AppManifest {
+    AppManifest {
+        id: record.id.clone(),
+        name: record.id.clone(),
+        version: record.version.clone(),
+        category: "官方应用".into(),
+        path: install_root(&record.id)
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        status: AppStatus::Active,
+        ui: UiConfig {
+            mode: UiMode::None,
+            url: None,
+            icon: None,
+        },
+        settings: None,
+        process: None,
+        issue: Some(AppIssue {
+            level: "warning".into(),
+            message: format!("应用定义不可用：{error}。请刷新市场后更新或卸载。"),
+            updated_at: chrono::Utc::now().timestamp(),
+        }),
+    }
 }
 
 pub fn source_dir(id: &str) -> AppResult<PathBuf> {
@@ -258,14 +347,22 @@ pub fn source_dir(id: &str) -> AppResult<PathBuf> {
 }
 
 pub fn installed_definition(id: &str) -> AppResult<OfficialPlugin> {
-    if !list_installed()?.iter().any(|record| record.id == id) {
-        return Err(AppError::AppNotFound(id.to_string()));
-    }
-    let definition = plugin(id)?;
+    let record = list_installed()?
+        .into_iter()
+        .find(|record| record.id == id)
+        .ok_or_else(|| AppError::AppNotFound(id.to_string()))?;
+    let definition = installed_definition_from_record(&record)?;
     if !source_dir(id)?.is_dir() {
         return Err(AppError::Process(format!("官方插件 {id} 源码目录不存在")));
     }
     Ok(definition)
+}
+
+fn installed_definition_from_record(record: &InstalledPlugin) -> AppResult<OfficialPlugin> {
+    if let Some(definition) = &record.definition {
+        return Ok(definition.clone());
+    }
+    plugin(&record.id)
 }
 
 fn installed_app_manifest(definition: &OfficialPlugin, source: &Path) -> AppResult<AppManifest> {
@@ -286,6 +383,7 @@ fn installed_app_manifest(definition: &OfficialPlugin, source: &Path) -> AppResu
             url: Some(url.into()),
             icon: Some(definition.icon.clone()),
         },
+        settings: definition.settings.clone(),
         process: Some(ProcessConfig {
             start: "official-plugin".into(),
             stop: Default::default(),
@@ -300,12 +398,15 @@ fn installed_app_manifest(definition: &OfficialPlugin, source: &Path) -> AppResu
                     .into_owned(),
             ),
         }),
+        issue: None,
     })
 }
 
 pub async fn uninstall(id: &str) -> AppResult<()> {
-    // 只允许卸载市场中登记的官方插件，避免把任意路径当作安装目录。
-    let _ = plugin(id)?;
+    // 只允许卸载已有安装记录，市场离线时仍可清理已安装应用。
+    if !list_installed()?.iter().any(|record| record.id == id) {
+        return Err(AppError::AppNotFound(id.to_string()));
+    }
     let root = install_root(id)?;
     if root.exists() {
         if root.join("source").exists() {
@@ -321,14 +422,17 @@ pub async fn uninstall(id: &str) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        clone_args, installed_app_manifest, is_http2_transport_error, read_log_tail,
-        InstalledPlugin,
+        clone_args, installed_app_manifest, is_http2_transport_error, list_installed_app_manifests,
+        plugin_update_status, read_log_tail, InstalledPlugin, PluginUpdateStatus,
     };
     use crate::error::AppError;
     use crate::plugin_market::{OfficialPlugin, OfficialProcess};
     use std::fs;
     use std::path::Path;
+    use std::sync::Mutex;
     use uuid::Uuid;
+
+    static DATA_DIR_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn 安装记录可序列化() {
@@ -337,9 +441,90 @@ mod tests {
             version: "1".into(),
             revision: "abc".into(),
             status: "installed".into(),
+            definition: None,
         };
         let yaml = serde_yaml::to_string(&value).unwrap();
         assert!(yaml.contains("id: demo"));
+    }
+
+    #[test]
+    fn 安装记录保留应用定义快照() {
+        let definition = OfficialPlugin {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "1.0.0".into(),
+            icon: "Package".into(),
+            repository: "https://example.com/demo.git".into(),
+            revision: "a".repeat(40),
+            runtime: "node".into(),
+            install: vec![],
+            process: OfficialProcess {
+                command: vec!["node".into(), "server.js".into()],
+                working_directory: ".".into(),
+                ready_url: "http://127.0.0.1:43120/health".into(),
+            },
+            settings: None,
+            update_notes: String::new(),
+            update_available: false,
+        };
+        let value = InstalledPlugin {
+            id: definition.id.clone(),
+            version: definition.version.clone(),
+            revision: definition.revision.clone(),
+            status: "installed".into(),
+            definition: Some(definition),
+        };
+
+        let restored: InstalledPlugin =
+            serde_yaml::from_str(&serde_yaml::to_string(&value).unwrap()).unwrap();
+
+        assert_eq!(restored.definition.unwrap().name, "Demo");
+    }
+
+    #[test]
+    fn 旧安装记录缺少定义快照会显示异常应用() {
+        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let directory = std::env::temp_dir().join(format!("aidea-plugin-{}", Uuid::new_v4()));
+        let app_dir = directory.join("apps/installed/legacy-plugin");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(
+            app_dir.join("install-state.yaml"),
+            "id: legacy-plugin\nversion: 0.1.0\nrevision: abc\nstatus: installed\n",
+        )
+        .unwrap();
+
+        let previous = std::env::var_os("AIDEA_DATA_DIR");
+        std::env::set_var("AIDEA_DATA_DIR", &directory);
+        let result = list_installed_app_manifests();
+        if let Some(value) = previous {
+            std::env::set_var("AIDEA_DATA_DIR", value);
+        } else {
+            std::env::remove_var("AIDEA_DATA_DIR");
+        }
+        fs::remove_dir_all(directory).unwrap();
+
+        assert!(result.is_ok());
+        let manifests = result.unwrap();
+        assert_eq!(manifests[0].id, "legacy-plugin");
+        assert!(manifests[0].issue.is_some());
+    }
+
+    #[test]
+    fn 只有市场版本更高才显示更新() {
+        assert_eq!(
+            plugin_update_status("0.1.0", "0.1.0"),
+            PluginUpdateStatus::Installed
+        );
+        assert_eq!(
+            plugin_update_status("0.1.0", "0.1.1"),
+            PluginUpdateStatus::UpdateAvailable
+        );
+        assert_eq!(
+            plugin_update_status("0.1.1", "0.1.0"),
+            PluginUpdateStatus::Installed
+        );
     }
 
     #[test]
@@ -360,7 +545,9 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            settings: None,
             update_notes: String::new(),
+            update_available: false,
         };
         let manifest = installed_app_manifest(&definition, Path::new("/tmp/demo/source")).unwrap();
         assert_eq!(manifest.id, "demo");
@@ -386,7 +573,9 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            settings: None,
             update_notes: String::new(),
+            update_available: false,
         };
 
         let default_args = clone_args(&definition, Path::new("/tmp/demo"), false);

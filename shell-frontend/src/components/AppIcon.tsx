@@ -2,6 +2,7 @@
 // ui.icon 语义：含 / 或 . 当文件路径处理，否则当 lucide 图标名处理
 // 图标加载失败时回退到首字母占位
 import { useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { ICONS } from './IconPicker';
 import type { AppManifest, AppState } from '../types/manifest';
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function AppIcon({ app, state }: Props) {
+  const issue = app.issue ?? state?.issue;
   const isRunning = state?.status === 'running';
   const showStatusDot = !!app.process;
   const iconSpec = app.ui.icon;
@@ -29,7 +31,8 @@ export function AppIcon({ app, state }: Props) {
 
   return (
     <span className="relative flex items-center justify-center w-4 h-4">
-      {showFileIcon && (
+      {issue && <TriangleAlert size={16} className="text-muted-foreground" aria-label="应用异常" />}
+      {!issue && showFileIcon && (
         <img
           src={iconSpec}
           alt={app.name}
@@ -37,8 +40,8 @@ export function AppIcon({ app, state }: Props) {
           onError={() => setIconError(true)}
         />
       )}
-      {showLucideIcon && <LucideComp size={16} />}
-      {showFallback && (
+      {!issue && showLucideIcon && <LucideComp size={16} />}
+      {!issue && showFallback && (
         <span className="text-xs font-medium">
           {app.name.charAt(0).toUpperCase()}
         </span>

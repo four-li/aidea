@@ -30,8 +30,9 @@
 - `shell.config.json` 只保存主题、应用覆盖配置和非敏感元数据，禁止保存密码、授权码、令牌或 API Key 明文。
 - `databases/shell.db` 只保存 aIdea 壳数据；每个内置插件使用独立的 `<builtin-app-id>.db`。
 - `databases/secrets.db` 是平台本地加密存储的内部数据库，插件不得直接读写。
-- `apps/installed/<app-id>/` 是 aIdea 管理的安装状态、源码和更新临时目录；安装状态使用 `install-state.yaml`，不能与本地可启动应用的 `manifest.yaml` 混用。
-- `app-data/<app-id>/` 和 `logs/<app-id>/` 属于插件业务数据与日志。更新和默认卸载不得删除它们。
+- `apps/installed/<app-id>/` 是 aIdea 管理的安装状态、源码和更新临时目录；安装状态使用 `install-state.yaml`，不能与本地可启动应用的 `manifest.yaml` 混用。安装状态包含安装版本、固定 revision 和当时的应用定义快照，市场离线时仍可启动、查看和卸载已安装应用。
+- `app-data/<app-id>/` 和 `logs/<app-id>/` 属于插件业务数据与日志。更新和默认卸载不得删除它们。应用可以在自己的目录内保存 `settings.json` 或 SQLite；aIdea 不解析这些文件。
+- 内置应用也使用自己的 `<app-id>` 数据边界，例如 DevTools 的 `app-data/dev-tools/settings.json` 只保存内部工具显示偏好。
 - `runtime/` 只存短期进程状态、市场定义缓存和临时运行信息，不存业务数据库。市场缓存只保存公开的应用定义与刷新元数据，不保存 Git 凭据。
 - `backups/` 存放迁移前的数据备份。
 

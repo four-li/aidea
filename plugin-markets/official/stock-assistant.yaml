@@ -1,16 +1,3 @@
-id: stock-assistant
-name: 股票助手
-description: 本地股票自选列表 Demo，首期使用 mock 行情。
-category: 金融
-version: 0.1.0
-icon: TrendingUp
+schema_version: 1
 repository: https://github.com/four-li/stock-assistant.git
-revision: d351c25ac9a970abb1e13016dcf26128fa8e200b
-runtime: node
-install:
-  - [npm, ci]
-process:
-  command: [node, node_modules/vite/bin/vite.js, --host, 127.0.0.1, --port, "43120"]
-  working_directory: .
-  ready_url: http://127.0.0.1:43120/health
-update_notes: 首期使用本地 mock 行情；自选列表当前由浏览器 localStorage 保存。
+enabled: true

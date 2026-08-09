@@ -1,5 +1,6 @@
 use crate::config::project_root;
 use crate::error::{AppError, AppResult};
+use crate::manifest::SettingsConfig;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -32,6 +33,8 @@ pub struct OfficialPluginDefinition {
     pub install: Vec<Vec<String>>,
     pub process: OfficialProcess,
     #[serde(default)]
+    pub settings: Option<SettingsConfig>,
+    #[serde(default)]
     pub update_notes: String,
 }
 
@@ -40,6 +43,27 @@ pub struct OfficialPluginDefinition {
 pub struct CachedOfficialPlugin {
     pub repository: String,
     pub definition: OfficialPluginDefinition,
+}
+
+impl CachedOfficialPlugin {
+    pub fn into_plugin(self) -> OfficialPlugin {
+        OfficialPlugin {
+            id: self.definition.id,
+            name: self.definition.name,
+            description: self.definition.description,
+            category: self.definition.category,
+            version: self.definition.version,
+            icon: self.definition.icon,
+            repository: self.repository,
+            revision: self.definition.revision,
+            runtime: self.definition.runtime,
+            install: self.definition.install,
+            process: self.definition.process,
+            settings: self.definition.settings,
+            update_notes: self.definition.update_notes,
+            update_available: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -57,7 +81,40 @@ pub struct OfficialPlugin {
     pub install: Vec<Vec<String>>,
     pub process: OfficialProcess,
     #[serde(default)]
+    pub settings: Option<SettingsConfig>,
+    #[serde(default)]
     pub update_notes: String,
+    /// 仅用于市场 IPC 展示，不参与仓库定义和缓存。
+    #[serde(default)]
+    pub update_available: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OfficialPluginListing {
+    #[serde(flatten)]
+    pub plugin: OfficialPlugin,
+    pub installed_version: Option<String>,
+}
+
+pub fn add_install_status(plugins: Vec<OfficialPlugin>) -> AppResult<Vec<OfficialPluginListing>> {
+    let installed = crate::plugin_installer::list_installed()?;
+    Ok(plugins
+        .into_iter()
+        .map(|mut plugin| {
+            let installed_version = installed
+                .iter()
+                .find(|record| record.id == plugin.id)
+                .map(|record| record.version.clone());
+            plugin.update_available = installed_version.as_deref().is_some_and(|version| {
+                crate::plugin_installer::plugin_update_status(version, &plugin.version)
+                    == crate::plugin_installer::PluginUpdateStatus::UpdateAvailable
+            });
+            OfficialPluginListing {
+                plugin,
+                installed_version,
+            }
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -78,7 +135,9 @@ fn default_enabled() -> bool {
 
 fn validate_catalog_entry(entry: &OfficialCatalogEntry) -> AppResult<()> {
     if entry.schema_version != 1 {
-        return Err(AppError::Config("官方应用目录 schema_version 必须为 1".into()));
+        return Err(AppError::Config(
+            "官方应用目录 schema_version 必须为 1".into(),
+        ));
     }
     if entry.repository.trim().is_empty() || entry.repository.chars().any(char::is_control) {
         return Err(AppError::Config("官方应用目录 repository 无效".into()));
@@ -88,7 +147,9 @@ fn validate_catalog_entry(entry: &OfficialCatalogEntry) -> AppResult<()> {
 
 fn validate_definition(plugin: &OfficialPluginDefinition) -> AppResult<()> {
     if plugin.schema_version != 1 {
-        return Err(AppError::Config("官方应用定义 schema_version 必须为 1".into()));
+        return Err(AppError::Config(
+            "官方应用定义 schema_version 必须为 1".into(),
+        ));
     }
     if plugin.id.is_empty()
         || !plugin
@@ -107,13 +168,24 @@ fn validate_definition(plugin: &OfficialPluginDefinition) -> AppResult<()> {
         &plugin.runtime,
     ] {
         if value.trim().is_empty() || value.chars().any(char::is_control) {
-            return Err(AppError::Config(format!("官方应用 {} 包含无效字段", plugin.id)));
+            return Err(AppError::Config(format!(
+                "官方应用 {} 包含无效字段",
+                plugin.id
+            )));
         }
     }
     if !is_semantic_version(&plugin.version) || !is_semantic_version(&plugin.min_aidea_version) {
-        return Err(AppError::Config(format!("官方应用 {} 版本格式无效", plugin.id)));
+        return Err(AppError::Config(format!(
+            "官方应用 {} 版本格式无效",
+            plugin.id
+        )));
     }
-    if plugin.revision.len() != 40 || !plugin.revision.chars().all(|value| value.is_ascii_hexdigit()) {
+    if plugin.revision.len() != 40
+        || !plugin
+            .revision
+            .chars()
+            .all(|value| value.is_ascii_hexdigit())
+    {
         return Err(AppError::Config(format!(
             "官方应用 {} revision 必须是完整 40 位 commit SHA",
             plugin.id
@@ -122,6 +194,11 @@ fn validate_definition(plugin: &OfficialPluginDefinition) -> AppResult<()> {
     validate_process(&plugin.process, &plugin.id)?;
     for command in &plugin.install {
         validate_command(command, &plugin.id)?;
+    }
+    if let Some(settings) = &plugin.settings {
+        if let Some(command) = &settings.reset_command {
+            validate_command(command, &plugin.id)?;
+        }
     }
     Ok(())
 }
@@ -176,7 +253,9 @@ fn load_catalog_entries(directory: &Path) -> AppResult<Vec<(String, OfficialCata
             .ok_or_else(|| AppError::Config(format!("官方应用目录文件名无效: {}", path.display())))?
             .to_owned();
         let entry: OfficialCatalogEntry = serde_yaml::from_str(&std::fs::read_to_string(&path)?)
-            .map_err(|error| AppError::Config(format!("解析官方应用目录 {} 失败: {error}", path.display())))?;
+            .map_err(|error| {
+                AppError::Config(format!("解析官方应用目录 {} 失败: {error}", path.display()))
+            })?;
         validate_catalog_entry(&entry)?;
         entries.push((cache_key, entry));
     }
@@ -185,8 +264,10 @@ fn load_catalog_entries(directory: &Path) -> AppResult<Vec<(String, OfficialCata
 }
 
 fn load_definition(path: &Path) -> AppResult<OfficialPluginDefinition> {
-    let definition: OfficialPluginDefinition = serde_yaml::from_str(&std::fs::read_to_string(path)?)
-        .map_err(|error| AppError::Config(format!("解析官方应用定义 {} 失败: {error}", path.display())))?;
+    let definition: OfficialPluginDefinition =
+        serde_yaml::from_str(&std::fs::read_to_string(path)?).map_err(|error| {
+            AppError::Config(format!("解析官方应用定义 {} 失败: {error}", path.display()))
+        })?;
     validate_definition(&definition)?;
     Ok(definition)
 }
@@ -236,6 +317,14 @@ pub fn load_cached_official_definitions() -> AppResult<Vec<CachedOfficialPlugin>
     load_cached_definitions_from_dir(&bundled_market_dir_or_development()?, &market_cache_dir()?)
 }
 
+/// 从本地缓存还原官方应用运行定义，不会触发网络请求。
+pub fn load_cached_official_plugins() -> AppResult<Vec<OfficialPlugin>> {
+    Ok(load_cached_official_definitions()?
+        .into_iter()
+        .map(CachedOfficialPlugin::into_plugin)
+        .collect())
+}
+
 /// 刷新官方应用定义。clone 仅用于读取仓库默认分支的 `aidea.yaml`，不会修改用户 Git 配置。
 pub async fn refresh_official_definitions_from_dir(
     catalog_dir: &Path,
@@ -268,7 +357,8 @@ pub async fn refresh_official_definitions_from_dir(
         let app_cache_dir = cache_dir.join(&cache_key);
         std::fs::create_dir_all(&app_cache_dir)?;
         let cache_definition = app_cache_dir.join("aidea.yaml");
-        let temporary_definition = app_cache_dir.join(format!("aidea-{}.yaml", uuid::Uuid::new_v4()));
+        let temporary_definition =
+            app_cache_dir.join(format!("aidea-{}.yaml", uuid::Uuid::new_v4()));
         std::fs::copy(&source_definition, &temporary_definition)?;
         std::fs::rename(&temporary_definition, &cache_definition)?;
         std::fs::write(
@@ -290,8 +380,11 @@ pub async fn refresh_official_definitions_from_dir(
 
 /// 刷新发布包中收录的官方应用定义并更新本地缓存。
 pub async fn refresh_official_definitions() -> AppResult<Vec<CachedOfficialPlugin>> {
-    refresh_official_definitions_from_dir(&bundled_market_dir_or_development()?, &market_cache_dir()?)
-        .await
+    refresh_official_definitions_from_dir(
+        &bundled_market_dir_or_development()?,
+        &market_cache_dir()?,
+    )
+    .await
 }
 
 fn bundled_market_dir_or_development() -> AppResult<PathBuf> {
@@ -308,16 +401,8 @@ fn bundled_market_dir_or_development() -> AppResult<PathBuf> {
 }
 
 pub fn load_official_plugins() -> AppResult<Vec<OfficialPlugin>> {
-    let development_dir = project_root()?.join("plugin-markets/official");
-    if development_dir.exists() {
-        return load_from_dir(&development_dir);
-    }
-    let resources = std::env::current_exe()?
-        .parent()
-        .and_then(Path::parent)
-        .map(|path| path.join("Resources"))
-        .ok_or_else(|| AppError::Config("无法定位官方插件市场资源目录".into()))?;
-    load_from_dir(&bundled_market_dir(&resources)?)
+    // 官方目录只保存仓库地址；完整定义必须来自最近一次成功刷新的本地缓存。
+    load_cached_official_plugins()
 }
 
 fn bundled_market_dir(resources: &Path) -> AppResult<std::path::PathBuf> {
@@ -332,6 +417,7 @@ fn bundled_market_dir(resources: &Path) -> AppResult<std::path::PathBuf> {
     Err(AppError::Config("未找到官方插件市场资源目录".into()))
 }
 
+#[cfg(test)]
 fn load_from_dir(directory: &Path) -> AppResult<Vec<OfficialPlugin>> {
     if !directory.exists() {
         return Ok(Vec::new());
@@ -356,6 +442,7 @@ fn load_from_dir(directory: &Path) -> AppResult<Vec<OfficialPlugin>> {
     Ok(plugins)
 }
 
+#[cfg(test)]
 fn validate(plugin: &OfficialPlugin) -> AppResult<()> {
     if plugin.id.is_empty()
         || !plugin
@@ -430,10 +517,11 @@ fn validate_command(command: &[String], id: &str) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_market_dir, load_from_dir, load_official_plugins, validate_catalog_entry,
-        load_cached_definitions_from_dir, refresh_official_definitions_from_dir,
-        validate_definition, OfficialCatalogEntry, OfficialPluginDefinition,
+        bundled_market_dir, load_cached_definitions_from_dir, load_from_dir, load_official_plugins,
+        refresh_official_definitions_from_dir, validate_catalog_entry, validate_definition,
+        CachedOfficialPlugin, OfficialCatalogEntry, OfficialPluginDefinition,
     };
+    use crate::manifest::SettingsConfig;
     use std::fs;
 
     fn valid_definition(revision: &str) -> OfficialPluginDefinition {
@@ -454,8 +542,22 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            settings: None,
             update_notes: String::new(),
         }
+    }
+
+    #[test]
+    fn 设置重置命令不能使用_shell_包装器() {
+        let mut definition = valid_definition(
+            "d351c25ac9a970abb1e13016dcf26128fa8e200b",
+        );
+        definition.settings = Some(SettingsConfig {
+            enabled: true,
+            reset_command: Some(vec!["sh".into(), "-c".into(), "echo bad".into()]),
+        });
+
+        assert!(validate_definition(&definition).is_err());
     }
 
     #[test]
@@ -475,6 +577,19 @@ mod tests {
         ))
         .is_ok());
         assert!(validate_definition(&valid_definition("main")).is_err());
+    }
+
+    #[test]
+    fn 缓存定义会合并收录仓库地址() {
+        let cached = CachedOfficialPlugin {
+            repository: "https://example.com/demo.git".into(),
+            definition: valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b"),
+        };
+
+        let plugin = cached.into_plugin();
+
+        assert_eq!(plugin.id, "demo-app");
+        assert_eq!(plugin.repository, "https://example.com/demo.git");
     }
 
     #[test]
@@ -525,7 +640,15 @@ mod tests {
         for args in [
             vec!["init"],
             vec!["add", "aidea.yaml"],
-            vec!["-c", "user.name=aIdea Test", "-c", "user.email=test@example.com", "commit", "-m", "definition"],
+            vec![
+                "-c",
+                "user.name=aIdea Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "definition",
+            ],
         ] {
             let status = std::process::Command::new("git")
                 .args(args)
@@ -578,9 +701,8 @@ mod tests {
     }
 
     #[test]
-    fn 官方市场包含股票助手() {
-        let plugins = load_official_plugins().unwrap();
-        assert!(plugins.iter().any(|plugin| plugin.id == "stock-assistant"));
+    fn 官方市场收录文件不会当作完整定义解析() {
+        assert!(load_official_plugins().is_ok());
     }
 
     #[test]

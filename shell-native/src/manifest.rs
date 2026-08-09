@@ -2,10 +2,10 @@
 use crate::config::{load_config, AppOverride};
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 const BUILTIN_MANIFESTS: &[&str] = &[
-    include_str!("../../apps/builtin/dashboard.yaml"),
     include_str!("../../apps/builtin/dev-tools.yaml"),
     include_str!("../../apps/builtin/mail-manager.yaml"),
 ];
@@ -62,6 +62,15 @@ pub struct UiConfig {
     pub icon: Option<String>,
 }
 
+/// 应用设置能力。设置字段由应用自己定义，aIdea 只管理入口和重置授权。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SettingsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reset_command: Option<Vec<String>>,
+}
+
 /// 进程配置段（无进程子应用不写此段）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessConfig {
@@ -81,6 +90,14 @@ pub struct ProcessConfig {
     pub log_file: Option<String>,
 }
 
+/// 单个应用的可恢复异常，不影响 aIdea 壳和其他应用。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppIssue {
+    pub level: String,
+    pub message: String,
+    pub updated_at: i64,
+}
+
 /// 子应用 Manifest 完整结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppManifest {
@@ -98,9 +115,14 @@ pub struct AppManifest {
     pub status: AppStatus,
     /// UI 配置
     pub ui: UiConfig,
+    /// 应用自带设置能力
+    #[serde(default)]
+    pub settings: Option<SettingsConfig>,
     /// 进程配置（可选）
     #[serde(default)]
     pub process: Option<ProcessConfig>,
+    #[serde(default)]
+    pub issue: Option<AppIssue>,
 }
 
 /// 加载内置 manifest 和用户目录中的第三方 manifest。
@@ -146,7 +168,21 @@ pub fn load_all_manifests() -> AppResult<Vec<AppManifest>> {
         }
     }
 
+    validate_unique_manifest_ids(&manifests)?;
     Ok(manifests)
+}
+
+fn validate_unique_manifest_ids(manifests: &[AppManifest]) -> AppResult<()> {
+    let mut ids = BTreeSet::new();
+    for manifest in manifests {
+        if !ids.insert(&manifest.id) {
+            return Err(AppError::Config(format!(
+                "发现重复的应用 ID: {}",
+                manifest.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn apply_manifest_override(
@@ -238,13 +274,60 @@ pub fn save_manifest(manifest: &AppManifest) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{save_manifest, AppManifest, AppStatus, UiConfig, UiMode};
+    use super::{
+        save_manifest, validate_unique_manifest_ids, AppManifest, AppStatus, SettingsConfig,
+        UiConfig, UiMode,
+    };
+
+    fn manifest(id: &str) -> AppManifest {
+        AppManifest {
+            id: id.into(),
+            name: id.into(),
+            version: "0.1.0".into(),
+            category: "test".into(),
+            path: "/tmp".into(),
+            status: AppStatus::Active,
+            ui: UiConfig {
+                mode: UiMode::None,
+                url: None,
+                icon: None,
+            },
+            settings: None,
+            process: None,
+            issue: None,
+        }
+    }
+
+    #[test]
+    fn rejects_duplicate_manifest_ids() {
+        let error = validate_unique_manifest_ids(&[manifest("demo"), manifest("demo")])
+            .expect_err("重复应用 ID 应被拒绝");
+
+        assert!(error.to_string().contains("重复的应用 ID: demo"));
+    }
+
+    #[test]
+    fn accepts_unique_manifest_ids() {
+        validate_unique_manifest_ids(&[manifest("demo"), manifest("other")])
+            .expect("不同应用 ID 应通过校验");
+    }
+
+    #[test]
+    fn settings_config_supports_reset_command() {
+        let settings: SettingsConfig = serde_yaml::from_str(
+            "enabled: true\nreset_command: [node, scripts/reset-config.mjs]\n",
+        )
+        .unwrap();
+
+        assert!(settings.enabled);
+        assert_eq!(settings.reset_command.unwrap()[0], "node");
+    }
 
     #[test]
     fn rejects_invalid_id_before_writing() {
         let manifest = AppManifest {
-            id: "../atlas".into(),
-            name: "Atlas".into(),
+            id: "../sample-app".into(),
+            name: "示例应用".into(),
             version: "0.1.0".into(),
             category: "dev-workflow".into(),
             path: "/tmp".into(),
@@ -254,7 +337,9 @@ mod tests {
                 url: Some("http://127.0.0.1:5317".into()),
                 icon: None,
             },
+            settings: None,
             process: None,
+            issue: None,
         };
 
         assert!(save_manifest(&manifest).is_err());

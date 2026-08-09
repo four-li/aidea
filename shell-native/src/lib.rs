@@ -11,7 +11,7 @@ pub mod plugin_market;
 pub mod process;
 pub mod secret_store;
 
-use process::{start_autostart_apps, ProcessManager};
+use process::{start_autostart_apps, start_configured_official_apps, ProcessManager};
 
 pub fn run() {
     let manager = ProcessManager::default();
@@ -23,6 +23,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::shell::list_apps,
             commands::shell::list_official_plugins,
+            commands::shell::refresh_official_plugins,
             commands::shell::list_installed_official_plugins,
             commands::shell::install_official_plugin,
             commands::shell::update_official_plugin,
@@ -32,10 +33,14 @@ pub fn run() {
             commands::shell::get_shell_config,
             commands::shell::save_app_override,
             commands::shell::reset_app_override,
+            commands::shell::reset_app_settings,
+            commands::shell::save_app_user_settings,
             commands::shell::start_app,
             commands::shell::stop_app,
             commands::shell::get_app_states,
             commands::shell::read_app_log,
+            commands::dev_tools::get_dev_tools_settings,
+            commands::dev_tools::save_dev_tools_settings,
             commands::network::get_network_info,
             commands::ai::send_ai_http_request,
             commands::ai::save_ai_config,
@@ -64,6 +69,10 @@ pub fn run() {
             // 启动 autostart 子应用（clone manager move 进 async task）
             let m = startup_manager.clone();
             tauri::async_runtime::spawn(async move {
+                if let Err(error) = m.recover_managed_processes().await {
+                    eprintln!("恢复受管子应用失败: {error}");
+                }
+                start_configured_official_apps(&m).await;
                 start_autostart_apps(&m).await;
             });
             mail_runtime::start_all(_app.handle().clone());

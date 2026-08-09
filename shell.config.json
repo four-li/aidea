@@ -2,11 +2,7 @@
   "theme": "auto",
   "data_dir": ".runtime",
   "log_dir": ".runtime/logs",
-  "overrides": {
-    "dashboard": {
-      "name": "统计页"
-    }
-  },
+  "overrides": {},
   "ai_history": {
     "items": []
   }
