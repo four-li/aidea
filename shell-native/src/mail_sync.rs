@@ -239,7 +239,7 @@ fn sync_account(
     if account.tls_mode != "tls" {
         return Err(AppError::Config("第一阶段仅支持 TLS IMAP".into()));
     }
-    let secret = crate::secret_store::load("mail-manager", &secret_key(&account.id))?;
+    let secret = &account.secret;
     let tls = native_tls::TlsConnector::builder()
         .build()
         .map_err(|error| AppError::Network(format!("创建 TLS 连接失败: {}", error)))?;
@@ -250,7 +250,7 @@ fn sync_account(
     )
     .map_err(|error| AppError::Network(format!("连接 IMAP 服务器失败: {}", error)))?;
     let mut session = client
-        .login(&account.username, &secret)
+        .login(&account.username, secret)
         .map_err(|error| AppError::Network(format!("IMAP 登录失败: {}", error.0)))?;
 
     let result = (|| {
@@ -515,13 +515,12 @@ fn move_message_to_deleted_blocking(message_id: i64) -> AppResult<()> {
 fn login(
     account: &MailAccountRecord,
 ) -> AppResult<imap::Session<native_tls::TlsStream<std::net::TcpStream>>> {
-    let secret = crate::secret_store::load("mail-manager", &secret_key(&account.id))?;
     login_with_credentials(
         &account.imap_host,
         account.imap_port,
         &account.tls_mode,
         &account.username,
-        &secret,
+        &account.secret,
     )
 }
 
@@ -543,10 +542,6 @@ pub fn login_with_credentials(
     client
         .login(username, secret)
         .map_err(|error| AppError::Network(format!("IMAP 登录失败: {}", error.0)))
-}
-
-fn secret_key(account_id: &str) -> String {
-    format!("account:{account_id}")
 }
 
 fn sync_folder(

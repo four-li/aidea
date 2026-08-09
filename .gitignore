@@ -24,3 +24,6 @@ shell.config.local.json
 
 # Superpowers 本地临时状态
 .superpowers/
+
+# aIdea updater 私钥（只用于本地复制到 GitHub Secret，禁止提交）
+aidea-updater.key

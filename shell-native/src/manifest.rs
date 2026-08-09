@@ -105,6 +105,9 @@ pub struct AppManifest {
     pub id: String,
     /// 显示名
     pub name: String,
+    /// 应用简介，旧 manifest 未声明时为空
+    #[serde(default)]
+    pub description: String,
     /// 版本
     pub version: String,
     /// 分类（侧边栏分组用，自由字符串）
@@ -283,6 +286,7 @@ mod tests {
         AppManifest {
             id: id.into(),
             name: id.into(),
+            description: String::new(),
             version: "0.1.0".into(),
             category: "test".into(),
             path: "/tmp".into(),
@@ -328,6 +332,7 @@ mod tests {
         let manifest = AppManifest {
             id: "../sample-app".into(),
             name: "示例应用".into(),
+            description: String::new(),
             version: "0.1.0".into(),
             category: "dev-workflow".into(),
             path: "/tmp".into(),

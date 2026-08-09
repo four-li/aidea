@@ -12,8 +12,8 @@
 
 - aIdea 壳配置、IPC 初始化和数据库初始化失败才允许阻断壳启动；单个应用错误不得阻断。
 - 异常应用必须保留在顶部菜单和应用管理中，并显示清晰、可操作的错误信息。
-- 官方应用命令、定义和业务数据契约仍以 `docs/app/package-spec.md`、`docs/app/platform.md`、`docs/app/storage.md` 为准。
-- 不新增依赖；所有图标来自 `lucide-react`，UI 服从 `docs/app/ui.md`。
+- 官方应用定义和业务数据契约以 `docs/guide/aidea-official-app.md`、`docs/guide/aidea-platform.md`、`docs/guide/aidea-storage.md` 为准。
+- 不新增依赖；所有图标来自 `lucide-react`，UI 服从 `docs/guide/aidea-ui.md`。
 - 不自动执行 `git add`、commit、push 或创建 PR。
 
 ---
@@ -238,8 +238,8 @@ Expected: PASS，首次自动刷新成功和失败保留缓存均被覆盖。
 ### Task 5: 端到端回归验证与契约同步
 
 **Files:**
-- Modify: `docs/app/platform.md`
-- Modify: `docs/app/marketplace.md`
+- Modify: `docs/guide/aidea-platform.md`
+- Modify: `docs/guide/aidea-official-app.md`
 
 **Interfaces:**
 - 消费前四个任务的 `issue` 状态和首次市场刷新行为。

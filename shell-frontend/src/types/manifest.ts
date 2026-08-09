@@ -27,6 +27,7 @@ export interface ProcessConfig {
 export interface AppManifest {
   id: string;
   name: string;
+  description?: string;
   version: string;
   category: string;
   path: string;
@@ -52,8 +53,6 @@ export interface AppIssue {
 
 export interface ShellConfig {
   theme: string;
-  data_dir: string;
-  log_dir: string;
   overrides: Record<string, AppOverride>;
   app_settings: Record<string, AppUserSettings>;
 }

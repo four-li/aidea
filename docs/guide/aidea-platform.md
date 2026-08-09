@@ -10,9 +10,11 @@
 | 内置应用 | 代码位于 aIdea 仓库，随 aIdea 构建、发布和更新的应用。 |
 | 官方应用 | 独立 GitHub 或 GitLab 仓库中的自研应用，由官方市场预设收录。 |
 | 官方应用市场 | 随 aIdea 发布的收录目录，不是远程市场服务。完整应用定义在各应用仓库的 `aidea.yaml`。 |
-| 平台组件 | aIdea 提供的数据目录、日志目录、进程管理和本地加密存储等能力。 |
+| 平台组件 | aIdea 提供的数据目录、日志目录和进程管理等能力。 |
 
-当前只支持内置应用和官方应用。不提供第三方市场、自定义仓库安装、自动发现、插件 SDK 或多作者权限系统；新增这些能力必须先单独设计。
+当前只支持内置应用和官方应用。不提供第三方市场、自定义仓库安装、自动发现或多作者权限系统；新增这些能力必须先单独设计。
+
+当前仓库的 `apps/builtin/mail-manager.yaml` 是内置应用，所以现有邮件管理使用壳内 Tauri IPC。将邮件管理独立成官方应用时，应建立独立应用仓库和 `aidea.yaml`；新应用不能继续依赖当前邮件模块的内部 IPC 或 Rust 命令名。
 
 ## 职责边界
 
@@ -28,8 +30,9 @@
 
 - Tauri IPC 仅供 aIdea 壳和内置应用使用。内置应用前端统一通过 `shell-frontend/src/lib/ipc.ts` 调用，不得在业务组件直接调用 `invoke`。
 - 官方应用不得依赖 `@tauri-apps/api`、`window.__TAURI__`、Rust 命令名或壳前端 IPC 封装。这些都是壳的内部实现。
-- 当前官方应用只能依赖启动时注入的环境变量，详见 [平台环境与命令](aidea-platform-cli.md)。`AIDEA_COMMAND`、`aidea secret` 与 `aidea notify` 尚未发布，官方应用不得依赖。
-- 不存在通用 SDK、任意插件 HTTP API 或跨应用共享数据库。需要新增平台能力时，先设计并实现明确的命令契约。
+- 官方应用只能使用 aIdea 注入的应用数据和日志目录；应用业务代码直接读写自己的数据库。
+- 内置应用的页面不能直接访问本地文件，所以通过 `ipc.ts` 调用自己的 Rust 业务模块；这不改变数据库归属。
+- 两类应用都不得读取 aIdea 壳配置或其他应用的数据库。
 
 ## 生命周期与异常隔离
 
@@ -42,9 +45,26 @@
 应用管理列表只负责显示应用、显示开关和进入设置详情。设置详情在 aIdea 的设置弹窗内打开，不跳转主内容区。
 
 - 用户改动 `name`、`icon`、`url`、`start` 时，aIdea 写入 `shell.config.json` 的 `overrides`，不回写原始 yaml。`list_apps` 已合并这些覆盖值，前端不得二次合并。
-- 内置应用在壳内注册自己的设置组件。官方应用提供本地 `/settings` 页面；aIdea 不解析其字段 schema。
+- `visible` 和 `startup_mode` 是 aIdea 管理的通用设置，保存于 `shell.config.json`；它们只决定应用是否显示和是否随 aIdea 启动。
+- 应用业务设置由应用自己负责。内置应用在壳内显式注册基础设置组件，官方应用提供固定的本地 `/settings` 页面；aIdea 只负责打开入口，不解析应用字段或保存应用表单。
+- 官方应用的主页面和 `/settings` 页面都会收到 aIdea 追加的 `aidea_theme=light|dark` 参数；应用据此跟随 aIdea 的主题选择，独立运行时再回退到系统主题。
 - 只有声明独立 `process` 的应用可显示“随 aIdea 启动”。
-- `reset_command` 是可选能力。aIdea 认证用户、停止运行中的应用、执行重置并按原状态恢复；重置只能修改配置，不能删除整个业务数据目录或业务数据库。
+- 每个应用都有 aIdea 提供的通用设置详情页；内置应用可额外注册业务设置组件，官方应用固定提供 `/settings` 页面。`settings.enabled` 是当前 manifest 的兼容字段，不控制设置入口；Rust 代码只在它为 `true` 时接受 `reset_command`。
+- `reset_command` 是可选的配置重置能力。用户确认后，aIdea 停止运行中的应用、执行重置并按原状态恢复；重置只能修改配置，不能删除整个业务数据目录或业务数据库。
+
+## 两种应用如何保存数据
+
+```mermaid
+flowchart TB
+    I[内置应用页面] --> I1[shell-frontend/src/lib/ipc.ts]
+    I1 --> I2[内置应用 Rust 业务代码]
+    I2 --> ID[app-data/<app-id>/app.db]
+
+    O[官方应用页面] --> O1[官方应用自己的服务进程]
+    O1 --> OD[app-data/<app-id>/app.db]
+```
+
+两类应用都直接拥有并管理自己的数据库。内置应用由于运行在 WebView 中，页面通过自己的 Tauri IPC 到达应用 Rust 业务代码；官方应用由自己的服务进程直接访问 `AIDEA_APP_DATA_DIR/app.db`。
 
 ## 独立运行
 

@@ -8,7 +8,6 @@ describe('TopBar', () => {
       <TopBar
         apps={[]}
         appOrder={[]}
-        onReorder={vi.fn()}
         activeAppId={null}
         states={{}}
         onSelectApp={vi.fn()}

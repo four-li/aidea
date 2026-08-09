@@ -11,6 +11,10 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
+vi.mock('../../src/hooks/useTheme', () => ({
+  useTheme: () => ({ mode: 'dark' }),
+}));
+
 const mockListMailAccounts = vi.fn();
 const mockListMailMessages = vi.fn();
 const mockGetMailMessage = vi.fn();
@@ -129,6 +133,24 @@ describe('MailManagerPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '网页邮箱' }));
 
     expect(mockOpenMailWebmail).toHaveBeenCalledWith('account-1');
+  });
+
+  it('深色模式下邮件正文 iframe 带有深色主题样式', async () => {
+    mockGetMailMessage.mockResolvedValue({
+      ...message,
+      remote_uid: 1,
+      text_body: '服务不可用',
+      sanitized_html: '<p style="color: black">服务不可用</p>',
+    });
+    render(<MailManagerPage />);
+
+    await screen.findByText('已显示 1 / 共 3 封');
+    fireEvent.click(screen.getByRole('button', { name: /服务告警/ }));
+    await screen.findByRole('heading', { name: '服务告警' });
+
+    const frame = screen.getByTitle('邮件正文');
+    expect(frame).toHaveAttribute('srcdoc', expect.stringContaining('--mail-background: #1f1f1f'));
+    expect(frame).toHaveAttribute('srcdoc', expect.stringContaining('body *'));
   });
 
   it('右键账户可打开编辑弹窗', async () => {

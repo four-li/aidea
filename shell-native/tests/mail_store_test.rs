@@ -52,7 +52,7 @@ fn 同步任务记录阶段进度和错误() {
             tls_mode: "tls".into(),
             username: "sync@example.com".into(),
             auth_kind: "password".into(),
-            keychain_id: "sync-key".into(),
+            secret: "mail-secret".into(),
             webmail_url: "https://mail.example.com".into(),
             inbox_folder: "INBOX".into(),
             trash_folder: None,
@@ -97,7 +97,7 @@ fn 同一远程邮件重复同步会覆盖且过期邮件会被清理() {
             tls_mode: "tls".into(),
             username: "test@example.com".into(),
             auth_kind: "password".into(),
-            keychain_id: "test-keychain-id".into(),
+            secret: "mail-secret".into(),
             webmail_url: "https://mail.example.com".into(),
             inbox_folder: "INBOX".into(),
             trash_folder: Some("已删除".into()),
@@ -164,6 +164,9 @@ fn 账户保存手工垃圾箱目录供不支持特殊用途标记的服务使�
     std::fs::create_dir_all(&data_dir).expect("创建测试数据目录");
     std::env::set_var("AIDEA_DATA_DIR", &data_dir);
     let store = MailStore::open().expect("创建邮件数据库");
+    assert!(store
+        .database_path()
+        .ends_with("app-data/mail-manager/app.db"));
 
     store
         .save_account(MailAccountRecord {
@@ -176,7 +179,7 @@ fn 账户保存手工垃圾箱目录供不支持特殊用途标记的服务使�
             tls_mode: "tls".into(),
             username: "test@example.com".into(),
             auth_kind: "password".into(),
-            keychain_id: "test-keychain-id".into(),
+            secret: "mail-secret".into(),
             webmail_url: "https://mail.example.com".into(),
             inbox_folder: "INBOX".into(),
             trash_folder: Some("已删除".into()),
@@ -192,6 +195,7 @@ fn 账户保存手工垃圾箱目录供不支持特殊用途标记的服务使�
         .account("account-folders")
         .expect("查询账户")
         .expect("账户存在");
+    assert_eq!(account.secret, "mail-secret");
     assert_eq!(account.inbox_folder, "INBOX");
     assert_eq!(account.trash_folder.as_deref(), Some("已删除"));
 }
@@ -214,7 +218,7 @@ fn 邮件详情读取已缓存正文并可更新本地已读状态() {
             tls_mode: "tls".into(),
             username: "test@example.com".into(),
             auth_kind: "password".into(),
-            keychain_id: "test-keychain-id".into(),
+            secret: "mail-secret".into(),
             webmail_url: "https://mail.example.com".into(),
             inbox_folder: "INBOX".into(),
             trash_folder: None,
@@ -288,7 +292,7 @@ fn 邮件列表可按账户文件夹和关键词筛选() {
                 tls_mode: "tls".into(),
                 username: format!("{account_id}@example.com"),
                 auth_kind: "password".into(),
-                keychain_id: account_id.into(),
+                secret: "mail-secret".into(),
                 webmail_url: "https://mail.example.com".into(),
                 inbox_folder: "INBOX".into(),
                 trash_folder: Some("Trash".into()),
@@ -376,7 +380,7 @@ fn 邮件列表按页返回最新邮件() {
             tls_mode: "tls".into(),
             username: "test@example.com".into(),
             auth_kind: "password".into(),
-            keychain_id: "test-keychain-id".into(),
+            secret: "mail-secret".into(),
             webmail_url: "https://mail.example.com".into(),
             inbox_folder: "INBOX".into(),
             trash_folder: None,

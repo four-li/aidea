@@ -1,5 +1,6 @@
 id: mail-manager
 name: 邮件管理
+description: 集中收取和管理多个邮箱账户的邮件
 version: 0.1.0
 category: 效率
 path: shell-frontend/src/builtin-apps/mail-manager

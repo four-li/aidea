@@ -4,6 +4,7 @@ use crate::manifest::{
     AppIssue, AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode,
 };
 use crate::plugin_market::{load_cached_official_plugins, load_official_plugins, OfficialPlugin};
+use crate::process::resolve_program;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
@@ -130,8 +131,9 @@ fn report_progress(
 }
 
 async fn run(program: &str, args: &[String], cwd: &Path, log: &mut File) -> AppResult<()> {
+    let resolved_program = resolve_program(program);
     writeln!(log, "$ {program} {}", args.join(" "))?;
-    let output = Command::new(program)
+    let output = Command::new(&resolved_program)
         .args(args)
         .current_dir(cwd)
         .stdout(Stdio::piped())
@@ -321,6 +323,7 @@ fn unavailable_app_manifest(record: &InstalledPlugin, error: AppError) -> AppMan
     AppManifest {
         id: record.id.clone(),
         name: record.id.clone(),
+        description: String::new(),
         version: record.version.clone(),
         category: "官方应用".into(),
         path: install_root(&record.id)
@@ -374,6 +377,7 @@ fn installed_app_manifest(definition: &OfficialPlugin, source: &Path) -> AppResu
     Ok(AppManifest {
         id: definition.id.clone(),
         name: definition.name.clone(),
+        description: definition.description.clone(),
         version: definition.version.clone(),
         category: definition.category.clone(),
         path: source.to_string_lossy().into_owned(),

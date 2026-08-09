@@ -12,6 +12,9 @@ const mockGetAppStates = vi.fn();
 const mockResetAppSettings = vi.fn();
 const mockSaveAppUserSettings = vi.fn();
 const mockStartApp = vi.fn();
+const mockStopApp = vi.fn();
+const mockUninstallOfficialPlugin = vi.fn();
+const mockGetDevToolsSettings = vi.fn();
 
 vi.mock('../../src/lib/ipc', () => ({
   ipc: {
@@ -21,6 +24,10 @@ vi.mock('../../src/lib/ipc', () => ({
     resetAppSettings: (...args: unknown[]) => mockResetAppSettings(...args),
     saveAppUserSettings: (...args: unknown[]) => mockSaveAppUserSettings(...args),
     startApp: (...args: unknown[]) => mockStartApp(...args),
+    stopApp: (...args: unknown[]) => mockStopApp(...args),
+    uninstallOfficialPlugin: (...args: unknown[]) => mockUninstallOfficialPlugin(...args),
+    getDevToolsSettings: (...args: unknown[]) => mockGetDevToolsSettings(...args),
+    saveDevToolsSettings: vi.fn(),
   },
 }));
 
@@ -33,12 +40,13 @@ describe('AppManagementPage', () => {
     mockResetAppSettings.mockResolvedValue(undefined);
     mockSaveAppUserSettings.mockResolvedValue(undefined);
     mockStartApp.mockResolvedValue(123);
+    mockStopApp.mockResolvedValue(undefined);
+    mockUninstallOfficialPlugin.mockResolvedValue(undefined);
+    mockGetDevToolsSettings.mockResolvedValue({ hidden_tabs: [] });
   });
 
   it('没有已安装应用时显示空状态', async () => {
-    render(
-      <AppManagementPage onAppsChanged={vi.fn()} onOpenMarket={vi.fn()} onShowLog={vi.fn()} />,
-    );
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText('暂无已安装应用')).toBeInTheDocument());
   });
@@ -48,6 +56,7 @@ describe('AppManagementPage', () => {
       {
         id: 'with-settings',
         name: '有设置',
+        description: '用于测试简介展示',
         version: '1.0.0',
         category: 'test',
         path: '',
@@ -66,13 +75,12 @@ describe('AppManagementPage', () => {
       },
     ]);
 
-    render(
-      <AppManagementPage onAppsChanged={vi.fn()} onOpenMarket={vi.fn()} onShowLog={vi.fn()} />,
-    );
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
     await screen.findByText('有设置');
     expect(screen.getByRole('button', { name: '有设置 设置' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '无设置 设置' })).toBeInTheDocument();
+    expect(screen.getByText('用于测试简介展示')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重置设置' })).not.toBeInTheDocument();
   });
 
@@ -92,14 +100,12 @@ describe('AppManagementPage', () => {
     ]);
     mockGetAppStates.mockResolvedValue([{ id: 'official-mail', status: 'running', pid: 123 }]);
 
-    render(
-      <AppManagementPage onAppsChanged={vi.fn()} onOpenMarket={vi.fn()} onShowLog={vi.fn()} />,
-    );
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '邮件管理 设置' }));
 
     expect(await screen.findByText('邮件管理设置')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: '邮件管理 随 aIdea 启动' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '邮件管理 随开搞启动' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重置' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '返回应用管理' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '邮件管理 日志' })).not.toBeInTheDocument();
@@ -137,13 +143,91 @@ describe('AppManagementPage', () => {
       .mockResolvedValueOnce([{ id: 'official-mail', status: 'stopped', pid: null }])
       .mockResolvedValue([{ id: 'official-mail', status: 'running', pid: 123 }]);
 
-    render(
-      <AppManagementPage onAppsChanged={vi.fn()} onOpenMarket={vi.fn()} onShowLog={vi.fn()} />,
-    );
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '邮件管理 设置' }));
 
     await waitFor(() => expect(mockStartApp).toHaveBeenCalledWith('official-mail'));
     expect(await screen.findByText('邮件管理设置')).toBeInTheDocument();
+  });
+
+  it('内置应用设置页通过显式注册表打开', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'dev-tools',
+        name: 'DevTools',
+        version: '1.0.0',
+        category: '开发',
+        path: '',
+        status: 'active',
+        ui: { mode: 'builtin' },
+      },
+    ]);
+
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'DevTools 设置' }));
+
+    await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
+    expect(screen.getByRole('checkbox', { name: '数据格式化' })).toBeChecked();
+  });
+
+  it('官方应用的进程和卸载操作收进更多菜单', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        version: '1.0.0',
+        category: 'test',
+        path: '/tmp/mail',
+        status: 'active',
+        ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
+        process: { start: 'mail', stop: 'SIGTERM', autostart: false },
+      },
+    ]);
+
+    const onShowLog = vi.fn();
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={onShowLog} />);
+
+    expect(screen.queryByText('添加应用')).not.toBeInTheDocument();
+    await screen.findByText('邮件管理');
+    expect(screen.getByRole('button', { name: '邮件管理 更多操作' })).toBeInTheDocument();
+  });
+
+  it('按外部顺序显示应用并提供拖拽手柄', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'first',
+        name: '第一个',
+        version: '1.0.0',
+        category: 'test',
+        path: '',
+        status: 'active',
+        ui: { mode: 'builtin' },
+      },
+      {
+        id: 'second',
+        name: '第二个',
+        version: '1.0.0',
+        category: 'test',
+        path: '',
+        status: 'active',
+        ui: { mode: 'builtin' },
+      },
+    ]);
+
+    render(
+      <AppManagementPage
+        onAppsChanged={vi.fn()}
+        onShowLog={vi.fn()}
+        appOrder={['second', 'first']}
+        onReorder={vi.fn()}
+      />,
+    );
+
+    await screen.findByText('第二个');
+    const names = screen.getAllByText(/第一个|第二个/).map((element) => element.textContent);
+    expect(names).toEqual(['第二个', '第一个']);
+    expect(screen.getAllByRole('button', { name: '拖动调整应用顺序' })).toHaveLength(2);
   });
 });

@@ -93,13 +93,14 @@ pub async fn save_mail_account(request: SaveMailAccountRequest) -> AppResult<Mai
     validate_account_request(&request)?;
     let id = request.id.unwrap_or_else(|| Uuid::new_v4().to_string());
     let store = MailStore::open()?;
-    if request.secret.is_empty() {
-        if store.account(&id)?.is_none() {
-            return Err(AppError::Config("新建邮件账户必须填写密码或授权码".into()));
-        }
+    let secret = if request.secret.is_empty() {
+        store
+            .account(&id)?
+            .map(|account| account.secret)
+            .ok_or_else(|| AppError::Config("新建邮件账户必须填写密码或授权码".into()))?
     } else {
-        crate::secret_store::save("mail-manager", &secret_key(&id), &request.secret)?;
-    }
+        request.secret
+    };
     let username = if request.username.trim().is_empty() {
         request.email.clone()
     } else {
@@ -115,7 +116,7 @@ pub async fn save_mail_account(request: SaveMailAccountRequest) -> AppResult<Mai
         tls_mode: request.tls_mode,
         username,
         auth_kind: request.auth_kind,
-        keychain_id: id,
+        secret,
         webmail_url: request.webmail_url,
         inbox_folder: request.inbox_folder,
         trash_folder: request
@@ -142,8 +143,7 @@ pub fn load_mail_account_secret(id: String) -> AppResult<String> {
     let account = MailStore::open()?
         .account(&id)?
         .ok_or_else(|| AppError::Mail("邮件账户不存在".into()))?;
-    crate::mac_auth::authenticate_local_user("查看已保存的邮件凭据")?;
-    crate::secret_store::load("mail-manager", &secret_key(&account.id))
+    Ok(account.secret)
 }
 
 #[tauri::command]
@@ -186,16 +186,8 @@ pub async fn list_mail_accounts() -> AppResult<Vec<MailAccount>> {
 #[tauri::command]
 pub async fn delete_mail_account(id: String) -> AppResult<()> {
     let store = MailStore::open()?;
-    let account = store.account(&id)?;
     store.delete_account(&id)?;
-    if let Some(account) = account {
-        crate::secret_store::delete("mail-manager", &secret_key(&account.id))?;
-    }
     Ok(())
-}
-
-fn secret_key(account_id: &str) -> String {
-    format!("account:{account_id}")
 }
 
 #[tauri::command]

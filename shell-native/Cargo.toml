@@ -27,11 +27,6 @@ tauri-plugin-updater = "2"
 # local-ip-address 用于枚举本机所有网络接口的 IP
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 local-ip-address = "0.6"
-core-foundation = "0.10"
-objc2-local-authentication = "0.3"
-block2 = "0.6"
-objc2 = "0.6"
-objc2-foundation = "0.3"
 sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
@@ -40,5 +35,3 @@ ammonia = "4"
 chrono = "0.4"
 imap = "2.4"
 native-tls = "0.2"
-aes-gcm = "0.10"
-rand_core = { version = "0.6", features = ["getrandom"] }

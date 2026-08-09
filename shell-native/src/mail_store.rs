@@ -1,4 +1,4 @@
-use crate::config::ensure_data_dirs;
+use crate::config::app_data_dir;
 use crate::error::AppResult;
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -74,7 +74,7 @@ pub struct MailAccountRecord {
     pub tls_mode: String,
     pub username: String,
     pub auth_kind: String,
-    pub keychain_id: String,
+    pub secret: String,
     pub webmail_url: String,
     pub inbox_folder: String,
     pub trash_folder: Option<String>,
@@ -142,7 +142,9 @@ pub struct MailStore {
 
 impl MailStore {
     pub fn open() -> AppResult<Self> {
-        let database_path = ensure_data_dirs()?.join("databases/mail-manager.db");
+        let app_dir = app_data_dir("mail-manager")?;
+        std::fs::create_dir_all(&app_dir)?;
+        let database_path = app_dir.join("app.db");
         let mut connection = Connection::open(&database_path)?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
@@ -225,10 +227,10 @@ impl MailStore {
         let connection = self.connection()?;
         let now = unix_seconds()?;
         connection.execute(
-            "INSERT INTO mail_accounts (id, display_name, email, provider, imap_host, imap_port, tls_mode, username, auth_kind, keychain_id, webmail_url, inbox_folder, trash_folder, spam_folder, deleted_folder, enabled, created_at, updated_at)
+            "INSERT INTO mail_accounts (id, display_name, email, provider, imap_host, imap_port, tls_mode, username, auth_kind, secret, webmail_url, inbox_folder, trash_folder, spam_folder, deleted_folder, enabled, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?17)
-             ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name, email = excluded.email, provider = excluded.provider, imap_host = excluded.imap_host, imap_port = excluded.imap_port, tls_mode = excluded.tls_mode, username = excluded.username, auth_kind = excluded.auth_kind, keychain_id = excluded.keychain_id, webmail_url = excluded.webmail_url, inbox_folder = excluded.inbox_folder, trash_folder = excluded.trash_folder, spam_folder = excluded.spam_folder, deleted_folder = excluded.deleted_folder, enabled = excluded.enabled, updated_at = excluded.updated_at",
-            rusqlite::params![account.id, account.display_name, account.email, account.provider, account.imap_host, account.imap_port, account.tls_mode, account.username, account.auth_kind, account.keychain_id, account.webmail_url, account.inbox_folder, account.trash_folder, account.spam_folder, account.deleted_folder, account.enabled as i64, now],
+             ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name, email = excluded.email, provider = excluded.provider, imap_host = excluded.imap_host, imap_port = excluded.imap_port, tls_mode = excluded.tls_mode, username = excluded.username, auth_kind = excluded.auth_kind, secret = excluded.secret, webmail_url = excluded.webmail_url, inbox_folder = excluded.inbox_folder, trash_folder = excluded.trash_folder, spam_folder = excluded.spam_folder, deleted_folder = excluded.deleted_folder, enabled = excluded.enabled, updated_at = excluded.updated_at",
+            rusqlite::params![account.id, account.display_name, account.email, account.provider, account.imap_host, account.imap_port, account.tls_mode, account.username, account.auth_kind, account.secret, account.webmail_url, account.inbox_folder, account.trash_folder, account.spam_folder, account.deleted_folder, account.enabled as i64, now],
         )?;
         Ok(())
     }
@@ -237,7 +239,7 @@ impl MailStore {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             "SELECT id, display_name, email, provider, imap_host, imap_port, tls_mode, username,
-                    auth_kind, keychain_id, webmail_url, inbox_folder, trash_folder, spam_folder, deleted_folder, enabled, last_sync_at, last_error
+                    auth_kind, secret, webmail_url, inbox_folder, trash_folder, spam_folder, deleted_folder, enabled, last_sync_at, last_error
              FROM mail_accounts
              ORDER BY created_at ASC",
         )?;
@@ -302,7 +304,7 @@ impl MailStore {
         Ok(connection
             .query_row(
                 "SELECT id, display_name, email, provider, imap_host, imap_port, tls_mode, username,
-                        auth_kind, keychain_id, webmail_url, inbox_folder, trash_folder, spam_folder, deleted_folder, enabled, last_sync_at, last_error
+                        auth_kind, secret, webmail_url, inbox_folder, trash_folder, spam_folder, deleted_folder, enabled, last_sync_at, last_error
                  FROM mail_accounts WHERE id = ?1",
                 [id],
                 account_from_row,
@@ -536,7 +538,7 @@ fn account_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MailAccountReco
         tls_mode: row.get(6)?,
         username: row.get(7)?,
         auth_kind: row.get(8)?,
-        keychain_id: row.get(9)?,
+        secret: row.get(9)?,
         webmail_url: row.get(10)?,
         inbox_folder: row.get(11)?,
         trash_folder: row.get(12)?,

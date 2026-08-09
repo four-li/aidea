@@ -33,16 +33,22 @@ function loadTheme(): ThemeMode {
 
 export function useTheme() {
   const [mode, setMode] = useState<ThemeMode>(loadTheme);
+  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(getSystemTheme);
 
   // 初始化 + 跟随系统变化
   useEffect(() => {
-    applyTheme(mode);
-    if (mode !== 'system') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => applyTheme('system');
+    const handler = () => setSystemTheme(mq.matches ? 'dark' : 'light');
+    setSystemTheme(mq.matches ? 'dark' : 'light');
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
-  }, [mode]);
+  }, []);
+
+  const resolvedTheme = mode === 'system' ? systemTheme : mode;
+
+  useEffect(() => {
+    applyTheme(resolvedTheme);
+  }, [resolvedTheme]);
 
   const setTheme = useCallback((newMode: ThemeMode) => {
     setMode(newMode);
@@ -53,5 +59,5 @@ export function useTheme() {
     }
   }, []);
 
-  return { mode, setTheme };
+  return { mode, resolvedTheme, setTheme };
 }

@@ -26,6 +26,14 @@ pub fn get_aidea_version() -> String {
 }
 
 #[tauri::command]
+pub fn get_os_username() -> AppResult<String> {
+    std::env::var("USER")
+        .ok()
+        .filter(|username| !username.trim().is_empty())
+        .ok_or_else(|| AppError::Config("无法读取 macOS 短用户名".into()))
+}
+
+#[tauri::command]
 pub async fn check_aidea_update(app: tauri::AppHandle) -> AppResult<Option<AideaUpdate>> {
     let update = app
         .updater()
@@ -238,8 +246,6 @@ pub async fn save_app_user_settings(id: String, settings: AppUserSettings) -> Ap
 pub async fn reset_app_settings(id: String, manager: State<'_, ProcessManager>) -> AppResult<()> {
     let manifest = find_manifest(&id)?;
     let command = reset_command_for(&manifest)?;
-    crate::mac_auth::authenticate_local_user("重置应用设置")?;
-
     if manifest.ui.mode == crate::manifest::UiMode::Builtin {
         return match id.as_str() {
             "dev-tools" => crate::commands::dev_tools::reset_dev_tools_settings(),
@@ -278,14 +284,21 @@ fn is_empty_override(o: &AppOverride) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        current_aidea_version, reset_command_for, run_reset_command, should_restart_after_reset,
+        current_aidea_version, get_os_username, reset_command_for, run_reset_command,
+        should_restart_after_reset,
     };
     use crate::manifest::{AppManifest, AppStatus, SettingsConfig, UiConfig, UiMode};
+
+    #[test]
+    fn 读取当前用户短用户名() {
+        assert!(!get_os_username().expect("测试环境应提供 USER").is_empty());
+    }
 
     fn manifest(settings: Option<SettingsConfig>) -> AppManifest {
         AppManifest {
             id: "demo".into(),
             name: "Demo".into(),
+            description: String::new(),
             version: "1.0.0".into(),
             category: "test".into(),
             path: String::new(),

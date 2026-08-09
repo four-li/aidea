@@ -2,14 +2,25 @@
 
 本文件是 aIdea 仓库的入口规则。详细契约统一放在 `docs/guide/`；开发前按任务路由读取对应文档，不把专项规则复制到本文件或 Skill 中。
 
+## 产品背景
+
+aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向陌生开发者的通用插件平台。内置应用和官方应用都由我们自己开发、发布和维护，设计优先级是简单、稳定、容易排查问题，不为尚未存在的第三方扩展场景增加复杂边界。应用自有数据库标准已经确定并落地。
+
+- **内置应用**：代码在本仓库内，随 aIdea 一起发布；前端位于壳的 WebView 中，通过 `shell-frontend/src/lib/ipc.ts` 调用自己的 Rust 业务代码。
+- **官方应用**：独立仓库、独立进程，由 aIdea 安装、启动和展示；应用通过 `AIDEA_APP_DATA_DIR` 和 `AIDEA_APP_LOG_DIR` 管理自己的数据与日志。
+- 两类应用统一使用自己的 `app-data/<app-id>/app.db`，包括普通配置、业务数据和凭据；应用不读 aIdea 或其他应用的数据库，凭据不写日志。
+- aIdea 只管理应用生命周期、显示/启动偏好、安装运行环境、设置入口和日志；不解析应用业务配置，也不提供共享凭据服务。
+- 当前邮件管理是内置应用，后续会迁移为独立官方应用；迁移后使用同一套应用数据和设置页约定，不复用当前内置邮件的 IPC 或 Rust 内部实现。
+- 旧的 `databases/mail-manager.db`、独立凭据存储和 DevTools JSON 不再是兼容目标；新代码不得读取或写入这些路径。
+
 ## 核心边界
 
-- 当前只开发内置应用和官方应用，不实现第三方市场、自定义安装、自动发现、插件 SDK 或多作者权限系统。
+- 当前只开发内置应用和官方应用，不实现第三方市场、自定义安装、自动发现或多作者权限系统。
 - aIdea 壳管理应用安装、更新、卸载、启动、停止、健康检查、WebView、日志和运行状态；应用管理自己的业务代码、数据、迁移、网络请求和 UI。
 - 内置应用使用 aIdea 内部 Tauri IPC，并统一通过 `shell-frontend/src/lib/ipc.ts` 调用。官方应用不得依赖 Tauri IPC、壳前端封装或 Rust 命令名。
-- 官方应用当前只能使用 aIdea 注入的三个环境变量。`AIDEA_COMMAND`、`aidea secret` 和 `aidea notify` 尚未实现，不能写入应用运行前提；实现后再更新对应文档和 Skill。
+- 官方应用只使用 aIdea 注入的应用 ID、数据目录和日志目录环境变量；不依赖未定义的平台命令或 aIdea 内部数据库。
 - 所有 UI、内置应用和官方应用都必须检查浅色与深色主题；邮件正文、Markdown、富文本和第三方 HTML 内容区也必须可读。
-- 业务数据默认保存在应用自己的 `app-data/<app-id>/`，卸载默认保留；敏感值不得写入普通配置、业务 SQLite 或日志。
+- 应用数据和配置保存在自己的 `app-data/<app-id>/app.db`，卸载默认保留；敏感值可以保存在应用自己的数据库，但不得写入日志。
 
 ## 开发前文档路由
 
@@ -19,7 +30,7 @@
 | 新增或修改内置应用、manifest、Tauri IPC | [docs/guide/aidea-builtin-app.md](docs/guide/aidea-builtin-app.md)、[docs/guide/aidea-ui.md](docs/guide/aidea-ui.md) |
 | 开发独立官方应用、`aidea.yaml`、市场接入、安装更新 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-platform.md](docs/guide/aidea-platform.md) |
 | 修改 SQLite、缓存、迁移、备份或敏感值 | [docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |
-| 修改官方应用的平台环境或命令接口 | [docs/guide/aidea-platform-cli.md](docs/guide/aidea-platform-cli.md) |
+| 修改官方应用运行环境、应用数据或设置页 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |
 | 修改页面视觉、组件、交互或无障碍 | [docs/guide/aidea-ui.md](docs/guide/aidea-ui.md) |
 | 发布 aIdea、改版本、构建 DMG、推送 tag | 使用 `$aidea-release` Skill；它只负责 aIdea 发布流程 |
 

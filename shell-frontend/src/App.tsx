@@ -17,7 +17,7 @@ function App() {
   const { apps, loading, error, refresh: refreshApps } = useApps();
   const { activeAppId, selectApp } = useActiveApp();
   const { states, refresh } = useProcessStatus(apps.length > 0);
-  const { mode: themeMode, setTheme } = useTheme();
+  const { mode: themeMode, resolvedTheme, setTheme } = useTheme();
 
   // apps 加载完成后，自动选中第一个（仅当还没选中时）
   useEffect(() => {
@@ -43,6 +43,14 @@ function App() {
     return () => unlisten?.();
   }, []);
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen('aidea:open-settings', () => setShowSettings(true)).then((dispose) => {
+      unlisten = dispose;
+    });
+    return () => unlisten?.();
+  }, []);
+
   // 子应用排序：apps 加载完后同步一次，之后只响应拖拽
   const [appOrder, setAppOrder] = useState<string[]>([]);
 
@@ -53,8 +61,8 @@ function App() {
       const saved = localStorage.getItem(APP_ORDER_STORAGE_KEY);
       if (saved) {
         const savedOrder = JSON.parse(saved) as string[];
-        // 用保存的顺序，过滤掉已不存在的 app，补上新 app
-        const existing = savedOrder.filter((id) => apps.some((a) => a.id === id));
+        // 保留隐藏应用的顺序，顶部渲染时只会显示当前可见应用
+        const existing = savedOrder;
         const missing = apps.filter((a) => !existing.includes(a.id)).map((a) => a.id);
         setAppOrder([...existing, ...missing]);
         return;
@@ -76,7 +84,7 @@ function App() {
 
   const activeApp = useMemo(
     () => apps.find((a) => a.id === activeAppId) || null,
-    [apps, activeAppId]
+    [apps, activeAppId],
   );
 
   if (loading) {
@@ -100,7 +108,6 @@ function App() {
       <TopBar
         apps={apps}
         appOrder={appOrder}
-        onReorder={setAppOrder}
         activeAppId={activeAppId}
         states={states}
         onSelectApp={selectApp}
@@ -109,7 +116,7 @@ function App() {
         onOpenSettings={() => setShowSettings(true)}
       />
       <div className="flex-1 overflow-hidden">
-        <ContentArea apps={apps} activeApp={activeApp} states={states} />
+        <ContentArea apps={apps} activeApp={activeApp} states={states} theme={resolvedTheme} />
       </div>
       <LogPanel app={logApp} onClose={() => setLogApp(null)} />
       <SettingsPanel
@@ -118,9 +125,12 @@ function App() {
         open={showSettings}
         onOpenChange={setShowSettings}
         onAppsChanged={refreshApps}
+        appOrder={appOrder}
+        onReorder={setAppOrder}
         onShowLog={setLogApp}
         category={settingsCategory}
         checkUpdate={checkUpdate}
+        theme={resolvedTheme}
       />
       <Toaster />
     </div>

@@ -1,15 +1,49 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Plus, Play, RotateCcw, Settings, Square, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Ellipsis,
+  GripVertical,
+  Play,
+  RotateCcw,
+  Settings,
+  Square,
+  Trash2,
+} from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
+import type { ThemeMode } from '../hooks/useTheme';
 import { ipc } from '../lib/ipc';
 import type { AppManifest, AppState, AppUserSettings } from '../types/manifest';
-import { DevToolsSettingsPage } from '../builtin-apps/dev-tools/DevToolsSettingsPage';
+import { BUILTIN_SETTINGS_PAGES } from '../builtin-apps/settings';
 import { AppIcon } from './AppIcon';
 import { WebviewFrame } from './WebviewFrame';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -21,8 +55,10 @@ import {
 
 interface Props {
   onAppsChanged: () => void;
-  onOpenMarket: () => void;
   onShowLog: (app: AppManifest) => void;
+  appOrder?: string[];
+  onReorder?: (newOrder: string[]) => void;
+  theme?: Exclude<ThemeMode, 'system'>;
 }
 
 const defaultSettings: AppUserSettings = { visible: true, startup_mode: 'manual' };
@@ -38,7 +74,7 @@ function actionLabel(action: 'start' | 'stop' | 'restart' | 'hide' | 'show' | 'u
   }[action];
 }
 
-export function AppManagementPage({ onAppsChanged, onOpenMarket, onShowLog }: Props) {
+export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorder, theme }: Props) {
   const [apps, setApps] = useState<AppManifest[]>([]);
   const [settings, setSettings] = useState<Record<string, AppUserSettings>>({});
   const [states, setStates] = useState<Record<string, AppState>>({});
@@ -136,6 +172,24 @@ export function AppManagementPage({ onAppsChanged, onOpenMarket, onShowLog }: Pr
   };
 
   const detailApp = apps.find((app) => app.id === detailId) ?? null;
+  const orderedIds = [
+    ...(appOrder?.length ? appOrder : []),
+    ...apps.map((app) => app.id).filter((id) => !appOrder?.includes(id)),
+  ];
+  const orderedApps = orderedIds
+    .map((id) => apps.find((app) => app.id === id))
+    .filter((app): app is AppManifest => app !== undefined);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id || !onReorder) return;
+    const oldIndex = orderedIds.indexOf(String(active.id));
+    const newIndex = orderedIds.indexOf(String(over.id));
+    if (oldIndex >= 0 && newIndex >= 0) onReorder(arrayMove(orderedIds, oldIndex, newIndex));
+  };
 
   if (detailApp) {
     const appSettings = settings[detailApp.id] ?? defaultSettings;
@@ -148,6 +202,7 @@ export function AppManagementPage({ onAppsChanged, onOpenMarket, onShowLog }: Pr
         onBack={() => setDetailId(null)}
         onSaveSettings={(next) => void saveSettings(detailApp, next)}
         onResetSettings={() => void resetSettings(detailApp)}
+        theme={theme}
       />
     );
   }
@@ -155,114 +210,134 @@ export function AppManagementPage({ onAppsChanged, onOpenMarket, onShowLog }: Pr
   return (
     <TooltipProvider delayDuration={400}>
       <div className="flex h-full flex-col">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4">
           <p className="text-sm text-muted-foreground">已安装应用</p>
-          <Button size="sm" onClick={onOpenMarket}>
-            <Plus size={16} />
-            添加应用
-          </Button>
         </div>
 
-        <div className="min-h-0 divide-y divide-border border-y border-border">
+        <div className="min-h-0 flex-1 overflow-auto">
           {apps.length === 0 && (
             <div className="py-12 text-center text-sm text-muted-foreground">暂无已安装应用</div>
           )}
-          {apps.map((app) => {
-            const builtin = app.ui.mode === 'builtin';
-            const appSettings = settings[app.id] ?? defaultSettings;
-            const running = states[app.id]?.status === 'running';
-            const issue = app.issue ?? states[app.id]?.issue;
-            const pending = pendingId === app.id;
-            return (
-              <div key={app.id} className="flex min-h-20 items-center gap-4 py-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
-                  <AppIcon app={app} state={states[app.id]} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">{app.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {builtin ? '内置应用' : '官方应用'}
-                    </span>
-                    {issue && <Badge variant="outline">异常</Badge>}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    v{app.version}
-                    {!builtin && ` · ${running ? '运行中' : '已停止'}`}
-                    {!appSettings.visible && ' · 已隐藏'}
-                  </div>
-                  {issue && (
-                    <div className="mt-1 text-xs text-muted-foreground">{issue.message}</div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <ActionButton
-                    label={`${app.name} 设置`}
-                    disabled={pending}
-                    onClick={() => void openSettings(app)}
-                  >
-                    <Settings size={16} />
-                  </ActionButton>
-                  {!builtin && !running && !issue && (
-                    <ActionButton
-                      label={actionLabel('start')}
-                      disabled={pending}
-                      onClick={() => void controlProcess(app, 'start')}
-                    >
-                      <Play size={16} />
-                    </ActionButton>
-                  )}
-                  {!builtin && running && !issue && (
-                    <>
-                      <ActionButton
-                        label={actionLabel('stop')}
-                        disabled={pending}
-                        onClick={() => void controlProcess(app, 'stop')}
-                      >
-                        <Square size={16} />
-                      </ActionButton>
-                      <ActionButton
-                        label={actionLabel('restart')}
-                        disabled={pending}
-                        onClick={() => void controlProcess(app, 'restart')}
-                      >
-                        <RotateCcw size={16} />
-                      </ActionButton>
-                    </>
-                  )}
-                  {!builtin && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => onShowLog(app)}
-                    >
-                      日志
-                    </Button>
-                  )}
-                  <span className="text-xs text-muted-foreground">显示</span>
-                  <Switch
-                    aria-label={`${app.name} 显示`}
-                    checked={appSettings.visible}
-                    disabled={pending}
-                    onCheckedChange={(checked) =>
-                      void saveSettings(app, { ...appSettings, visible: checked })
-                    }
-                  />
-                  {!builtin && (
-                    <ActionButton
-                      label={actionLabel('uninstall')}
-                      disabled={pending}
-                      onClick={() => void uninstall(app)}
-                    >
-                      <Trash2 size={16} />
-                    </ActionButton>
-                  )}
-                </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {orderedApps.map((app) => {
+                  const builtin = app.ui.mode === 'builtin';
+                  const appSettings = settings[app.id] ?? defaultSettings;
+                  const running = states[app.id]?.status === 'running';
+                  const issue = app.issue ?? states[app.id]?.issue;
+                  const pending = pendingId === app.id;
+                  return (
+                    <SortableAppCard key={app.id} appId={app.id}>
+                      <div className="flex min-h-36 flex-col gap-4 rounded-lg border border-border bg-card p-4 pl-10">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+                            <AppIcon app={app} state={states[app.id]} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium">{app.name}</span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {builtin ? '内置应用' : '官方应用'}
+                              </span>
+                              {issue && <Badge variant="outline">异常</Badge>}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              v{app.version}
+                              {!builtin && ` · ${running ? '运行中' : '已停止'}`}
+                              {!appSettings.visible && ' · 已隐藏'}
+                            </div>
+                            {app.description && (
+                              <div className="mt-2 truncate text-xs text-muted-foreground">
+                                {app.description}
+                              </div>
+                            )}
+                            {issue && (
+                              <div className="mt-1 truncate text-xs text-muted-foreground">
+                                {issue.message}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <ActionButton
+                              label={`${app.name} 设置`}
+                              disabled={pending}
+                              onClick={() => void openSettings(app)}
+                            >
+                              <Settings size={16} />
+                            </ActionButton>
+                            <Switch
+                              aria-label={`${app.name} 显示`}
+                              checked={appSettings.visible}
+                              disabled={pending}
+                              onCheckedChange={(checked) =>
+                                void saveSettings(app, { ...appSettings, visible: checked })
+                              }
+                            />
+                            {!builtin && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label={`${app.name} 更多操作`}
+                                    disabled={pending}
+                                  >
+                                    <Ellipsis size={16} />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {!running && !issue && (
+                                    <DropdownMenuItem
+                                      onSelect={() => void controlProcess(app, 'start')}
+                                    >
+                                      <Play size={16} />
+                                      启动
+                                    </DropdownMenuItem>
+                                  )}
+                                  {running && !issue && (
+                                    <>
+                                      <DropdownMenuItem
+                                        onSelect={() => void controlProcess(app, 'stop')}
+                                      >
+                                        <Square size={16} />
+                                        停止
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onSelect={() => void controlProcess(app, 'restart')}
+                                      >
+                                        <RotateCcw size={16} />
+                                        重启
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  <DropdownMenuItem onSelect={() => onShowLog(app)}>
+                                    日志
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onSelect={() => void uninstall(app)}
+                                  >
+                                    <Trash2 size={16} />
+                                    卸载
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </SortableAppCard>
+                  );
+                })}
               </div>
-            );
-          })}
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
     </TooltipProvider>
@@ -277,6 +352,7 @@ function AppSettingsDetail({
   onBack,
   onSaveSettings,
   onResetSettings,
+  theme,
 }: {
   app: AppManifest;
   state?: AppState;
@@ -285,8 +361,10 @@ function AppSettingsDetail({
   onBack: () => void;
   onSaveSettings: (settings: AppUserSettings) => void;
   onResetSettings: () => void;
+  theme?: Exclude<ThemeMode, 'system'>;
 }) {
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const BuiltinSettingsPage = BUILTIN_SETTINGS_PAGES[app.id];
 
   return (
     <>
@@ -305,13 +383,11 @@ function AppSettingsDetail({
           {app.process && (
             <div className="mb-6 flex items-center justify-between border-y border-border py-4">
               <div>
-                <div className="text-sm font-medium">随 aIdea 启动</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  启动 aIdea 时自动启动此应用
-                </div>
+                <div className="text-sm font-medium">随开搞启动</div>
+                <div className="mt-1 text-xs text-muted-foreground">启动开搞时自动启动此应用</div>
               </div>
               <Switch
-                aria-label={`${app.name} 随 aIdea 启动`}
+                aria-label={`${app.name} 随开搞启动`}
                 checked={appSettings.startup_mode === 'with-aidea'}
                 disabled={pending}
                 onCheckedChange={(checked) =>
@@ -326,9 +402,9 @@ function AppSettingsDetail({
 
           <div className="min-h-[360px] overflow-hidden border border-border bg-background">
             {app.ui.mode === 'webview' ? (
-              <WebviewFrame app={app} state={state} path="/settings" />
-            ) : app.id === 'dev-tools' ? (
-              <DevToolsSettingsPage embedded onClose={onBack} />
+              <WebviewFrame app={app} state={state} path="/settings" theme={theme} />
+            ) : BuiltinSettingsPage ? (
+              <BuiltinSettingsPage embedded onClose={onBack} />
             ) : (
               <div className="flex h-full min-h-[360px] items-center justify-center p-6">
                 <p className="text-sm text-muted-foreground">该应用暂无可配置项</p>
@@ -345,7 +421,7 @@ function AppSettingsDetail({
               >
                 重置
               </Button>
-              <p className="mt-2 text-xs text-muted-foreground">需要通过 Touch ID 确认</p>
+              <p className="mt-2 text-xs text-muted-foreground">只重置应用配置，不删除业务数据</p>
             </div>
           )}
         </div>
@@ -408,5 +484,41 @@ function ActionButton({
       </TooltipTrigger>
       <TooltipContent>{tooltip ?? label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function SortableAppCard({ appId, children }: { appId: string; children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: appId });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      className="relative"
+      {...attributes}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        className="absolute left-2 top-4 z-10 flex h-8 w-8 cursor-grab items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        aria-label="拖动调整应用顺序"
+        {...listeners}
+      >
+        <GripVertical size={16} />
+      </button>
+      {children}
+    </div>
   );
 }

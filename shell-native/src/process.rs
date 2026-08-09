@@ -565,7 +565,7 @@ fn process_working_directory_matches(pid: u32, expected: &str) -> bool {
 }
 
 /// GUI 启动时通常不会加载 shell 配置，补查用户本地 bin 目录。
-fn resolve_program(program: &str) -> PathBuf {
+pub(crate) fn resolve_program(program: &str) -> PathBuf {
     if program.contains('/') {
         return PathBuf::from(program);
     }
@@ -579,7 +579,16 @@ fn resolve_program(program: &str) -> PathBuf {
     }
 
     if let Some(home) = dirs::home_dir() {
-        let candidate = home.join(".local/bin").join(program);
+        for directory in [".local/bin", ".npm-global/bin", ".bun/bin"] {
+            let candidate = home.join(directory).join(program);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+
+    for directory in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let candidate = Path::new(directory).join(program);
         if candidate.is_file() {
             return candidate;
         }
@@ -720,9 +729,14 @@ pub async fn start_configured_official_apps(manager: &ProcessManager) {
 #[cfg(test)]
 mod tests {
     use super::{
-        command_matches, ensure_ready_port_available, read_runtime_record_at,
+        command_matches, ensure_ready_port_available, read_runtime_record_at, resolve_program,
         write_runtime_record_at, ProcessManager, RuntimeRecord,
     };
+
+    #[test]
+    fn 解析系统程序路径() {
+        assert!(resolve_program("git").is_file());
+    }
 
     #[tokio::test]
     async fn 没有子进程时停止全部不会失败() {

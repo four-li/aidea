@@ -84,7 +84,7 @@ export function AccountDialog({ open, account, onOpenChange, onSaved }: Props) {
       set('secret', secret);
       setShowSecret(true);
     } catch (error) {
-      toast.error('需要重新保存凭据', { description: String(error) });
+      toast.error('读取已保存密码失败', { description: String(error) });
     } finally {
       setLoadingSecret(false);
     }
@@ -149,10 +149,10 @@ export function AccountDialog({ open, account, onOpenChange, onSaved }: Props) {
           <DialogTitle>{account ? '编辑邮箱账户' : '添加邮箱账户'}</DialogTitle>
           <DialogDescription>
             {loadingSecret
-              ? '正在通过 macOS 身份验证读取凭据…'
+              ? '正在读取已保存的密码或授权码…'
               : account
-                ? '升级前已添加的账户，请重新输入并保存密码或授权码后再同步。'
-                : '密码或授权码会加密保存在本机；点击眼睛查看已保存内容时需要本机认证。'}
+                ? '留空密码或授权码可以保留当前已保存的值。'
+                : '密码或授权码会保存在邮件应用自己的数据库中。'}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -203,7 +203,7 @@ export function AccountDialog({ open, account, onOpenChange, onSaved }: Props) {
             </Select>
             <p className="mt-1 text-xs text-muted-foreground">
               {form.auth_kind === 'app-password'
-                ? '填为 aIdea 单独生成的客户端授权码；撤销它不会影响网页登录密码。'
+                ? '填为开搞单独生成的客户端授权码；撤销它不会影响网页登录密码。'
                 : '仅在企业邮箱未提供授权码时使用；改网页登录密码后需要在这里重新保存。'}
             </p>
           </div>
@@ -230,9 +230,7 @@ export function AccountDialog({ open, account, onOpenChange, onSaved }: Props) {
                       <>{showSecret ? <EyeOff size={16} /> : <Eye size={16} />}</>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    {showSecret ? '隐藏密码' : '显示密码（需要本机认证）'}
-                  </TooltipContent>
+                  <TooltipContent>{showSecret ? '隐藏密码' : '显示密码'}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>

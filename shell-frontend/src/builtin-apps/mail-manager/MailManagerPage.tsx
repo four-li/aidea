@@ -1,18 +1,66 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { ArchiveX, ExternalLink, Inbox, Loader2, Mail, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import {
+  ArchiveX,
+  ExternalLink,
+  Inbox,
+  Loader2,
+  Mail,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { Input } from '@/components/ui/input';
+import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { ipc } from '@/lib/ipc';
-import type { MailAccount, MailMessageDetail, MailMessageSummary, MailSyncTask } from '@/types/mail';
+import type {
+  MailAccount,
+  MailMessageDetail,
+  MailMessageSummary,
+  MailSyncTask,
+} from '@/types/mail';
 import { AccountDialog } from './AccountDialog';
 
 const MESSAGE_PAGE_SIZE = 30;
 const formatTime = (seconds: number) => new Date(seconds * 1000).toLocaleString();
 
+function mailBodyDocument(content: string, mode: ThemeMode): string {
+  const light = `--mail-background: #ffffff; --mail-foreground: #1f2937; --mail-link: #2563eb; --mail-border: #cbd5e1; --mail-code: #f1f5f9;`;
+  const dark = `--mail-background: #1f1f1f; --mail-foreground: #e5e7eb; --mail-link: #60a5fa; --mail-border: #4b5563; --mail-code: #2b2b2b;`;
+  const palette =
+    mode === 'dark'
+      ? dark
+      : mode === 'light'
+        ? light
+        : `${light} @media (prefers-color-scheme: dark) { :root { ${dark} } }`;
+  const styles = `
+    :root { ${palette} color-scheme: ${mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : 'light dark'}; }
+    html, body { margin: 0; min-height: 100%; }
+    body { box-sizing: border-box; padding: 16px; overflow-wrap: anywhere; background: var(--mail-background) !important; color: var(--mail-foreground) !important; font: 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body * { color: inherit !important; background-color: transparent !important; border-color: var(--mail-border) !important; }
+    a { color: var(--mail-link) !important; }
+    pre, code { background: var(--mail-code) !important; }
+    pre { overflow-x: auto; padding: 8px; }
+    blockquote { border-left: 3px solid var(--mail-border) !important; margin-left: 0; padding-left: 12px; }
+    table { border-collapse: collapse; max-width: 100%; }
+    td, th { border: 1px solid var(--mail-border) !important; padding: 4px 8px; }
+    img { max-width: 100%; height: auto; }
+  `;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${styles}</style></head><body>${content}</body></html>`;
+}
+
 export function MailManagerPage() {
+  const { mode: themeMode } = useTheme();
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [messages, setMessages] = useState<MailMessageSummary[]>([]);
   const [selected, setSelected] = useState<MailMessageDetail | null>(null);
@@ -40,7 +88,13 @@ export function MailManagerPage() {
     try {
       const [nextAccounts, page] = await Promise.all([
         ipc.listMailAccounts(),
-        ipc.listMailMessages({ account_id: accountId, folder_kind: folder, read_state: readState, search, limit: MESSAGE_PAGE_SIZE }),
+        ipc.listMailMessages({
+          account_id: accountId,
+          folder_kind: folder,
+          read_state: readState,
+          search,
+          limit: MESSAGE_PAGE_SIZE,
+        }),
       ]);
       setAccounts(nextAccounts);
       setMessages(page.items);
@@ -56,7 +110,10 @@ export function MailManagerPage() {
   useEffect(() => {
     void load();
     const unlisten = listen('mail-sync-completed', () => void load());
-    const unlistenProgress = listen('mail-sync-progress', () => void ipc.listMailSyncTasks().then(setSyncTasks));
+    const unlistenProgress = listen(
+      'mail-sync-progress',
+      () => void ipc.listMailSyncTasks().then(setSyncTasks),
+    );
     return () => {
       void unlisten.then((dispose) => dispose());
       void unlistenProgress.then((dispose) => dispose());
@@ -87,16 +144,28 @@ export function MailManagerPage() {
     setHistorySyncing(true);
     try {
       const days = Number(historyDays);
-      const since = historyDays === 'custom' && historyFrom ? Math.floor(new Date(`${historyFrom}T00:00:00`).getTime() / 1000) : Math.floor(Date.now() / 1000) - days * 86400;
-      const until = historyDays === 'custom' && historyUntil ? Math.floor(new Date(`${historyUntil}T23:59:59`).getTime() / 1000) : undefined;
-      if (historyDays === 'custom' && (!historyFrom || !historyUntil || since >= (until ?? since))) {
+      const since =
+        historyDays === 'custom' && historyFrom
+          ? Math.floor(new Date(`${historyFrom}T00:00:00`).getTime() / 1000)
+          : Math.floor(Date.now() / 1000) - days * 86400;
+      const until =
+        historyDays === 'custom' && historyUntil
+          ? Math.floor(new Date(`${historyUntil}T23:59:59`).getTime() / 1000)
+          : undefined;
+      if (
+        historyDays === 'custom' &&
+        (!historyFrom || !historyUntil || since >= (until ?? since))
+      ) {
         toast.error('历史范围无效', { description: '请选择有效的开始和结束日期' });
         return;
       }
       const result = await ipc.syncMailHistory({ since, until });
       await load();
       const failed = result.accounts.filter((account) => !account.synced);
-      if (failed.length) toast.error('历史邮件拉取未完全成功', { description: failed.map((account) => account.error).join('；') });
+      if (failed.length)
+        toast.error('历史邮件拉取未完全成功', {
+          description: failed.map((account) => account.error).join('；'),
+        });
       else toast.success('历史邮件拉取完成');
     } catch (error) {
       toast.error('历史邮件拉取失败', { description: String(error) });
@@ -140,7 +209,7 @@ export function MailManagerPage() {
       if (!detail.is_read) {
         await ipc.markMailRead(message.id);
         setMessages((current) =>
-          current.map((item) => (item.id === message.id ? { ...item, is_read: true } : item))
+          current.map((item) => (item.id === message.id ? { ...item, is_read: true } : item)),
         );
         setSelected({ ...detail, is_read: true });
       }
@@ -160,7 +229,8 @@ export function MailManagerPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setSyncPanelOpen((open) => !open)}>
-            <RefreshCw />同步状态
+            <RefreshCw />
+            同步状态
           </Button>
           <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? 'animate-spin' : ''} />
@@ -172,7 +242,81 @@ export function MailManagerPage() {
           </Button>
         </div>
       </header>
-      {syncPanelOpen && <div className="border-b border-border bg-muted/30 px-4 py-3 text-xs"><div className="mb-2 flex items-center justify-between"><span className="font-medium">同步记录</span><span className="text-muted-foreground">实时监听由后台保持</span></div><div className="mb-3 flex flex-wrap items-center gap-2"><label htmlFor="mail-history-days">历史范围</label><select id="mail-history-days" className="rounded border border-border bg-background px-2 py-1" value={historyDays} onChange={(event) => setHistoryDays(event.target.value)}><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="90">最近 90 天</option><option value="custom">自定义</option></select>{historyDays === 'custom' && <><Input aria-label="历史开始日期" type="date" value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} className="h-8 w-36" /><Input aria-label="历史结束日期" type="date" value={historyUntil} onChange={(event) => setHistoryUntil(event.target.value)} className="h-8 w-36" /></>}<Button size="sm" variant="outline" onClick={() => void syncHistory()} disabled={historySyncing}>{historySyncing ? '拉取中…' : '拉取历史'}</Button>{historySyncing && <Button size="sm" variant="outline" onClick={() => void ipc.cancelMailSync()}>取消</Button>}</div>{syncTasks.length === 0 ? <p className="text-muted-foreground">暂无同步记录</p> : syncTasks.slice(0, 8).map((task) => <div key={task.id} className="flex items-center gap-3 border-t border-border py-2"><span className="w-28 truncate">{accounts.find((account) => account.id === task.account_id)?.display_name ?? task.account_id}</span><span>{task.phase === 'completed' ? '已完成' : task.phase === 'error' ? '失败' : '同步中'}</span><span className="flex-1 text-muted-foreground">{task.error ?? `处理 ${task.processed}${task.total ? ` / ${task.total}` : ''}`}</span></div>)}</div>}
+      {syncPanelOpen && (
+        <div className="border-b border-border bg-muted/30 px-4 py-3 text-xs">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-medium">同步记录</span>
+            <span className="text-muted-foreground">实时监听由后台保持</span>
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <label htmlFor="mail-history-days">历史范围</label>
+            <select
+              id="mail-history-days"
+              className="rounded border border-border bg-background px-2 py-1"
+              value={historyDays}
+              onChange={(event) => setHistoryDays(event.target.value)}
+            >
+              <option value="7">最近 7 天</option>
+              <option value="30">最近 30 天</option>
+              <option value="90">最近 90 天</option>
+              <option value="custom">自定义</option>
+            </select>
+            {historyDays === 'custom' && (
+              <>
+                <Input
+                  aria-label="历史开始日期"
+                  type="date"
+                  value={historyFrom}
+                  onChange={(event) => setHistoryFrom(event.target.value)}
+                  className="h-8 w-36"
+                />
+                <Input
+                  aria-label="历史结束日期"
+                  type="date"
+                  value={historyUntil}
+                  onChange={(event) => setHistoryUntil(event.target.value)}
+                  className="h-8 w-36"
+                />
+              </>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void syncHistory()}
+              disabled={historySyncing}
+            >
+              {historySyncing ? '拉取中…' : '拉取历史'}
+            </Button>
+            {historySyncing && (
+              <Button size="sm" variant="outline" onClick={() => void ipc.cancelMailSync()}>
+                取消
+              </Button>
+            )}
+          </div>
+          {syncTasks.length === 0 ? (
+            <p className="text-muted-foreground">暂无同步记录</p>
+          ) : (
+            syncTasks.slice(0, 8).map((task) => (
+              <div key={task.id} className="flex items-center gap-3 border-t border-border py-2">
+                <span className="w-28 truncate">
+                  {accounts.find((account) => account.id === task.account_id)?.display_name ??
+                    task.account_id}
+                </span>
+                <span>
+                  {task.phase === 'completed'
+                    ? '已完成'
+                    : task.phase === 'error'
+                      ? '失败'
+                      : '同步中'}
+                </span>
+                <span className="flex-1 text-muted-foreground">
+                  {task.error ?? `处理 ${task.processed}${task.total ? ` / ${task.total}` : ''}`}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
       {accounts.length === 0 ? (
         <main className="flex flex-1 items-center justify-center">
           <div className="text-center">
@@ -190,21 +334,30 @@ export function MailManagerPage() {
             <p className="mb-2 text-xs text-muted-foreground">账户与文件夹</p>
             <button
               className={`flex w-full items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted ${folder === 'inbox' ? 'bg-muted' : ''}`}
-              onClick={() => { setAccountId(null); setFolder('inbox'); }}
+              onClick={() => {
+                setAccountId(null);
+                setFolder('inbox');
+              }}
             >
               <Inbox size={16} />
               收件箱
             </button>
             <button
               className={`flex w-full items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted ${folder === 'spam' ? 'bg-muted' : ''}`}
-              onClick={() => { setAccountId(null); setFolder('spam'); }}
+              onClick={() => {
+                setAccountId(null);
+                setFolder('spam');
+              }}
             >
               <Trash2 size={16} />
               垃圾箱
             </button>
             <button
               className={`mb-3 flex w-full items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted ${folder === 'deleted' ? 'bg-muted' : ''}`}
-              onClick={() => { setAccountId(null); setFolder('deleted'); }}
+              onClick={() => {
+                setAccountId(null);
+                setFolder('deleted');
+              }}
             >
               <ArchiveX size={16} />
               已删除
@@ -212,16 +365,42 @@ export function MailManagerPage() {
             {accounts.map((account) => (
               <ContextMenu key={account.id}>
                 <ContextMenuTrigger asChild>
-                  <div className={`mb-3 cursor-pointer rounded px-2 py-1 hover:bg-muted ${accountId === account.id ? 'bg-muted' : ''}`} onClick={() => setAccountId(account.id)}>
-                    <div className="flex items-center gap-2 truncate text-sm font-medium"><span className="inline-flex size-5 items-center justify-center rounded bg-primary text-xs text-primary-foreground">{account.provider === 'gmail' ? 'G' : account.provider.includes('aliyun') ? 'A' : account.provider.includes('qq') || account.provider.includes('tencent') ? 'Q' : 'M'}</span>{account.display_name}<span className="ml-auto text-xs text-muted-foreground">{account.unread_total || ''}</span></div>
-                    <div className="mb-1 truncate text-xs text-muted-foreground">{account.email}</div>
+                  <div
+                    className={`mb-3 cursor-pointer rounded px-2 py-1 hover:bg-muted ${accountId === account.id ? 'bg-muted' : ''}`}
+                    onClick={() => setAccountId(account.id)}
+                  >
+                    <div className="flex items-center gap-2 truncate text-sm font-medium">
+                      <span className="inline-flex size-5 items-center justify-center rounded bg-primary text-xs text-primary-foreground">
+                        {account.provider === 'gmail'
+                          ? 'G'
+                          : account.provider.includes('aliyun')
+                            ? 'A'
+                            : account.provider.includes('qq') ||
+                                account.provider.includes('tencent')
+                              ? 'Q'
+                              : 'M'}
+                      </span>
+                      {account.display_name}
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {account.unread_total || ''}
+                      </span>
+                    </div>
+                    <div className="mb-1 truncate text-xs text-muted-foreground">
+                      {account.email}
+                    </div>
                     {account.last_error && (
                       <p className="mt-1 text-xs text-destructive">{account.last_error}</p>
                     )}
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem className="px-2 py-1 text-xs" onSelect={() => { setEditingAccount(account); setDialogOpen(true); }}>
+                  <ContextMenuItem
+                    className="px-2 py-1 text-xs"
+                    onSelect={() => {
+                      setEditingAccount(account);
+                      setDialogOpen(true);
+                    }}
+                  >
                     <Pencil size={14} />
                     编辑账户
                   </ContextMenuItem>
@@ -246,7 +425,31 @@ export function MailManagerPage() {
                   已显示 {messages.length} / 共 {total} 封
                 </p>
               )}
-              {folder === 'inbox' && <div className="mt-3 flex gap-1"><Button variant={readState === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setReadState('all')}>全部</Button><Button variant={readState === 'read' ? 'default' : 'outline'} size="sm" onClick={() => setReadState('read')}>已读</Button><Button variant={readState === 'unread' ? 'default' : 'outline'} size="sm" onClick={() => setReadState('unread')}>未读</Button></div>}
+              {folder === 'inbox' && (
+                <div className="mt-3 flex gap-1">
+                  <Button
+                    variant={readState === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setReadState('all')}
+                  >
+                    全部
+                  </Button>
+                  <Button
+                    variant={readState === 'read' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setReadState('read')}
+                  >
+                    已读
+                  </Button>
+                  <Button
+                    variant={readState === 'unread' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setReadState('unread')}
+                  >
+                    未读
+                  </Button>
+                </div>
+              )}
             </div>
             {messages.length === 0 ? (
               <div className="flex h-[calc(100%-56px)] items-center justify-center text-sm text-muted-foreground">
@@ -268,10 +471,16 @@ export function MailManagerPage() {
                         {formatTime(message.received_at)}
                       </time>
                     </div>
-                    <p className={message.is_read ? 'truncate text-sm' : 'truncate text-sm font-semibold'}>
+                    <p
+                      className={
+                        message.is_read ? 'truncate text-sm' : 'truncate text-sm font-semibold'
+                      }
+                    >
                       {message.subject || '(无主题)'}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">{message.snippet ?? ''}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {message.snippet ?? ''}
+                    </p>
                   </button>
                 ))}
                 {hasMore && (
@@ -295,9 +504,56 @@ export function MailManagerPage() {
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <h1 className="text-lg font-semibold">{selected.subject || '(无主题)'}</h1>
                   <div className="flex shrink-0 gap-2">
-                    <Button variant="outline" size="sm" onClick={() => void ipc.openMailWebmail(selected.account_id)}><ExternalLink />网页邮箱</Button>
-                    {folder !== 'deleted' && <Button variant="outline" size="sm" onClick={() => void ipc.moveMailToDeleted(selected.id).then(() => { toast.success('邮件已移入已删除'); setSelected(null); void load(); }).catch((error) => toast.error('删除邮件失败', { description: String(error) }))}><ArchiveX />移入已删除</Button>}
-                    <Button variant="outline" size="sm" onClick={() => void ipc.markMailUnread(selected.id).then(() => { setSelected({ ...selected, is_read: false }); setMessages((current) => current.map((item) => item.id === selected.id ? { ...item, is_read: false } : item)); }).catch((error) => toast.error('标记未读失败', { description: String(error) }))}>标记未读</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void ipc.openMailWebmail(selected.account_id)}
+                    >
+                      <ExternalLink />
+                      网页邮箱
+                    </Button>
+                    {folder !== 'deleted' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          void ipc
+                            .moveMailToDeleted(selected.id)
+                            .then(() => {
+                              toast.success('邮件已移入已删除');
+                              setSelected(null);
+                              void load();
+                            })
+                            .catch((error) =>
+                              toast.error('删除邮件失败', { description: String(error) }),
+                            )
+                        }
+                      >
+                        <ArchiveX />
+                        移入已删除
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        void ipc
+                          .markMailUnread(selected.id)
+                          .then(() => {
+                            setSelected({ ...selected, is_read: false });
+                            setMessages((current) =>
+                              current.map((item) =>
+                                item.id === selected.id ? { ...item, is_read: false } : item,
+                              ),
+                            );
+                          })
+                          .catch((error) =>
+                            toast.error('标记未读失败', { description: String(error) }),
+                          )
+                      }
+                    >
+                      标记未读
+                    </Button>
                   </div>
                 </div>
                 <p className="text-sm">{selected.sender_name ?? selected.sender_address}</p>
@@ -307,7 +563,10 @@ export function MailManagerPage() {
                 <iframe
                   title="邮件正文"
                   sandbox=""
-                  srcDoc={selected.sanitized_html ?? selected.text_body ?? ''}
+                  srcDoc={mailBodyDocument(
+                    selected.sanitized_html ?? selected.text_body ?? '',
+                    themeMode,
+                  )}
                   className="h-[calc(100%-6rem)] min-h-[360px] w-full border-0"
                 />
               </article>

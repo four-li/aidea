@@ -38,15 +38,23 @@ settings:
 - `id` 全局唯一且使用 kebab-case；`name` 是显示名称；用户可见功能变化时更新 `version`。
 - `path` 定位源码目录；`status` 为 `active`、`disabled` 或 `deprecated`。
 - `ui.mode` 固定为 `builtin`；`ui.icon` 使用 lucide-react 图标名或图片路径。
-- `settings.enabled` 保留用于兼容旧 manifest；每个应用都必须有设置详情页。
-- 内置应用的设置字段和持久化由应用自己负责，不写入 `shell.config.json` 或壳数据库。DevTools 的显示状态存放在 `app-data/dev-tools/settings.json`。
-- `settings.reset_command` 只能使用已注册的壳内处理器。aIdea 先完成 Touch ID，再执行完整重置；处理器不能删除整个应用数据目录或业务数据库。
+- `settings.enabled` 保留用于兼容旧 manifest，不控制设置入口；应用管理页始终提供 aIdea 的通用设置详情，没有业务设置的应用显示空配置状态。
+- 内置应用的业务设置由应用自己负责，统一保存在 `app-data/<app-id>/app.db`，不写入 `shell.config.json` 或壳数据库。邮件账户设置属于邮件应用自己的业务设置，DevTools 的工具显示偏好也保存在自己的 `app.db`。
+- `settings.reset_command` 只能使用已注册的壳内处理器。aIdea 先完成页面确认，再执行配置重置；处理器不能删除整个应用数据目录或业务数据库。
 
 ## IPC 与类型
 
 Rust IPC 命令按业务职责放在 `shell-native/src/commands/`，由 `lib.rs` 负责模块声明、状态初始化和命令注册。内置应用前端统一通过 `shell-frontend/src/lib/ipc.ts` 调用；修改命令名、参数或返回值时，同步 Rust 实现、TypeScript 类型和测试。
 
 类型定义放在 `shell-frontend/src/types/`，与 Rust IPC 数据结构保持一致。共享错误使用 `AppError` / `AppResult`。网络请求设置超时，敏感配置不写入普通配置文件。
+
+## 基础设置页
+
+应用管理中的设置按钮是所有应用共用的入口：
+
+- 内置应用：在内置应用设置注册表中按 `app_id` 显式注册一个 React 设置组件。
+- 官方应用：aIdea 启动应用后，在设置弹窗中打开固定的 `/settings` 页面。
+- aIdea 自己只提供显示开关、启动方式和重置入口，不解析应用的业务字段。
 
 ## 测试
 

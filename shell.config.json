@@ -1,9 +1,5 @@
 {
   "theme": "auto",
-  "data_dir": ".runtime",
-  "log_dir": ".runtime/logs",
   "overrides": {},
-  "ai_history": {
-    "items": []
-  }
+  "app_settings": {}
 }

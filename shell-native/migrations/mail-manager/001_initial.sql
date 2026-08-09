@@ -8,7 +8,7 @@ CREATE TABLE mail_accounts (
     tls_mode TEXT NOT NULL,
     username TEXT NOT NULL,
     auth_kind TEXT NOT NULL,
-    keychain_id TEXT NOT NULL,
+    secret TEXT NOT NULL DEFAULT '',
     webmail_url TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     last_sync_at INTEGER,

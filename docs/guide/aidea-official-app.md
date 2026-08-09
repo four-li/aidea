@@ -49,7 +49,7 @@ update_notes: 首期版本。
 - `runtime` 是运行时说明，例如 `node` 或 `system`。
 - `install`、`process.command` 和 `settings.reset_command` 都是程序及参数数组，不得使用 shell 字符串、`sh -c` 或 `bash -c`。
 - `process.working_directory` 默认 `.`，且必须位于安装目录内；`ready_url` 必须是 `http://127.0.0.1:<port>`。
-- `settings.enabled` 表示应用提供固定的本地 `/settings` 页面。`reset_command` 只能重置配置，不能删除整个 `app-data/<app-id>/`。
+- aIdea 始终在应用列表提供通用设置入口，并在设置弹窗中打开固定的本地 `/settings` 页面，不解析页面字段；即使暂时没有业务字段，应用也应提供可打开的空设置页。`settings.enabled` 是当前 manifest 的兼容字段，不控制入口；Rust 代码只在它为 `true` 时接受 `reset_command`。`reset_command` 只能重置配置，不能删除整个 `app-data/<app-id>/`。
 
 发布顺序必须先提交可安装源码，再在后续提交的 `aidea.yaml` 写入该源码 commit 的 `revision`。不要让配置文件指向包含自身的同一提交，这会形成无法验证的自引用。
 
@@ -64,13 +64,27 @@ update_notes: 首期版本。
 
 安装和更新都先在临时 staging 目录获取固定 revision、执行安装命令并完成健康检查，再替换当前 `source/`。失败时保留旧版本和错误日志。`install-state.yaml` 记录安装版本、固定 revision 和定义快照，只用于离线恢复已安装应用，不能替代市场刷新。
 
+安装日志中的 `git checkout <完整 SHA>` 会进入 detached HEAD，这是按固定源码版本安装的正常状态，不需要 `git switch`。打包版 aIdea 不继承 Finder 启动时的终端 `PATH`；安装器会自动查找系统目录和用户级 `~/.local/bin`、`~/.npm-global/bin`、`~/.bun/bin` 中的运行时命令。
+
 官方应用服务只监听 `127.0.0.1`，WebView 只打开本地地址，健康检查成功前不展示 WebView。工作目录不得借相对路径逃出安装目录。
 
-## 数据、凭据与 UI
+应用页面和 `/settings` 页面都会收到 aIdea 追加的 `aidea_theme=light|dark` 查询参数。页面优先使用该参数适配主题；独立运行时没有该参数，则使用系统的 `prefers-color-scheme`。
 
-业务数据放在 `AIDEA_APP_DATA_DIR`，日志写入 `AIDEA_APP_LOG_DIR`，不得写入源码目录。SQLite、迁移和备份遵守 [存储规范](aidea-storage.md)。
+## 应用设置、数据与凭据
 
-当前 aIdea 尚未向官方应用提供凭据命令或 `AIDEA_COMMAND`。需要平台保管敏感值的官方应用尚不属于已发布能力，必须先完成平台命令实现；不得直接读写 aIdea 的 `secrets.db`、密钥文件或 Tauri IPC。
+aIdea 的应用管理只保存通用运行偏好：是否显示应用，以及是否随 aIdea 启动。官方应用的业务配置（例如邮件账户、同步周期和服务商选项）由应用自己的 `/settings` 页面负责展示、校验和保存；不要把业务字段塞进 aIdea manifest，也不要期待 aIdea 提供统一表单。
+
+启动时 aIdea 注入以下环境变量，官方应用直接使用它们，不需要猜测目录：
+
+| 变量 | 用途 |
+| --- | --- |
+| `AIDEA_APP_ID` | 当前应用 ID，只用于标识应用。 |
+| `AIDEA_APP_DATA_DIR` | 当前应用的数据目录；数据库固定为其中的 `app.db`。 |
+| `AIDEA_APP_LOG_DIR` | 当前应用的日志目录。 |
+
+业务数据和配置统一放在 `AIDEA_APP_DATA_DIR/app.db`，日志写入 `AIDEA_APP_LOG_DIR`，不得写入源码目录。密码、授权码等敏感值也属于应用自己的数据，但不得写入日志。SQLite、迁移和备份遵守 [存储规范](aidea-storage.md)。
+
+官方应用不读取 aIdea 壳数据库，也不依赖平台凭据服务。应用直接读写自己的 `app.db`。
 
 UI 遵守 [UI 规范](aidea-ui.md)，并同时验证浅色和深色主题。邮件正文、Markdown、富文本和第三方 HTML 必须独立验证可读性。
 

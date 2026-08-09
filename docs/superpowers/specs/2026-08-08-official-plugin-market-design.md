@@ -27,7 +27,7 @@
 
 ## 运行器
 
-官方插件运行时从安装记录生成，不复用旧本地应用的 shell 字符串命令。运行器将参数数组直接传给 `tokio::process::Command`，工作目录限制在 source 内，注入 `AIDEA_APP_ID`、`AIDEA_APP_DATA_DIR`、`AIDEA_APP_LOG_DIR`。`AIDEA_COMMAND` 在官方 CLI 实现前不注入。
+官方插件运行时从安装记录生成，不复用旧本地应用的 shell 字符串命令。运行器将参数数组直接传给 `tokio::process::Command`，工作目录限制在 source 内，注入 `AIDEA_APP_ID`、`AIDEA_APP_DATA_DIR`、`AIDEA_APP_LOG_DIR`。
 
 健康检查仅允许 `http://127.0.0.1:<port>`；成功后 WebView 才显示。日志写入 `logs/<id>/`。
 

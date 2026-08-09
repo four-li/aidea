@@ -17,7 +17,7 @@
 - 应用定义中的命令必须是参数数组，禁止 shell 字符串、`sh -c`、`bash -c`；健康检查只允许 `http://127.0.0.1:<port>/...`。
 - 官方应用默认手动启动；用户可单独设置随 aIdea 启动。内置应用只能隐藏，不能卸载或配置进程。
 - 用户设置、运行记录、缓存、日志和业务数据均位于 `~/Library/Application Support/aIdea/`；卸载默认不删除 `app-data/<app-id>/` 与 `logs/<app-id>/`。
-- UI 必须遵守 `docs/app/ui.md`：shadcn/ui、lucide-react、可访问名称、明确的加载/错误/空状态；不新增第二套 UI 或图标体系。
+- UI 必须遵守 `docs/guide/aidea-ui.md`：shadcn/ui、lucide-react、可访问名称、明确的加载/错误/空状态；不新增第二套 UI 或图标体系。
 - 本计划不主动执行 `git add`、`git commit`、push 或 PR；每个任务中的提交步骤仅供人工版本管理时参考。
 
 ---
@@ -26,10 +26,9 @@
 
 | 文件 | 改动职责 |
 | --- | --- |
-| `docs/app/package-spec.md` | 官方应用仓库 `aidea.yaml` 的正式字段、校验与安装契约。 |
-| `docs/app/marketplace.md` | aIdea 内置收录目录、远程刷新和缓存规则。 |
-| `docs/app/platform.md` | 内置/官方应用职责、市场和运行时术语。 |
-| `docs/app/data-layout.md` | 市场定义缓存和运行记录目录。 |
+| `docs/guide/aidea-official-app.md` | 官方应用仓库 `aidea.yaml` 的正式字段、校验与安装契约。 |
+| `docs/guide/aidea-platform.md` | 内置/官方应用职责、市场和运行时术语。 |
+| `docs/guide/aidea-storage.md` | 应用数据目录、SQLite 和迁移规则。 |
 | `plugin-markets/official/*.yaml` | 只保留 `schema_version`、`repository`、`enabled` 的官方仓库收录项。 |
 | `shell-native/src/plugin_market.rs` | 加载收录项、用 Git 刷新定义、缓存、校验和版本比较。 |
 | `shell-native/src/plugin_installer.rs` | 基于已刷新定义安装、更新、卸载与已安装定义快照。 |
@@ -47,10 +46,9 @@
 ## Task 1：固化官方市场与应用定义契约
 
 **Files:**
-- Modify: `docs/app/package-spec.md`
-- Modify: `docs/app/marketplace.md`
-- Modify: `docs/app/platform.md`
-- Modify: `docs/app/data-layout.md`
+- Modify: `docs/guide/aidea-official-app.md`
+- Modify: `docs/guide/aidea-platform.md`
+- Modify: `docs/guide/aidea-storage.md`
 - Modify: `plugin-markets/official/stock-assistant.yaml`
 - Modify: `shell-native/src/plugin_market.rs`
 - Test: `shell-native/src/plugin_market.rs`

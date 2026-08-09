@@ -1,6 +1,8 @@
-# aIdea
+# 开搞
 
-本地桌面壳应用，统一管理内置应用和官方应用。
+开搞是一个面向 AI 时代的本地创意工作台：把随时冒出的想法做成一个个创意或功能，再统一管理和使用。它负责承载内置应用与官方应用，让“想到”和“做成”之间的距离更短。
+
+应用名称是“开搞”，内部 Cargo 包名仍为 `aidea-shell`，这是编译用的技术名称；用户数据目录和应用标识也保持不变，保证已有安装和更新继续有效。
 
 ## 技术栈
 
@@ -12,11 +14,11 @@
 
 ```
 aIdea/
-├── apps/builtin/         # 随 aIdea 发布的内置应用 manifest
-├── plugin-markets/       # 随 aIdea 发布的官方应用收录目录
+├── apps/builtin/         # 随开搞发布的内置应用 manifest
+├── plugin-markets/       # 随开搞发布的官方应用收录目录
 ├── shell-frontend/       # 壳前端（React）
 ├── shell-native/         # 壳 Rust 内核（Tauri）
-├── docs/guide/           # aIdea 平台和应用开发规范
+├── docs/guide/           # 开搞平台和应用开发规范
 └── docs/                 # 文档
 ```
 
@@ -45,7 +47,7 @@ PATH="../shell-frontend/node_modules/.bin:$PATH" tauri dev
 这条命令会自动：
 1. 启动 vite 前端开发服务器（5173 端口）
 2. 编译 Rust 后端
-3. 打开 aIdea 桌面窗口
+3. 打开开搞桌面窗口
 
 ### 测试
 
@@ -66,14 +68,14 @@ ls -lh target/release/bundle/dmg/*.dmg
 
 ### GitHub 发布、下载与更新
 
-aIdea 首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Developer 账号。发布步骤：
+开搞首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Developer 账号。发布步骤：
 
 1. 修改 `shell-native/tauri.conf.json` 的 `version`，例如 `0.1.0`。
 2. 提交并推送代码后创建同版本 tag，例如 `v0.1.0`。
 3. GitHub Actions 自动构建 `.dmg` 并创建 GitHub Release。
 4. 用户从 Release 的 Assets 下载 `.dmg`，打开后将 `aIdea.app` 拖入 Applications，首次打开时按 macOS 提示确认。
 
-已安装的 aIdea 可在“设置 → 关于”检查 GitHub Release，并下载经过签名验证的更新；验证成功后重启应用即可完成替换，无需手动下载 DMG。未签名应用首次安装仍会触发 macOS 安全提示，应用内更新不会绕过该提示。发布者配置见 [签名更新发布说明](docs/release-updater.md)。
+已安装的开搞可在“设置 → 关于”检查 GitHub Release，并下载经过签名验证的更新；验证成功后重启应用即可完成替换，无需手动下载 DMG。未签名应用首次安装仍会触发 macOS 安全提示，应用内更新不会绕过该提示。发布者配置见 [签名更新发布说明](docs/release-updater.md)。
 
 如果 macOS 在双击 `.dmg` 时显示“aIdea 已损坏，无法打开”，通常是 Gatekeeper（macOS 的应用安全检查）拦截了从浏览器下载的未签名应用，并不代表下载文件真的损坏。先关闭提示，在终端移除 DMG 的下载隔离标记，再重新打开 DMG：
 
@@ -94,10 +96,10 @@ xattr -dr com.apple.quarantine /Applications/aIdea.app
 
 ## 添加子应用
 
-当前只开发内置应用和官方应用，第三方市场、自定义安装、自动发现和插件 SDK 不属于现行能力。
+当前只开发内置应用和官方应用，第三方市场、自定义安装和自动发现不属于现行能力。
 
 - 内置应用：代码放在 `shell-frontend/src/builtin-apps/<app-id>/`，manifest 放在 `apps/builtin/`。
-- 官方应用：独立仓库根目录提供 `aidea.yaml`，aIdea 仓库只在 `plugin-markets/official/` 收录仓库地址。
+- 官方应用：独立仓库根目录提供 `aidea.yaml`，开搞仓库只在 `plugin-markets/official/` 收录仓库地址。
 - 具体契约按任务读取 [AGENTS.md](AGENTS.md) 的文档路由表。
 
 ### 内置应用 Manifest 示例

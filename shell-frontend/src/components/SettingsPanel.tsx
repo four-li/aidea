@@ -21,9 +21,12 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAppsChanged: () => void;
+  appOrder?: string[];
+  onReorder?: (newOrder: string[]) => void;
   onShowLog: (app: AppManifest) => void;
   category?: SettingsCategory;
   checkUpdate?: number;
+  theme?: Exclude<ThemeMode, 'system'>;
 }
 
 type SettingsCategory =
@@ -67,9 +70,12 @@ export function SettingsPanel({
   open,
   onOpenChange,
   onAppsChanged,
+  appOrder,
+  onReorder,
   onShowLog,
   category,
   checkUpdate,
+  theme,
 }: Props) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('apps');
   useEffect(() => {
@@ -128,8 +134,10 @@ export function SettingsPanel({
               {activeCategory === 'apps' && (
                 <AppManagementPage
                   onAppsChanged={onAppsChanged}
-                  onOpenMarket={() => setActiveCategory('official-plugins')}
+                  appOrder={appOrder}
+                  onReorder={onReorder}
                   onShowLog={onShowLog}
+                  theme={theme}
                 />
               )}
               {activeCategory === 'official-plugins' && (
@@ -332,7 +340,7 @@ function NotificationsSettings() {
 }
 
 function PrivacySettings() {
-  return <p className="text-sm text-foreground">aIdea 本地应用不收集任何用户数据。</p>;
+  return <p className="text-sm text-foreground">开搞本地应用不收集任何用户数据。</p>;
 }
 
 function AdvancedSettings() {
@@ -363,12 +371,17 @@ function AdvancedSettings() {
 
 function AboutSettings({ checkUpdate }: { checkUpdate?: number }) {
   const [version, setVersion] = useState('读取中...');
-  const [status, setStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error'>('idle');
+  const [status, setStatus] = useState<
+    'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error'
+  >('idle');
   const [update, setUpdate] = useState<AideaUpdate | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void ipc.getAideaVersion().then(setVersion).catch(() => setVersion('未知'));
+    void ipc
+      .getAideaVersion()
+      .then(setVersion)
+      .catch(() => setVersion('未知'));
   }, []);
 
   const checkForUpdate = async () => {
@@ -401,20 +414,32 @@ function AboutSettings({ checkUpdate }: { checkUpdate?: number }) {
   return (
     <div>
       <Section title="版本信息">
-        <KV label="应用名称" value="aIdea" />
+        <KV label="应用名称" value="开搞" />
         <KV label="当前版本" value={version} />
         <div className="flex items-center gap-3 pt-2">
-          <Button size="sm" onClick={() => void checkForUpdate()} disabled={status === 'checking' || status === 'installing'}>
+          <Button
+            size="sm"
+            onClick={() => void checkForUpdate()}
+            disabled={status === 'checking' || status === 'installing'}
+          >
             {status === 'checking' ? '检查中...' : '检查更新'}
           </Button>
-          {status === 'up-to-date' && <span className="text-sm text-muted-foreground">已是最新版本</span>}
+          {status === 'up-to-date' && (
+            <span className="text-sm text-muted-foreground">已是最新版本</span>
+          )}
           {status === 'error' && <span className="text-sm text-destructive">{error}</span>}
         </div>
         {update && (
           <div className="pt-2 space-y-2 text-sm">
             <div className="text-foreground">发现新版本 {update.version}</div>
-            {update.body && <p className="text-muted-foreground whitespace-pre-wrap">{update.body}</p>}
-            <Button size="sm" onClick={() => void installUpdate()} disabled={status === 'installing'}>
+            {update.body && (
+              <p className="text-muted-foreground whitespace-pre-wrap">{update.body}</p>
+            )}
+            <Button
+              size="sm"
+              onClick={() => void installUpdate()}
+              disabled={status === 'installing'}
+            >
               {status === 'installing' ? '下载并验证中...' : '更新并重启'}
             </Button>
           </div>
