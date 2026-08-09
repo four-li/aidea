@@ -1,6 +1,6 @@
 // 设置弹出窗：使用 shadcn Dialog + Button
 // 布局：左侧分类菜单 + 右侧内容区，卡片分组，无分割线
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Settings, Info, User, Palette, Bell, Shield, Code, LayoutGrid, Lock } from 'lucide-react';
 import type { ThemeMode } from '../hooks/useTheme';
 import type { AppManifest } from '../types/manifest';
@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { PluginMarketPage } from '../builtin-apps/plugin-market';
 import { AppManagementPage } from './AppManagementPage';
+import { ipc } from '../lib/ipc';
+import type { AideaUpdate } from '../types/update';
 
 interface Props {
   themeMode: ThemeMode;
@@ -20,6 +22,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   onAppsChanged: () => void;
   onShowLog: (app: AppManifest) => void;
+  category?: SettingsCategory;
+  checkUpdate?: number;
 }
 
 type SettingsCategory =
@@ -64,8 +68,13 @@ export function SettingsPanel({
   onOpenChange,
   onAppsChanged,
   onShowLog,
+  category,
+  checkUpdate,
 }: Props) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('apps');
+  useEffect(() => {
+    if (category) setActiveCategory(category);
+  }, [category]);
   const activeLabel = CATEGORIES.find((c) => c.id === activeCategory)?.label ?? '';
 
   return (
@@ -134,7 +143,7 @@ export function SettingsPanel({
               {activeCategory === 'notifications' && <NotificationsSettings />}
               {activeCategory === 'privacy' && <PrivacySettings />}
               {activeCategory === 'advanced' && <AdvancedSettings />}
-              {activeCategory === 'about' && <AboutSettings />}
+              {activeCategory === 'about' && <AboutSettings checkUpdate={checkUpdate} />}
             </div>
           </div>
         </div>
@@ -352,13 +361,64 @@ function AdvancedSettings() {
   );
 }
 
-function AboutSettings() {
+function AboutSettings({ checkUpdate }: { checkUpdate?: number }) {
+  const [version, setVersion] = useState('读取中...');
+  const [status, setStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error'>('idle');
+  const [update, setUpdate] = useState<AideaUpdate | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    void ipc.getAideaVersion().then(setVersion).catch(() => setVersion('未知'));
+  }, []);
+
+  const checkForUpdate = async () => {
+    setStatus('checking');
+    setError('');
+    try {
+      const result = await ipc.checkAideaUpdate();
+      setUpdate(result);
+      setStatus(result ? 'available' : 'up-to-date');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    if (checkUpdate) void checkForUpdate();
+  }, [checkUpdate]);
+
+  const installUpdate = async () => {
+    setStatus('installing');
+    try {
+      await ipc.installAideaUpdate();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setStatus('error');
+    }
+  };
+
   return (
     <div>
       <Section title="版本信息">
         <KV label="应用名称" value="aIdea" />
-        <KV label="版本" value="0.1.0" />
-        <KV label="构建时间" value="2026-07-30" />
+        <KV label="当前版本" value={version} />
+        <div className="flex items-center gap-3 pt-2">
+          <Button size="sm" onClick={() => void checkForUpdate()} disabled={status === 'checking' || status === 'installing'}>
+            {status === 'checking' ? '检查中...' : '检查更新'}
+          </Button>
+          {status === 'up-to-date' && <span className="text-sm text-muted-foreground">已是最新版本</span>}
+          {status === 'error' && <span className="text-sm text-destructive">{error}</span>}
+        </div>
+        {update && (
+          <div className="pt-2 space-y-2 text-sm">
+            <div className="text-foreground">发现新版本 {update.version}</div>
+            {update.body && <p className="text-muted-foreground whitespace-pre-wrap">{update.body}</p>}
+            <Button size="sm" onClick={() => void installUpdate()} disabled={status === 'installing'}>
+              {status === 'installing' ? '下载并验证中...' : '更新并重启'}
+            </Button>
+          </div>
+        )}
       </Section>
       <Section title="数据目录">
         <KV label="配置文件" value="aIdea/apps/*.yaml" />

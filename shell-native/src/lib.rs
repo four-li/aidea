@@ -12,6 +12,8 @@ pub mod process;
 pub mod secret_store;
 
 use process::{start_autostart_apps, start_configured_official_apps, ProcessManager};
+use tauri::menu::{MenuBuilder, SubmenuBuilder};
+use tauri::Emitter;
 
 pub fn run() {
     let manager = ProcessManager::default();
@@ -20,7 +22,11 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(manager.clone())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            commands::shell::get_aidea_version,
+            commands::shell::check_aidea_update,
+            commands::shell::install_aidea_update,
             commands::shell::list_apps,
             commands::shell::list_official_plugins,
             commands::shell::refresh_official_plugins,
@@ -63,6 +69,20 @@ pub fn run() {
             commands::mail::move_mail_to_deleted,
             commands::mail::open_mail_webmail,
         ])
+        .menu(|app| {
+            MenuBuilder::new(app)
+                .item(
+                    &SubmenuBuilder::new(app, "aIdea")
+                        .text("check-aidea-update", "检查更新")
+                        .build()?,
+                )
+                .build()
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "check-aidea-update" {
+                let _ = app.emit("aidea:check-update", ());
+            }
+        })
         .setup(move |_app| {
             config::migrate_legacy_data()
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;

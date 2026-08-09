@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
 import { LogPanel } from './components/LogPanel';
@@ -27,6 +28,20 @@ function App() {
 
   const [logApp, setLogApp] = useState<AppManifest | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<'about' | undefined>();
+  const [checkUpdate, setCheckUpdate] = useState(0);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen('aidea:check-update', () => {
+      setSettingsCategory('about');
+      setShowSettings(true);
+      setCheckUpdate((value) => value + 1);
+    }).then((dispose) => {
+      unlisten = dispose;
+    });
+    return () => unlisten?.();
+  }, []);
 
   // 子应用排序：apps 加载完后同步一次，之后只响应拖拽
   const [appOrder, setAppOrder] = useState<string[]>([]);
@@ -104,6 +119,8 @@ function App() {
         onOpenChange={setShowSettings}
         onAppsChanged={refreshApps}
         onShowLog={setLogApp}
+        category={settingsCategory}
+        checkUpdate={checkUpdate}
       />
       <Toaster />
     </div>

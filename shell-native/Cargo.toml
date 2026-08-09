@@ -1,6 +1,6 @@
 [package]
 name = "aidea-shell"
-version = "0.1.0"
+version = "0.1.4"
 edition = "2021"
 
 [lib]
@@ -21,6 +21,7 @@ thiserror = "1"
 dirs = "5"
 libc = "0.2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-updater = "2"
 # DevTools IP 查询用
 # reqwest 复用 Tauri 间接依赖（不增加编译成本），rustls-tls 避免系统 OpenSSL 依赖
 # local-ip-address 用于枚举本机所有网络接口的 IP

@@ -6,7 +6,57 @@ use crate::error::{AppError, AppResult};
 use crate::manifest::{find_manifest, load_all_manifests, save_manifest, AppManifest};
 use crate::process::{AppState, ProcessManager};
 use tauri::{Emitter, State};
+use tauri_plugin_updater::UpdaterExt;
 use tokio::process::Command;
+
+#[derive(serde::Serialize)]
+pub struct AideaUpdate {
+    version: String,
+    body: Option<String>,
+    date: Option<String>,
+}
+
+fn current_aidea_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+pub fn get_aidea_version() -> String {
+    current_aidea_version()
+}
+
+#[tauri::command]
+pub async fn check_aidea_update(app: tauri::AppHandle) -> AppResult<Option<AideaUpdate>> {
+    let update = app
+        .updater()
+        .map_err(|error| AppError::Network(format!("初始化更新检查失败: {error}")))?
+        .check()
+        .await
+        .map_err(|error| AppError::Network(format!("检查更新失败: {error}")))?;
+
+    Ok(update.map(|update| AideaUpdate {
+        version: update.version,
+        body: update.body,
+        date: update.date.map(|date| date.to_string()),
+    }))
+}
+
+#[tauri::command]
+pub async fn install_aidea_update(app: tauri::AppHandle) -> AppResult<()> {
+    let update = app
+        .updater()
+        .map_err(|error| AppError::Network(format!("初始化更新失败: {error}")))?
+        .check()
+        .await
+        .map_err(|error| AppError::Network(format!("检查更新失败: {error}")))?
+        .ok_or_else(|| AppError::Config("当前没有可安装的更新".into()))?;
+
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|error| AppError::Network(format!("下载或验证更新失败: {error}")))?;
+    app.restart();
+}
 
 fn reset_command_for(manifest: &AppManifest) -> AppResult<&[String]> {
     let settings = manifest
@@ -227,7 +277,9 @@ fn is_empty_override(o: &AppOverride) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{reset_command_for, run_reset_command, should_restart_after_reset};
+    use super::{
+        current_aidea_version, reset_command_for, run_reset_command, should_restart_after_reset,
+    };
     use crate::manifest::{AppManifest, AppStatus, SettingsConfig, UiConfig, UiMode};
 
     fn manifest(settings: Option<SettingsConfig>) -> AppManifest {
@@ -267,6 +319,11 @@ mod tests {
     fn 仅在原本运行时才需要重启() {
         assert!(!should_restart_after_reset(false));
         assert!(should_restart_after_reset(true));
+    }
+
+    #[test]
+    fn 当前版本来自构建包版本() {
+        assert_eq!(current_aidea_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[tokio::test]

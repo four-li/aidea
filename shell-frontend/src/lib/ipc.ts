@@ -11,8 +11,12 @@ import type {
 import type { MailAccount, MailMessageDetail, MailMessagePage, MailMessageQuery, SaveMailAccountRequest, SyncResult, MailSyncTask } from '../types/mail';
 import type { InstalledPlugin, OfficialPlugin } from '../types/plugin-market';
 import type { DevToolsSettings } from '../types/dev-tools';
+import type { AideaUpdate } from '../types/update';
 
 export const ipc = {
+  getAideaVersion: (): Promise<string> => invoke('get_aidea_version'),
+  checkAideaUpdate: (): Promise<AideaUpdate | null> => invoke('check_aidea_update'),
+  installAideaUpdate: (): Promise<void> => invoke('install_aidea_update'),
   /** 列出所有已加载的子应用（已合并用户 overrides） */
   listApps: (): Promise<AppManifest[]> => invoke<AppManifest[]>('list_apps'),
   listOfficialPlugins: (): Promise<OfficialPlugin[]> => invoke('list_official_plugins'),
