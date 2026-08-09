@@ -4,7 +4,7 @@
 
 ## 一次性配置
 
-私钥保存于 `/Users/fourli/atlas/vault/aidea-updater.key`，公钥已写入 `shell-native/tauri.conf.json`。在 GitHub 仓库的 Actions Secrets 添加：
+私钥保存于本机 vault 目录的 `aidea-updater.key`（不进仓库），公钥已写入 `shell-native/tauri.conf.json`。在 GitHub 仓库的 Actions Secrets 添加：
 
 - `TAURI_SIGNING_PRIVATE_KEY`：私钥文件完整内容。
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：本次密钥未设置口令，可不创建。

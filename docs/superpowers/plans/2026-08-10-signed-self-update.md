@@ -25,9 +25,9 @@
 - Modify: `shell-native/Cargo.toml`
 - Modify: `shell-frontend/package-lock.json`
 - Modify: `.github/workflows/release.yml`
-- Modify: `/Users/fourli/.codex/skills/aidea-release/SKILL.md`
-- Modify: `/Users/fourli/.codex/skills/aidea-release/scripts/release.sh`
-- Test: `/Users/fourli/.codex/skills/aidea-release/scripts/release.sh` 的 `bash -n` 和临时 Git 仓库验证
+- Modify: `aidea-release/SKILL.md`
+- Modify: `aidea-release/scripts/release.sh`
+- Test: `aidea-release/scripts/release.sh` 的 `bash -n` 和临时 Git 仓库验证
 
 **Interfaces:**
 - Consumes: `shell-native/tauri.conf.json` 的语义化 `version`。
@@ -84,7 +84,7 @@ test "$tag_version" = "$lock_version"
 运行：
 
 ```bash
-bash -n /Users/fourli/.codex/skills/aidea-release/scripts/release.sh
+bash -n aidea-release/scripts/release.sh
 npm install --package-lock-only --ignore-scripts --prefix shell-frontend
 git diff --check
 ```
