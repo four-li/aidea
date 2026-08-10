@@ -23,7 +23,7 @@ shell-frontend/src/builtin-apps/dev-tools/
 ```yaml
 id: dev-tools
 name: DevTools
-version: 0.3.0
+version: 0.3.1
 category: 开发
 path: shell-frontend/src/builtin-apps/dev-tools
 status: active
@@ -35,7 +35,7 @@ settings:
   reset_command: [builtin, dev-tools]
 ```
 
-- `id` 全局唯一且使用 kebab-case；`name` 是显示名称；用户可见功能变化时更新 `version`。
+- `id` 全局唯一且使用 kebab-case；`name` 是显示名称；只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。
 - `path` 定位源码目录；`status` 为 `active`、`disabled` 或 `deprecated`。
 - `ui.mode` 固定为 `builtin`；`ui.icon` 使用 lucide-react 图标名或图片路径。
 - `settings.enabled` 保留用于兼容旧 manifest，不控制设置入口；应用管理页始终提供 aIdea 的通用设置详情，没有业务设置的应用显示空配置状态。

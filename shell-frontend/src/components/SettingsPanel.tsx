@@ -1,7 +1,18 @@
 // 设置弹出窗：使用 shadcn Dialog + Button
 // 布局：左侧分类菜单 + 右侧内容区，卡片分组，无分割线
 import { useEffect, useState } from 'react';
-import { Settings, Info, User, Palette, Bell, Shield, Code, LayoutGrid, Lock } from 'lucide-react';
+import {
+  Settings,
+  Info,
+  User,
+  Palette,
+  Bell,
+  Shield,
+  Code,
+  LayoutGrid,
+  Lock,
+  History,
+} from 'lucide-react';
 import type { ThemeMode } from '../hooks/useTheme';
 import type { AppManifest } from '../types/manifest';
 import { cn } from '../lib/utils';
@@ -14,6 +25,7 @@ import { PluginMarketPage } from '../builtin-apps/plugin-market';
 import { AppManagementPage } from './AppManagementPage';
 import { ipc } from '../lib/ipc';
 import type { AideaUpdate } from '../types/update';
+import changelog from '../data/changelog.json';
 
 interface Props {
   themeMode: ThemeMode;
@@ -38,6 +50,7 @@ type SettingsCategory =
   | 'notifications'
   | 'privacy'
   | 'advanced'
+  | 'changelog'
   | 'about';
 
 interface CategoryDef {
@@ -55,6 +68,7 @@ const CATEGORIES: CategoryDef[] = [
   { id: 'notifications', label: '通知', icon: <Bell size={18} /> },
   { id: 'privacy', label: '隐私与安全', icon: <Shield size={18} /> },
   { id: 'advanced', label: '高级', icon: <Code size={18} /> },
+  { id: 'changelog', label: '更新日志', icon: <History size={18} /> },
   { id: 'about', label: '关于', icon: <Info size={18} /> },
 ];
 
@@ -151,6 +165,7 @@ export function SettingsPanel({
               {activeCategory === 'notifications' && <NotificationsSettings />}
               {activeCategory === 'privacy' && <PrivacySettings />}
               {activeCategory === 'advanced' && <AdvancedSettings />}
+              {activeCategory === 'changelog' && <ChangelogSettings />}
               {activeCategory === 'about' && <AboutSettings checkUpdate={checkUpdate} />}
             </div>
           </div>
@@ -365,6 +380,25 @@ function AdvancedSettings() {
           </Button>
         </div>
       </Section>
+    </div>
+  );
+}
+
+function ChangelogSettings() {
+  if (changelog.length === 0) {
+    return <p className="text-sm text-muted-foreground">暂无更新日志</p>;
+  }
+
+  return (
+    <div className="divide-y divide-border">
+      {changelog.map((entry) => (
+        <section key={entry.version} className="py-5 first:pt-0">
+          <h3 className="text-base font-semibold text-foreground">v{entry.version}</h3>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-wrap">
+            {entry.notes}
+          </p>
+        </section>
+      ))}
     </div>
   );
 }

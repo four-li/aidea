@@ -12,7 +12,9 @@
 
 ## 每次发布
 
-使用 `$aidea-release`。脚本从 `shell-native/tauri.conf.json` 读取目标版本并同步 Cargo、前端包和 lockfile，在本机构建并生成：DMG、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。验证成功后，脚本把 `latest.json` 写入并提交到 `updater/latest.json`，创建 Gitee tag 和 Release，并上传这些产物。
+使用 `$aidea-release`。发布前先在 `shell-frontend/src/data/changelog.json` 添加目标版本的更新日志：版本必须为 `X.Y.Z`、全局唯一、正文非空。它是应用内更新日志、`latest.json` 的 `notes` 和 Gitee Release 正文的唯一来源；日志随功能代码先提交，脚本不生成占位文案。缺少、重复或格式错误时，脚本会在读取凭据、联网和构建前停止。
+
+脚本从 `shell-native/tauri.conf.json` 读取目标版本并同步 Cargo、前端包和 lockfile，在本机构建并生成：DMG、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。验证成功后，脚本把 `latest.json` 写入并提交到 `updater/latest.json`，创建 Gitee tag 和 Release，并上传这些产物。
 
 应用固定读取 `https://gitee.com/aidea-org/aidea-app/raw/main/updater/latest.json`。不要改回 `releases/latest/download/latest.json`：Gitee 没有这个 GitHub 兼容地址，会返回 404；版本化附件地址仍使用对应 tag 的 Release 下载地址。
 
@@ -24,6 +26,6 @@
 bash "$CODEX_HOME/skills/aidea-release/scripts/resume-release.sh" X.Y.Z
 ```
 
-它只校验当前 tag 与已有产物并补传缺失附件，不会重新构建、提交、推送或覆盖 tag。
+它只校验当前 tag 与已有产物并补传缺失附件，同时校验 Release 正文和 `latest.json.notes` 与版本日志一致；不会重新构建、提交、推送或覆盖 tag。
 
 发布后应从已安装的旧版执行“检查更新”，确认能读取 Raw 的 `latest.json` 并发现新版本；点击“更新并重启”后，Tauri 必须在重启前验证签名。删除或篡改 `.sig`、更新包或 `latest.json` 时，安装必须失败且保留旧版。

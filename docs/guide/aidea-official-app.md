@@ -53,7 +53,7 @@ update_notes: 首期版本。
 - `schema_version` 当前固定为 `1`。
 - `id` 使用全局唯一的 kebab-case，安装后不可更名。
 - `name`、`description`、`category`、`icon` 是市场展示信息。
-- `version` 与 `min_aidea_version` 都使用三段式语义版本；只有市场版本高于本机版本时显示更新。
+- `version` 与 `min_aidea_version` 都使用三段式语义版本；只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。默认使用 patch 版本递增，只有兼容性范围变化时才升 minor 或 major。
 - `revision` 是本次源码的完整 40 位十六进制 commit SHA；不得使用分支名、tag 或短 SHA。
 - `runtime` 是运行时说明，例如 `node` 或 `system`。
 - `install`、`process.command` 和 `settings.reset_command` 都是程序及参数数组，不得使用 shell 字符串、`sh -c` 或 `bash -c`。
