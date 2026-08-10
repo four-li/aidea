@@ -494,16 +494,26 @@ pub async fn refresh_official_definitions() -> AppResult<Vec<CachedOfficialPlugi
 }
 
 fn market_source_path_or_development() -> AppResult<PathBuf> {
-    let development_path = project_root()?.join("market-source.yaml");
-    if development_path.exists() {
-        return Ok(development_path);
-    }
     let resources = std::env::current_exe()?
         .parent()
         .and_then(Path::parent)
         .map(|path| path.join("Resources"))
         .ok_or_else(|| AppError::Config("无法定位官方市场资源目录".into()))?;
-    bundled_market_source(&resources)
+    market_source_path_for_resources(&resources, cfg!(debug_assertions))
+}
+
+fn market_source_path_for_resources(
+    resources: &Path,
+    allow_development_path: bool,
+) -> AppResult<PathBuf> {
+    if allow_development_path {
+        // 只在调试构建里回看源码树，打包版必须直接读应用资源，避免触发桌面权限。
+        let development_path = project_root()?.join("market-source.yaml");
+        if development_path.exists() {
+            return Ok(development_path);
+        }
+    }
+    bundled_market_source(resources)
 }
 
 pub fn load_official_plugins() -> AppResult<Vec<OfficialPlugin>> {
@@ -915,6 +925,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(bundled_market_source(&resources).unwrap(), source);
+        fs::remove_dir_all(resources).unwrap();
+    }
+
+    #[test]
+    fn release_模式只读资源目录_不回看源码树() {
+        let resources =
+            std::env::temp_dir().join(format!("aidea-resources-{}", uuid::Uuid::new_v4()));
+        let source = resources.join("market-source.yaml");
+        fs::create_dir_all(&resources).unwrap();
+        fs::write(
+            &source,
+            "schema_version: 1\nrepository: https://example.com/market.git\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            super::market_source_path_for_resources(&resources, false).unwrap(),
+            source
+        );
         fs::remove_dir_all(resources).unwrap();
     }
 }

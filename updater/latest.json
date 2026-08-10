@@ -1,0 +1,11 @@
+{
+  "version": "0.1.7",
+  "notes": "Release v0.1.7",
+  "pub_date": "2026-08-10T07:33:55.448Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.1.7/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK2hGOVNVdGFPRkliaDhyd0hXcnFSZ1NWQkFwVmhoKzRjenR2ZWd0MzBmb0lQT0ZZYnFwVnVTQlA5YUlDbEQyUjlFamRMR09TTTNZWlpmcElYZFFjL0FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MzQyMzE1CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKR1M5clIrbStMRURpUFBRcTh0RXhFZkZDWE9ta0xsRGMyNERXVWN1QnNLdTJDdmFJMGR2S3owT3dNMVhLZC9SMkFTUnhZVlB6SWVWSmM3dlV1OHh2QUE9PQo="
+    }
+  }
+}

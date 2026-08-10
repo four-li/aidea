@@ -92,26 +92,26 @@ ls -lh target/release/bundle/dmg/*.dmg
 
 开搞首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Developer 账号。发布步骤：
 
-使用 `$aidea-release` 在本机构建、签名并发布。脚本会同步版本、运行测试、创建 Gitee tag 和 Release，再上传 `.dmg`、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。发布需要本机未提交的 `aidea-updater.key` 与环境变量 `GITEE_TOKEN`；两者都不会进入仓库。
+使用 `$aidea-release` 在本机构建、生成 Tauri updater 签名并发布。脚本会同步版本、运行测试、生成并提交 `updater/latest.json`，创建 Gitee tag 和 Release，再上传 `.dmg`、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。发布需要本机未提交的 `aidea-updater.key` 和 macOS 钥匙串中的 Gitee Token；两者都不会进入仓库。正常发布不需要补传；只有主脚本明确报告 tag 已推送但 Release 上传中断时，才运行 `bash /Users/fourli/.codex/skills/aidea-release/scripts/resume-release.sh X.Y.Z`，不要重新发布同一版本。
 
 用户从 [Gitee Releases](https://gitee.com/aidea-org/aidea-app/releases) 下载 `.dmg`，打开后将开搞拖入 Applications，首次打开时按 macOS 提示确认。已安装的开搞可在“设置 → 关于”检查 Gitee Release，并下载经过签名验证的更新；验证成功后重启应用即可完成替换，无需手动下载 DMG。未签名应用首次安装仍会触发 macOS 安全提示，应用内更新不会绕过该提示。发布者配置见 [签名更新发布说明](docs/release-updater.md)。
 
-如果 macOS 在双击 `.dmg` 时显示“aIdea 已损坏，无法打开”，通常是 Gatekeeper（macOS 的应用安全检查）拦截了从浏览器下载的未签名应用，并不代表下载文件真的损坏。先关闭提示，在终端移除 DMG 的下载隔离标记，再重新打开 DMG：
+如果 macOS 在双击 `.dmg` 时显示“开搞已损坏，无法打开”，通常是 Gatekeeper（macOS 的应用安全检查）拦截了从浏览器下载的未签名应用，并不代表下载文件真的损坏。先关闭提示，在终端移除 DMG 的下载隔离标记，再重新打开 DMG：
 
 ```bash
-xattr -d com.apple.quarantine ~/Desktop/aIdea_0.1.2_aarch64.dmg
-open ~/Desktop/aIdea_0.1.2_aarch64.dmg
+xattr -d com.apple.quarantine ~/Desktop/开搞_0.1.7_aarch64.dmg
+open ~/Desktop/开搞_0.1.7_aarch64.dmg
 ```
 
-然后把 `aIdea.app` 拖入 `Applications`。如果仍被拦截，再在“系统设置 → 隐私与安全性”中点击“仍要打开”。
+然后把 `开搞.app` 拖入 `Applications`。如果仍被拦截，再在“系统设置 → 隐私与安全性”中点击“仍要打开”。
 
 如果应用已经拖入 `Applications` 但仍无法打开，可以执行：
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/aIdea.app
+xattr -dr com.apple.quarantine /Applications/开搞.app
 ```
 
-当前 Release 未使用 Apple Developer 签名和公证，因此首次启动需要手动放行；要彻底去掉这一步，需要配置 Developer ID 证书和 Apple 公证账号。
+当前 Release 按项目约定不使用 Apple Developer、Developer ID 证书、Apple ID 公证或 stapling，因此首次启动需要手动放行；不要为此新增 Apple 账号、证书或 CI 配置。
 
 ## 添加子应用
 

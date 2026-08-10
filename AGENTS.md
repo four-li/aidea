@@ -36,6 +36,14 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 
 独立官方应用仓库还必须先读取其自身根目录 `AGENTS.md`，再根据任务读取本表中 aIdea 仓库的绝对路径文档。文档冲突时，以更具体的专项文档为准；未实现的平台能力不得通过猜测使用。
 
+## 发布边界
+
+- aIdea 的代码、tag、Release 附件和应用内更新清单全部使用 Gitee；GitHub 只保留偶尔手动同步的代码镜像，不作为下载源、更新源、Release、CI 或 Secrets 平台。
+- 固定更新清单为 `https://gitee.com/aidea-org/aidea-app/raw/main/updater/latest.json`。不得恢复 GitHub 风格的 `releases/latest/download/latest.json`，Gitee 不提供该入口。
+- 不接入 Apple Developer Program、Developer ID 证书、Apple ID 公证、`notarytool` 或 stapling。不要新增 Apple 证书、Apple ID、App Store Connect 密钥或相关 CI 配置；当前 DMG 保持未使用 Apple 代码签名和公证的发布方式。
+- `aidea-updater.key` 只用于 Tauri updater 安装包签名；它不是 Apple 证书。macOS 首次安装按 README 的手动放行流程处理。
+- 不要为了消除 Chrome 对 Gitee `foruda.gitee.com` 附件 URL 的安全误报而引入新的下载平台；先通过 Gitee 工单处理误报。
+
 ## 工程配置
 
 | 工具 | 配置 | 约定 |
