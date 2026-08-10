@@ -21,7 +21,7 @@
 如果 commit 和 tag 已推送、但创建 Release 或上传附件时中断，运行：
 
 ```bash
-bash /Users/fourli/.codex/skills/aidea-release/scripts/resume-release.sh X.Y.Z
+bash "$CODEX_HOME/skills/aidea-release/scripts/resume-release.sh" X.Y.Z
 ```
 
 它只校验当前 tag 与已有产物并补传缺失附件，不会重新构建、提交、推送或覆盖 tag。
