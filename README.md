@@ -88,16 +88,13 @@ cd shell-native && CI=true ../shell-frontend/node_modules/.bin/tauri build --bun
 ls -lh target/release/bundle/dmg/*.dmg
 ```
 
-### GitHub 发布、下载与更新
+### Gitee 发布、下载与更新
 
 开搞首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Developer 账号。发布步骤：
 
-1. 修改 `shell-native/tauri.conf.json` 的 `version`，例如 `0.1.0`。
-2. 提交并推送代码后创建同版本 tag，例如 `v0.1.0`。
-3. GitHub Actions 自动构建 `.dmg` 并创建 GitHub Release。
-4. 用户从 Release 的 Assets 下载 `.dmg`，打开后将 `aIdea.app` 拖入 Applications，首次打开时按 macOS 提示确认。
+使用 `$aidea-release` 在本机构建、签名并发布。脚本会同步版本、运行测试、创建 Gitee tag 和 Release，再上传 `.dmg`、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。发布需要本机未提交的 `aidea-updater.key` 与环境变量 `GITEE_TOKEN`；两者都不会进入仓库。
 
-已安装的开搞可在“设置 → 关于”检查 GitHub Release，并下载经过签名验证的更新；验证成功后重启应用即可完成替换，无需手动下载 DMG。未签名应用首次安装仍会触发 macOS 安全提示，应用内更新不会绕过该提示。发布者配置见 [签名更新发布说明](docs/release-updater.md)。
+用户从 [Gitee Releases](https://gitee.com/aidea-org/aidea-app/releases) 下载 `.dmg`，打开后将开搞拖入 Applications，首次打开时按 macOS 提示确认。已安装的开搞可在“设置 → 关于”检查 Gitee Release，并下载经过签名验证的更新；验证成功后重启应用即可完成替换，无需手动下载 DMG。未签名应用首次安装仍会触发 macOS 安全提示，应用内更新不会绕过该提示。发布者配置见 [签名更新发布说明](docs/release-updater.md)。
 
 如果 macOS 在双击 `.dmg` 时显示“aIdea 已损坏，无法打开”，通常是 Gatekeeper（macOS 的应用安全检查）拦截了从浏览器下载的未签名应用，并不代表下载文件真的损坏。先关闭提示，在终端移除 DMG 的下载隔离标记，再重新打开 DMG：
 
