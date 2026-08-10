@@ -15,6 +15,14 @@ pub struct OfficialCatalogEntry {
     pub enabled: bool,
 }
 
+/// 开搞内置的官方市场仓库地址，用于获取可变的应用收录目录。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OfficialMarketSource {
+    schema_version: u32,
+    repository: String,
+}
+
 /// 官方应用仓库根目录 `aidea.yaml` 的声明。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -143,6 +151,17 @@ fn validate_catalog_entry(entry: &OfficialCatalogEntry) -> AppResult<()> {
         return Err(AppError::Config("官方应用目录 repository 无效".into()));
     }
     Ok(())
+}
+
+fn load_market_source(path: &Path) -> AppResult<OfficialMarketSource> {
+    let source: OfficialMarketSource = serde_yaml::from_str(&std::fs::read_to_string(path)?)
+        .map_err(|error| {
+            AppError::Config(format!("解析官方市场来源 {} 失败: {error}", path.display()))
+        })?;
+    if source.schema_version != 1 || source.repository.trim().is_empty() {
+        return Err(AppError::Config("官方市场来源配置无效".into()));
+    }
+    Ok(source)
 }
 
 fn validate_definition(plugin: &OfficialPluginDefinition) -> AppResult<()> {
@@ -290,6 +309,73 @@ fn market_cache_dir() -> AppResult<PathBuf> {
         .join("market-cache"))
 }
 
+fn market_catalog_cache_dir() -> AppResult<PathBuf> {
+    Ok(market_cache_dir()?.join("catalog"))
+}
+
+async fn clone_market_catalog(repository: &str) -> AppResult<PathBuf> {
+    let staging = std::env::temp_dir().join(format!("aidea-catalog-{}", uuid::Uuid::new_v4()));
+    let output = Command::new("git")
+        .args(["clone", "--depth", "1", repository])
+        .arg(&staging)
+        .output()
+        .await
+        .map_err(|error| AppError::Process(format!("执行市场 git clone 失败: {error}")))?;
+    if !output.status.success() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(AppError::Network(format!(
+            "读取官方市场仓库 {repository} 失败: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    if let Err(error) = load_catalog_entries(&staging.join("official")) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    Ok(staging)
+}
+
+fn cache_market_catalog(source: &Path, destination: &Path) -> AppResult<()> {
+    load_catalog_entries(source)?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| AppError::Config("官方市场缓存目录无效".into()))?;
+    std::fs::create_dir_all(parent)?;
+    let staging = parent.join(format!("catalog-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&staging)?;
+    for entry in std::fs::read_dir(source)? {
+        let path = entry?.path();
+        if path.extension().and_then(|value| value.to_str()) == Some("yaml") {
+            std::fs::copy(&path, staging.join(path.file_name().unwrap()))?;
+        }
+    }
+
+    replace_directory(&staging, destination)
+}
+
+fn replace_directory(staging: &Path, destination: &Path) -> AppResult<()> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| AppError::Config("官方市场缓存目录无效".into()))?;
+
+    // 新目录准备完毕后才替换，网络或解析失败时继续使用上一次成功缓存。
+    let backup = parent.join(format!("catalog-backup-{}", uuid::Uuid::new_v4()));
+    if destination.exists() {
+        std::fs::rename(destination, &backup)?;
+    }
+    if let Err(error) = std::fs::rename(staging, destination) {
+        if backup.exists() {
+            let _ = std::fs::rename(&backup, destination);
+        }
+        let _ = std::fs::remove_dir_all(staging);
+        return Err(error.into());
+    }
+    if backup.exists() {
+        std::fs::remove_dir_all(backup)?;
+    }
+    Ok(())
+}
+
 fn load_cached_definitions_from_dir(
     catalog_dir: &Path,
     cache_dir: &Path,
@@ -314,7 +400,7 @@ fn load_cached_definitions_from_dir(
 
 /// 只读取最近一次成功刷新后的定义，调用本函数绝不访问网络。
 pub fn load_cached_official_definitions() -> AppResult<Vec<CachedOfficialPlugin>> {
-    load_cached_definitions_from_dir(&bundled_market_dir_or_development()?, &market_cache_dir()?)
+    load_cached_definitions_from_dir(&market_catalog_cache_dir()?, &market_cache_dir()?)
 }
 
 /// 从本地缓存还原官方应用运行定义，不会触发网络请求。
@@ -378,26 +464,46 @@ pub async fn refresh_official_definitions_from_dir(
     Ok(definitions)
 }
 
-/// 刷新发布包中收录的官方应用定义并更新本地缓存。
+/// 刷新远程市场目录及其收录的官方应用定义，并更新本地缓存。
 pub async fn refresh_official_definitions() -> AppResult<Vec<CachedOfficialPlugin>> {
-    refresh_official_definitions_from_dir(
-        &bundled_market_dir_or_development()?,
-        &market_cache_dir()?,
+    let source = load_market_source(&market_source_path_or_development()?)?;
+    let catalog_staging = clone_market_catalog(&source.repository).await?;
+    let cache_dir = market_cache_dir()?;
+    let cache_staging = cache_dir
+        .parent()
+        .ok_or_else(|| AppError::Config("官方市场缓存目录无效".into()))?
+        .join(format!("market-cache-{}", uuid::Uuid::new_v4()));
+    let result = match refresh_official_definitions_from_dir(
+        &catalog_staging.join("official"),
+        &cache_staging,
     )
     .await
+    {
+        Ok(definitions) => match cache_market_catalog(
+            &catalog_staging.join("official"),
+            &cache_staging.join("catalog"),
+        ) {
+            Ok(()) => replace_directory(&cache_staging, &cache_dir).map(|_| definitions),
+            Err(error) => Err(error),
+        },
+        Err(error) => Err(error),
+    };
+    let _ = std::fs::remove_dir_all(catalog_staging);
+    let _ = std::fs::remove_dir_all(cache_staging);
+    result
 }
 
-fn bundled_market_dir_or_development() -> AppResult<PathBuf> {
-    let development_dir = project_root()?.join("plugin-markets/official");
-    if development_dir.exists() {
-        return Ok(development_dir);
+fn market_source_path_or_development() -> AppResult<PathBuf> {
+    let development_path = project_root()?.join("market-source.yaml");
+    if development_path.exists() {
+        return Ok(development_path);
     }
     let resources = std::env::current_exe()?
         .parent()
         .and_then(Path::parent)
         .map(|path| path.join("Resources"))
-        .ok_or_else(|| AppError::Config("无法定位官方应用市场资源目录".into()))?;
-    bundled_market_dir(&resources)
+        .ok_or_else(|| AppError::Config("无法定位官方市场资源目录".into()))?;
+    bundled_market_source(&resources)
 }
 
 pub fn load_official_plugins() -> AppResult<Vec<OfficialPlugin>> {
@@ -405,16 +511,16 @@ pub fn load_official_plugins() -> AppResult<Vec<OfficialPlugin>> {
     load_cached_official_plugins()
 }
 
-fn bundled_market_dir(resources: &Path) -> AppResult<std::path::PathBuf> {
-    let direct = resources.join("plugin-markets/official");
+fn bundled_market_source(resources: &Path) -> AppResult<PathBuf> {
+    let direct = resources.join("market-source.yaml");
     if direct.exists() {
         return Ok(direct);
     }
-    let tauri_resource = resources.join("_up_/plugin-markets/official");
+    let tauri_resource = resources.join("_up_/market-source.yaml");
     if tauri_resource.exists() {
         return Ok(tauri_resource);
     }
-    Err(AppError::Config("未找到官方插件市场资源目录".into()))
+    Err(AppError::Config("未找到官方市场来源配置".into()))
 }
 
 #[cfg(test)]
@@ -517,9 +623,9 @@ fn validate_command(command: &[String], id: &str) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_market_dir, load_cached_definitions_from_dir, load_from_dir, load_official_plugins,
-        refresh_official_definitions_from_dir, validate_catalog_entry, validate_definition,
-        CachedOfficialPlugin, OfficialCatalogEntry, OfficialPluginDefinition,
+        bundled_market_source, load_cached_definitions_from_dir, load_from_dir,
+        load_official_plugins, refresh_official_definitions_from_dir, validate_catalog_entry,
+        validate_definition, CachedOfficialPlugin, OfficialCatalogEntry, OfficialPluginDefinition,
     };
     use crate::manifest::SettingsConfig;
     use std::fs;
@@ -549,9 +655,7 @@ mod tests {
 
     #[test]
     fn 设置重置命令不能使用_shell_包装器() {
-        let mut definition = valid_definition(
-            "d351c25ac9a970abb1e13016dcf26128fa8e200b",
-        );
+        let mut definition = valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b");
         definition.settings = Some(SettingsConfig {
             enabled: true,
             reset_command: Some(vec!["sh".into(), "-c".into(), "echo bad".into()]),
@@ -568,6 +672,26 @@ mod tests {
         .unwrap();
 
         assert!(validate_catalog_entry(&entry).is_ok());
+    }
+
+    #[test]
+    fn 市场源配置必须声明仓库地址() {
+        let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let source_path = directory.join("market-source.yaml");
+        fs::write(
+            &source_path,
+            "schema_version: 1\nrepository: https://gitee.com/aidea-org/aidea-market.git\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            super::load_market_source(&source_path).unwrap().repository,
+            "https://gitee.com/aidea-org/aidea-market.git"
+        );
+        fs::write(&source_path, "schema_version: 1\nrepository: \n").unwrap();
+        assert!(super::load_market_source(&source_path).is_err());
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -676,6 +800,80 @@ mod tests {
         fs::remove_dir_all(directory).unwrap();
     }
 
+    #[tokio::test]
+    async fn 刷新市场目录失败时保留已缓存目录() {
+        let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
+        let repository = directory.join("repository");
+        let cache_dir = directory.join("cache");
+        fs::create_dir_all(repository.join("official")).unwrap();
+        fs::write(
+            repository.join("official/demo.yaml"),
+            "schema_version: 1\nrepository: https://gitee.com/aidea-org/demo.git\nenabled: true\n",
+        )
+        .unwrap();
+        for args in [
+            vec!["init"],
+            vec!["add", "official/demo.yaml"],
+            vec![
+                "-c",
+                "user.name=aIdea Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "catalog",
+            ],
+        ] {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&repository)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+
+        let staging = super::clone_market_catalog(repository.to_str().unwrap())
+            .await
+            .unwrap();
+        super::cache_market_catalog(&staging.join("official"), &cache_dir).unwrap();
+        fs::remove_dir_all(staging).unwrap();
+
+        assert_eq!(
+            super::load_catalog_entries(&cache_dir).unwrap()[0]
+                .1
+                .repository,
+            "https://gitee.com/aidea-org/demo.git"
+        );
+        assert!(super::clone_market_catalog("/missing/aidea-market")
+            .await
+            .is_err());
+        assert_eq!(super::load_catalog_entries(&cache_dir).unwrap().len(), 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn 完整市场缓存替换后包含新目录和定义() {
+        let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
+        let destination = directory.join("market-cache");
+        let staging = directory.join("market-cache-staging");
+        fs::create_dir_all(destination.join("catalog")).unwrap();
+        fs::create_dir_all(destination.join("old-app")).unwrap();
+        fs::write(destination.join("catalog/old.yaml"), "old").unwrap();
+        fs::write(destination.join("old-app/aidea.yaml"), "old").unwrap();
+        fs::create_dir_all(staging.join("catalog")).unwrap();
+        fs::create_dir_all(staging.join("new-app")).unwrap();
+        fs::write(staging.join("catalog/new.yaml"), "new").unwrap();
+        fs::write(staging.join("new-app/aidea.yaml"), "new").unwrap();
+
+        super::replace_directory(&staging, &destination).unwrap();
+
+        assert!(destination.join("catalog/new.yaml").exists());
+        assert!(destination.join("new-app/aidea.yaml").exists());
+        assert!(!destination.join("catalog/old.yaml").exists());
+        assert!(!destination.join("old-app/aidea.yaml").exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     fn 拒绝远程健康检查和_shell命令() {
         let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
@@ -706,12 +904,17 @@ mod tests {
     }
 
     #[test]
-    fn dmg资源目录使用_tauri_up_路径() {
+    fn dmg资源文件使用_tauri_up_路径() {
         let resources =
             std::env::temp_dir().join(format!("aidea-resources-{}", uuid::Uuid::new_v4()));
-        let market = resources.join("_up_/plugin-markets/official");
-        fs::create_dir_all(&market).unwrap();
-        assert_eq!(bundled_market_dir(&resources).unwrap(), market);
+        let source = resources.join("_up_/market-source.yaml");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(
+            &source,
+            "schema_version: 1\nrepository: https://example.com/market.git\n",
+        )
+        .unwrap();
+        assert_eq!(bundled_market_source(&resources).unwrap(), source);
         fs::remove_dir_all(resources).unwrap();
     }
 }

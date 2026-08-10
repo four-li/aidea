@@ -31,7 +31,7 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "resources": [
-      "../plugin-markets"
+      "../market-source.yaml"
     ],
     "targets": [
       "app",

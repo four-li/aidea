@@ -15,7 +15,7 @@
 ```
 aIdea/
 ├── apps/builtin/         # 随开搞发布的内置应用 manifest
-├── plugin-markets/       # 随开搞发布的官方应用收录目录
+├── market-source.yaml    # 随开搞发布的官方市场仓库地址
 ├── shell-frontend/       # 壳前端（React）
 ├── shell-native/         # 壳 Rust 内核（Tauri）
 ├── docs/guide/           # 开搞平台和应用开发规范
@@ -24,6 +24,28 @@ aIdea/
 
 用户配置、安装状态、日志和业务数据保存在
 `~/Library/Application Support/aIdea/`，详见 [数据与存储规范](docs/guide/aidea-storage.md)。
+
+## 官方应用与市场
+
+开搞只内置市场入口，官方应用和市场收录都在独立 Git 仓库维护：
+
+```text
+开搞的 market-source.yaml
+  -> https://gitee.com/aidea-org/aidea-market.git
+  -> official/<app-id>.yaml
+  -> https://gitee.com/aidea-org/<app-id>.git 的 aidea.yaml
+```
+
+当前本机开发目录约定为：
+
+```text
+/Users/fourli/Desktop/app/aidea-plugins/
+├── aidea-market/       # 官方市场配置仓库
+├── stock-assistant/    # 股票助手官方应用仓库
+└── <app-id>/           # 其他官方应用仓库
+```
+
+`aidea-plugins/` 只用于本机开发和维护，不参与开搞的安装与运行。新增应用或变更仓库地址时，更新并发布 `aidea-market`；用户在开搞中刷新市场即可获取，无需发布开搞。
 
 ## 开发
 
@@ -99,7 +121,7 @@ xattr -dr com.apple.quarantine /Applications/aIdea.app
 当前只开发内置应用和官方应用，第三方市场、自定义安装和自动发现不属于现行能力。
 
 - 内置应用：代码放在 `shell-frontend/src/builtin-apps/<app-id>/`，manifest 放在 `apps/builtin/`。
-- 官方应用：独立仓库根目录提供 `aidea.yaml`，开搞仓库只在 `plugin-markets/official/` 收录仓库地址。
+- 官方应用：独立仓库根目录提供 `aidea.yaml`；官方市场仓库 `aidea-market` 的 `official/` 只收录仓库地址。修改市场仓库后，用户在开搞中刷新市场即可获取，无需发布开搞。
 - 具体契约按任务读取 [AGENTS.md](AGENTS.md) 的文档路由表。
 
 ### 内置应用 Manifest 示例

@@ -4,17 +4,26 @@
 
 ## 定义与市场收录
 
-官方应用的完整定义固定在应用仓库根目录 `aidea.yaml`。aIdea 仓库中的 `plugin-markets/official/<app-id>.yaml` 只收录仓库地址和启用状态：
+官方应用的完整定义固定在应用仓库根目录 `aidea.yaml`。开搞内置的 `market-source.yaml` 指向官方市场 Git 仓库；该仓库中的 `official/<app-id>.yaml` 只收录仓库地址和启用状态：
 
 ```yaml
 schema_version: 1
-repository: https://github.com/owner/repository.git
+repository: https://gitee.com/aidea-org/example.git
 enabled: true
 ```
 
-市场刷新时，aIdea 用当前用户的 Git 凭据和 SSH 配置读取应用仓库默认分支的 `aidea.yaml`。aIdea 不保存 Git 密码、Token 或 SSH 私钥。最近一次成功读取的公开定义缓存到 `runtime/market-cache/`；刷新失败继续展示缓存和错误，不影响壳或其他应用。
+当前官方仓库位置如下。本机路径是开发约定，不是运行时契约；开搞运行时只依赖远程地址和刷新后的缓存。
 
-新增官方应用时，先发布应用仓库，再新增该市场收录文件，然后发布新版 aIdea。已收录应用日常更新只需更新其仓库，用户刷新市场即可发现。
+| 内容 | 远程地址 | 本机开发路径 |
+| --- | --- | --- |
+| 官方市场收录 | `https://gitee.com/aidea-org/aidea-market.git` | `/Users/fourli/Desktop/app/aidea-plugins/aidea-market/` |
+| 官方应用 | `https://gitee.com/aidea-org/<app-id>.git` | `/Users/fourli/Desktop/app/aidea-plugins/<app-id>/` |
+
+市场链路固定为：开搞的 `market-source.yaml` -> 市场仓库 `official/<app-id>.yaml` -> 应用仓库 `aidea.yaml`。市场收录只决定哪些官方应用可见及其仓库地址；应用定义决定展示信息、固定源码版本和运行命令。
+
+市场刷新时，开搞先拉取市场仓库的 `official/` 目录，再用当前用户的 Git 凭据和 SSH 配置读取应用仓库默认分支的 `aidea.yaml`。开搞不保存 Git 密码、Token 或 SSH 私钥。只有市场目录和全部已启用应用定义都读取成功时，才整体替换 `runtime/market-cache/`；刷新失败继续展示最近一次成功缓存和错误，不影响壳或其他应用。
+
+新增官方应用时，先发布应用仓库，再新增或修改市场仓库中的收录文件并发布市场仓库。用户刷新市场即可获取这些变化，无需发布新版开搞。只有 `market-source.yaml` 的市场入口或协议变更时才需要发布开搞。
 
 ## `aidea.yaml`
 
