@@ -1,5 +1,7 @@
 # 统一更新日志 Implementation Plan
 
+> **历史实施记录**：本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. 本次按用户约定在当前会话内执行，不自动 `git add`、commit、push 或创建 PR。
 
 **Goal:** 增加本地更新日志页面，并让发布脚本把同一份版本文案写入应用更新提示和 Gitee Release。

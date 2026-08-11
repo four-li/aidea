@@ -1,5 +1,7 @@
 # 时间戳转换时区支持 Implementation Plan
 
+> **历史实施记录**：本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在时间戳转换工具中显示实时当前时间，并让用户可按完整 IANA 时区列表转换和解析日期。

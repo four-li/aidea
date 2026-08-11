@@ -1,5 +1,7 @@
 # AI 模型测试工具实现计划
 
+> **历史实施记录**：本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 **目标：** 在 DevTools 中增加一个 AI 模型测试 Tab，通过 Tauri Rust 后端测试 OpenAI-compatible API 的连通性、用量、模型列表和多模态能力。
 
 **架构：** React 只收集配置和展示结果，Rust 使用现有 `reqwest` 发送请求，API Key 不进入前端网络请求。四项测试由一个 Tauri 命令按测试类型分支执行，互相独立。

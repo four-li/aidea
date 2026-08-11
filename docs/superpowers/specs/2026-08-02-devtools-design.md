@@ -1,5 +1,7 @@
 # DevTools 内置子应用设计文档
 
+> **历史设计记录**：本文件只记录当时设计，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 - 文档日期：2026-08-02
 - 最后更新：2026-08-03（DevTools 结构规范整理）
 - 状态：v0.3 已实现，后续按 tab 增量扩展
@@ -688,4 +690,3 @@ v0.2 实测后用户提出 5 个改进：
 | 28 | YAML 压缩 | 转 JSON 压缩输出 |
 | 29 | 高度撑满 | DevToolsPage + JsonFormatter 改用 flex + min-h-0 + h-full 链式撑满 |
 | 30 | 文件改名 | `JsonFormatter.tsx` → `DataFormatter.tsx`，`JsonFormatter.test.tsx` → `DataFormatter.test.tsx` |
-

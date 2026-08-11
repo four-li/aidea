@@ -1,5 +1,7 @@
 # 官方应用异常隔离 Implementation Plan
 
+> **历史实施记录**：本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 单个官方应用的定义、安装记录或进程异常只显示为可恢复的警告，不阻断 aIdea 壳、顶部菜单、应用管理或官方市场。

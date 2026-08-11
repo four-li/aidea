@@ -1,5 +1,7 @@
 # AI 模型测试界面优化 Implementation Plan
 
+> **历史实施记录**：本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 本仓库用户规则禁止默认使用子代理，也禁止主动 `git add/commit`。
 
 **Goal:** 将 DevTools 的 AI 模型测试页改为左侧功能菜单、右侧共用连接配置和双栏内容区，并补齐模型列表同步、图片理解上传、提取结果展示。

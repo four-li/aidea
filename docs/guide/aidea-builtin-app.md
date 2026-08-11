@@ -4,6 +4,8 @@
 
 ## 目录与注册
 
+邮件管理是待删除的旧内置应用。不得在本仓库继续新增邮件业务功能；新邮件功能必须进入独立官方应用 `mail-center`。删除内置邮件时同时移除 manifest、前端入口、Rust 业务模块、IPC、迁移文件，并按发布契约清理旧邮件数据。
+
 一个内置应用对应一个 manifest 和一个 `shell-frontend/src/builtin-apps/<app-id>/` 目录。入口固定为 `index.tsx`，应用通过 `BuiltinPage.tsx` 显式注册，暂不自动扫描。
 
 ```text

@@ -90,7 +90,7 @@ ls -lh target/release/bundle/dmg/*.dmg
 
 ### Gitee 发布、下载与更新
 
-开搞首版只发布 macOS Apple Silicon 未签名 `.dmg`，不依赖 Apple Developer 账号。发布步骤：
+开搞的产品发布目标覆盖 macOS Apple Silicon 和 Intel，均为未签名 `.dmg`，不依赖 Apple Developer 账号。当前发布脚本和更新清单仍只产出 Apple Silicon；Intel 产物、更新清单分支和真机验证完成前，不得把 Intel 写成已支持平台。
 
 使用 `$aidea-release` 在本机构建、生成 Tauri updater 签名并发布。脚本会同步版本、运行测试、生成并提交 `updater/latest.json`，创建 Gitee tag 和 Release，再上传 `.dmg`、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。发布需要本机未提交的 `aidea-updater.key` 和 macOS 钥匙串中的 Gitee Token；两者都不会进入仓库。正常发布不需要补传；只有主脚本明确报告 tag 已推送但 Release 上传中断时，才运行 `bash /Users/fourli/.codex/skills/aidea-release/scripts/resume-release.sh X.Y.Z`，不要重新发布同一版本。
 
@@ -115,7 +115,7 @@ xattr -dr com.apple.quarantine /Applications/开搞.app
 
 ## 添加子应用
 
-当前只开发内置应用和官方应用，第三方市场、自定义安装和自动发现不属于现行能力。
+当前只开发内置应用和官方应用，第三方市场、自定义安装和自动发现不属于现行能力。邮件管理正在从旧内置应用拆为独立官方应用 `mail-center`；新应用完成并通过安装、启动和健康检查后，后续 aIdea 版本会删除旧内置邮件及其旧数据，不做迁移。
 
 - 内置应用：代码放在 `shell-frontend/src/builtin-apps/<app-id>/`，manifest 放在 `apps/builtin/`。
 - 官方应用：独立仓库根目录提供 `aidea.yaml`；官方市场仓库 `aidea-market` 的 `official/` 只收录仓库地址。修改市场仓库后，用户在开搞中刷新市场即可获取，无需发布开搞。

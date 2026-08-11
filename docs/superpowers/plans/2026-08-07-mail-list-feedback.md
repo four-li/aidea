@@ -1,5 +1,7 @@
 # 邮件列表反馈 Implementation Plan
 
+> **历史实施记录**：本文件描述旧内置邮件实现，不是当前平台或邮件应用契约。新邮件应用以 `mail-center` 官方应用规范为准；规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将邮件列表默认页缩小为 30 封，显示匹配总数，并让邮件详情的加载与切换更连续。
@@ -96,7 +98,6 @@ Expected: PASS。
 ### Task 3: 全量验证
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-08-05-mail-manager-design.md`
 
 - [x] **Step 1: 运行 Rust 测试**
 
