@@ -92,7 +92,7 @@ ls -lh target/release/bundle/dmg/*.dmg
 
 开搞仅发布 macOS Apple Silicon（arm64）未签名 `.dmg`，不支持 Intel Mac，也不依赖 Apple Developer 账号。
 
-使用 `$aidea-release` 时，只在仓库根目录运行 `bash scripts/release.sh`。脚本会同步版本、运行测试、生成并提交 `updater/latest.json`，创建 Gitee tag 和 Release，再上传 `.dmg`、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。发布需要本机未提交的 `aidea-updater.key` 和 macOS 钥匙串中的 Gitee Token；两者都不会进入仓库。正常发布不需要补传；只有主脚本明确报告 main 和 tag 已推送、但 Release 上传中断时，才运行 `bash scripts/resume-release.sh X.Y.Z`，不要重新发布同一版本。
+使用 `$aidea-release` 时，只在仓库根目录运行 `bash scripts/release.sh`。脚本会同步版本、运行测试、生成并提交 `updater/latest.json`，创建 Gitee tag 和 Release，再上传 `.dmg`、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。发布需要本机未提交的 `aidea-updater.key` 和 `/Users/fourli/aidea-gitee-token`；Token 文件不进入仓库。正常发布不需要补传；只有主脚本明确报告 main 和 tag 已推送、但 Release 上传中断时，才运行 `bash scripts/resume-release.sh X.Y.Z`，不要重新发布同一版本。
 
 用户从 [Gitee Releases](https://gitee.com/aidea-org/aidea-app/releases) 下载 `.dmg`，打开后将开搞拖入 Applications，首次打开时按 macOS 提示确认。已安装的开搞可在“设置 → 关于”检查 Gitee Release，并下载经过签名验证的更新；验证成功后重启应用即可完成替换，无需手动下载 DMG。未签名应用首次安装仍会触发 macOS 安全提示，应用内更新不会绕过该提示。发布者配置见 [签名更新发布说明](docs/release-updater.md)。
 

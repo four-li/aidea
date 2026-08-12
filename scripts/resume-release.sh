@@ -56,16 +56,27 @@ if (!entry) fail(`缺少版本 ${targetVersion} 的更新日志`);
 process.stdout.write(entry.notes);
 ' "$changelog_file" "$target_version")"
 
-if [[ -z "${GITEE_TOKEN:-}" ]]; then
-  command -v security >/dev/null 2>&1 || {
-    echo "错误：缺少 GITEE_TOKEN，且当前系统无法读取 macOS 钥匙串。" >&2
-    exit 1
-  }
-  export GITEE_TOKEN="$(security find-generic-password -a "$USER" -s "aidea-gitee-release-token" -w 2>/dev/null || true)"
-fi
-[[ -n "${GITEE_TOKEN:-}" ]] || {
-  echo "错误：缺少 GITEE_TOKEN。请先写入钥匙串，或在当前终端设置该变量。" >&2
+gitee_token_file="/Users/fourli/aidea-gitee-token"
+[[ -f "$gitee_token_file" ]] || {
+  echo "错误：缺少 Gitee Token 文件 $gitee_token_file。" >&2
   exit 1
+}
+gitee_token="$(<"$gitee_token_file")"
+[[ -n "$gitee_token" ]] || {
+  echo "错误：Gitee Token 文件为空。" >&2
+  exit 1
+}
+
+gitee_curl() {
+  curl --fail --silent --show-error --config - "$@" <<EOF
+data-urlencode = "access_token=$gitee_token"
+EOF
+}
+
+gitee_upload() {
+  curl --fail --silent --show-error --config - "$@" <<EOF
+form-string = "access_token=$gitee_token"
+EOF
 }
 
 dmg="shell-native/target/release/bundle/dmg/${product_name}_${target_version}_aarch64.dmg"
@@ -87,8 +98,7 @@ release_json="$(curl --fail --silent --show-error "$gitee_api/tags/$tag")" || {
 }
 release_id="$(node -e 'const r=JSON.parse(process.argv[1]); if (r?.id) process.stdout.write(String(r.id));' "$release_json")"
 if [[ -z "$release_id" ]]; then
-  release_json="$(curl --fail --silent --show-error --request POST "$gitee_api" \
-    --data-urlencode "access_token=$GITEE_TOKEN" \
+  release_json="$(gitee_curl --request POST "$gitee_api" \
     --data-urlencode "tag_name=$tag" \
     --data-urlencode "name=Release $tag" \
     --data-urlencode "body=$release_notes" \
@@ -118,8 +128,7 @@ export RELEASE_NOTES="$release_notes"
 node -e 'console.log(JSON.stringify({version: process.env.VERSION, notes: process.env.RELEASE_NOTES, pub_date: new Date().toISOString(), platforms: {"darwin-aarch64": {url: process.env.URL, signature: process.env.SIGNATURE}}}, null, 2))' > "$latest_json"
 
 upload_release_asset() {
-  curl --fail --silent --show-error --request POST "$gitee_api/$release_id/attach_files" \
-    --form "access_token=$GITEE_TOKEN" \
+  gitee_upload --request POST "$gitee_api/$release_id/attach_files" \
     --form "file=@$1" >/dev/null
 }
 asset_exists() {
@@ -127,8 +136,7 @@ asset_exists() {
     "$release_json" "$(basename "$1")"
 }
 verify_online_release() {
-  release_json="$(curl --fail --silent --show-error --get "$gitee_api/tags/$tag" \
-    --data-urlencode "access_token=$GITEE_TOKEN")" || {
+  release_json="$(gitee_curl --get "$gitee_api/tags/$tag")" || {
     echo "错误：无法核验线上 Gitee Release 附件。" >&2
     return 1
   }

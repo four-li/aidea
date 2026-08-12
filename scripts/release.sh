@@ -105,11 +105,25 @@ done < <(git ls-files -co --exclude-standard)
 if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
   export TAURI_SIGNING_PRIVATE_KEY="$(<aidea-updater.key)"
 fi
-if [[ -z "${GITEE_TOKEN:-}" ]]; then
-  export GITEE_TOKEN="$(security find-generic-password -a "$USER" -s "aidea-gitee-release-token" -w 2>/dev/null || true)"
-fi
-[[ -n "${GITEE_TOKEN:-}" ]] || { echo "错误：钥匙串中缺少 aidea-gitee-release-token。" >&2; exit 1; }
-curl --fail --silent --show-error --get 'https://gitee.com/api/v5/user' --data-urlencode "access_token=$GITEE_TOKEN" \
+gitee_token_file="/Users/fourli/aidea-gitee-token"
+[[ -f "$gitee_token_file" ]] || { echo "错误：缺少 Gitee Token 文件 $gitee_token_file。" >&2; exit 1; }
+gitee_token="$(<"$gitee_token_file")"
+[[ -n "$gitee_token" ]] || { echo "错误：Gitee Token 文件为空。" >&2; exit 1; }
+
+# Token 仅通过 curl 标准输入传递，避免出现在命令参数、环境和日志中。
+gitee_curl() {
+  curl --fail --silent --show-error --config - "$@" <<EOF
+data-urlencode = "access_token=$gitee_token"
+EOF
+}
+
+gitee_upload() {
+  curl --fail --silent --show-error --config - "$@" <<EOF
+form-string = "access_token=$gitee_token"
+EOF
+}
+
+gitee_curl --get 'https://gitee.com/api/v5/user' \
   | node -e 'let body=""; process.stdin.on("data", d => body += d).on("end", () => { if (!JSON.parse(body).id) process.exit(1); })' \
   || { echo "错误：Gitee Token 无效。" >&2; exit 1; }
 
@@ -240,7 +254,7 @@ git tag -a "$tag" -m "Release $tag"
 git push origin main
 git push origin "$tag"
 
-release_json="$(curl --fail --silent --show-error --request POST "$gitee_api" --data-urlencode "access_token=$GITEE_TOKEN" --data-urlencode "tag_name=$tag" --data-urlencode "name=Release $tag" --data-urlencode "body=$release_notes" --data-urlencode "target_commitish=main")" || {
+release_json="$(gitee_curl --request POST "$gitee_api" --data-urlencode "tag_name=$tag" --data-urlencode "name=Release $tag" --data-urlencode "body=$release_notes" --data-urlencode "target_commitish=main")" || {
   echo "错误：main 和 tag 已推送；请运行 scripts/resume-release.sh ${target_version}。" >&2
   exit 1
 }
@@ -248,13 +262,13 @@ release_id="$(node -e 'const r=JSON.parse(process.argv[1]); if (r.id) process.st
 [[ -n "$release_id" ]] || { echo "错误：Release 创建失败；请运行 scripts/resume-release.sh ${target_version}。" >&2; exit 1; }
 
 for asset in "$dmg" "$updater_archive" "$updater_signature" "$latest_json"; do
-  curl --fail --silent --show-error --request POST "$gitee_api/$release_id/attach_files" --form "access_token=$GITEE_TOKEN" --form "file=@$asset" >/dev/null || {
+  gitee_upload --request POST "$gitee_api/$release_id/attach_files" --form "file=@$asset" >/dev/null || {
     echo "错误：附件上传失败；请运行 scripts/resume-release.sh ${target_version}。" >&2
     exit 1
   }
 done
 
-release_json="$(curl --fail --silent --show-error --get "$gitee_api/tags/$tag" --data-urlencode "access_token=$GITEE_TOKEN")"
+release_json="$(gitee_curl --get "$gitee_api/tags/$tag")"
 node -e 'const r=JSON.parse(process.argv[1]); const expected=process.argv.slice(2); const notes=expected.pop(); const names=new Set((r.assets || []).map(a => a.name)); if (r.body !== notes || !expected.every(name => names.has(name))) process.exit(1);' \
   "$release_json" "$(basename "$dmg")" "$(basename "$updater_archive")" "$(basename "$updater_signature")" "$(basename "$latest_json")" "$release_notes" || {
   echo "错误：线上 Release 核验失败；请运行 scripts/resume-release.sh ${target_version}。" >&2

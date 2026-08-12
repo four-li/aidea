@@ -32,4 +32,4 @@ bash scripts/resume-release.sh X.Y.Z
 bash scripts/release.sh --prepare-only
 ```
 
-发布结束后报告提交、tag、Release URL 和线上核验结果。仓库脚本只依赖 macOS 自带工具；必须在正常 macOS 用户 shell 中运行。受限自动化环境若报钥匙串缺少 Token，不能据此重建 Token、要求手动 `export` 或改用其他发布流程。
+发布结束后报告提交、tag、Release URL 和线上核验结果。仓库脚本只依赖 macOS 自带工具；必须在正常 macOS 用户 shell 中运行。Gitee Token 固定从 `/Users/fourli/aidea-gitee-token` 读取，Agent 不得读取、显示、写入或要求手动 `export` Token。受限自动化环境若无法读取该文件，应停止并报告文件权限问题。

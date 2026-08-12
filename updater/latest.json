@@ -1,11 +1,11 @@
 {
-  "version": "0.1.12",
-  "notes": "优化\n- 统一应用管理并调整发布流程",
-  "pub_date": "2026-08-12T16:32:02.663Z",
+  "version": "0.1.13",
+  "notes": "新增\n- 支持官方应用发布历史与启动重试",
+  "pub_date": "2026-08-12T20:06:48.969Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.1.12/开搞.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3FCNUFkYUZFYngwZTlqcmpLRnZSVk96dVBoK0V3dGpnNXlucjMxVldBalFPaXdwRWpnYmZoaThkZlBsL0NVeFo0LzBRZWNvMlBtMWNrRE81LzZhendvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTUyMzIyCWZpbGU65byA5pCeLmFwcC50YXIuZ3oKL3dGUE5tRG0wemRSWlVNOXo3cnhHVWtKN2N6VDdWazlrOWhzTDBUOGo2dDR5ZytsbnBIeXJvb0FJMWcvQkw1WDUzMG1teDZaQlZYTlRxZ3J1bi9IQXc9PQo="
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.1.13/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK29ucFlEaThPOG1aaFhWaUF3Z0RJVlUvMEt2M1FNdndvUmVwcWUvdDNlT3RibURFQm5kTldOV000MlZpanlsaFZpRHJKazhuVXhkeTM1RFdPbkc3TGdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTY1MjA4CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKMDErdnRMOGhyNFhib24zQW1RUlVFdE1PUWxKWjZiQzhESkJVRTFVeDh5R3d3MUFMRGNDd0dkY0RIdDZuRHJiYWNMSGZtL0RlSXlCRXFCOWh3L3lJQmc9PQo="
     }
   }
 }
