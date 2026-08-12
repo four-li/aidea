@@ -1,7 +1,7 @@
 // 应用图标右键菜单：使用 shadcn ContextMenu
 // 右键触发，支持启动/停止/重启/查看日志
 // ContextMenu 只响应右键（contextmenu 事件），左键切换 tab 和 dnd-kit 拖拽互不干扰
-import { useState, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { ipc } from '../lib/ipc';
 import type { AppManifest, AppState } from '../types/manifest';
@@ -22,26 +22,28 @@ interface Props {
 }
 
 export function AppContextMenu({ app, state, onRefresh, onShowLog, children }: Props) {
-  const [starting, setStarting] = useState(false);
   const isRunning = state?.status === 'running';
+  const transitioning = state?.status === 'starting' || state?.status === 'stopping';
   const hasProcess = !!app.process;
+  const hasIssue = !!(app.issue ?? state?.issue);
 
   const handleStart = async () => {
-    setStarting(true);
     try {
-      await ipc.startApp(app.id);
+      const request = ipc.startApp(app.id);
+      onRefresh();
+      await request;
       onRefresh();
     } catch (e) {
       console.error('启动失败:', e);
       toast.error('启动失败', { description: String(e) });
-    } finally {
-      setStarting(false);
     }
   };
 
   const handleStop = async () => {
     try {
-      await ipc.stopApp(app.id);
+      const request = ipc.stopApp(app.id);
+      onRefresh();
+      await request;
       onRefresh();
     } catch (e) {
       console.error('停止失败:', e);
@@ -50,16 +52,19 @@ export function AppContextMenu({ app, state, onRefresh, onShowLog, children }: P
   };
 
   const handleRestart = async () => {
-    setStarting(true);
     try {
-      if (isRunning) await ipc.stopApp(app.id);
-      await ipc.startApp(app.id);
+      if (isRunning) {
+        const stopRequest = ipc.stopApp(app.id);
+        onRefresh();
+        await stopRequest;
+      }
+      const startRequest = ipc.startApp(app.id);
+      onRefresh();
+      await startRequest;
       onRefresh();
     } catch (e) {
       console.error('重启失败:', e);
       toast.error('重启失败', { description: String(e) });
-    } finally {
-      setStarting(false);
     }
   };
 
@@ -69,18 +74,19 @@ export function AppContextMenu({ app, state, onRefresh, onShowLog, children }: P
       <ContextMenuContent>
         {hasProcess && (
           <>
-            {!isRunning && (
-              <ContextMenuItem onClick={handleStart} disabled={starting}>
-                {starting ? '启动中...' : '启动'}
+            {!isRunning && !transitioning && (
+              <ContextMenuItem onClick={handleStart}>
+                {hasIssue ? '重试启动' : '启动'}
               </ContextMenuItem>
             )}
-            {isRunning && (
+            {isRunning && !transitioning && (
               <>
                 <ContextMenuItem onClick={handleStop}>停止</ContextMenuItem>
-                <ContextMenuItem onClick={handleRestart} disabled={starting}>
-                  重启
-                </ContextMenuItem>
+                <ContextMenuItem onClick={handleRestart}>重启</ContextMenuItem>
               </>
+            )}
+            {transitioning && (
+              <ContextMenuItem disabled>{state?.status === 'starting' ? '启动中...' : '停止中...'}</ContextMenuItem>
             )}
             <ContextMenuSeparator />
             <ContextMenuItem onClick={() => onShowLog(app)}>查看日志</ContextMenuItem>

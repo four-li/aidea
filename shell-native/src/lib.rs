@@ -4,6 +4,7 @@ pub mod error;
 pub mod manifest;
 pub mod official_app_installer;
 pub mod official_market;
+pub mod official_releases;
 pub mod process;
 
 use process::{start_configured_official_apps, ProcessManager};
@@ -22,10 +23,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::shell::get_aidea_version,
             commands::shell::get_os_username,
+            commands::shell::open_external_url,
             commands::shell::check_aidea_update,
             commands::shell::install_aidea_update,
             commands::shell::list_apps,
             commands::shell::list_official_apps,
+            commands::shell::list_official_app_releases,
             commands::shell::refresh_official_apps,
             commands::shell::list_installed_official_apps,
             commands::shell::install_official_app,

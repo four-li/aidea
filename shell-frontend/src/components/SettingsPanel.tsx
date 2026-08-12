@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { ThemeMode } from '../hooks/useTheme';
 import type { AppManifest } from '../types/manifest';
+import type { AppState } from '../types/manifest';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
@@ -32,6 +33,8 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAppsChanged: () => void;
+  states?: Record<string, AppState>;
+  onRefreshStates?: () => void;
   appOrder?: string[];
   onReorder?: (newOrder: string[]) => void;
   onShowLog: (app: AppManifest) => void;
@@ -80,6 +83,8 @@ export function SettingsPanel({
   open,
   onOpenChange,
   onAppsChanged,
+  states = {},
+  onRefreshStates = () => undefined,
   appOrder,
   onReorder,
   onShowLog,
@@ -143,6 +148,8 @@ export function SettingsPanel({
               {activeCategory === 'apps' && (
                 <AppManagementPage
                   onAppsChanged={onAppsChanged}
+                  states={states}
+                  onRefreshStates={onRefreshStates}
                   appOrder={appOrder}
                   onReorder={onReorder}
                   onShowLog={onShowLog}

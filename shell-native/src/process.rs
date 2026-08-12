@@ -21,8 +21,12 @@ use tokio::time::{sleep, Duration, Instant};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProcessStatus {
+    /// 启动中
+    Starting,
     /// 运行中
     Running,
+    /// 停止中
+    Stopping,
     /// 已停止
     Stopped,
 }
@@ -73,6 +77,8 @@ struct ProcessEntry {
 pub struct ProcessManager {
     table: Arc<Mutex<ProcessTable>>,
     issues: Arc<Mutex<HashMap<String, AppIssue>>>,
+    /// 启停会跨越健康检查或进程退出等待；独立记录过渡态，供所有 UI 使用同一事实来源。
+    transitions: Arc<Mutex<HashMap<String, ProcessStatus>>>,
 }
 
 impl Default for ProcessManager {
@@ -82,6 +88,7 @@ impl Default for ProcessManager {
                 entries: HashMap::new(),
             })),
             issues: Arc::new(Mutex::new(HashMap::new())),
+            transitions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -151,6 +158,13 @@ impl ProcessManager {
                 .ok_or_else(|| AppError::Process(format!("{} 已运行但 PID 丢失", app.id)));
         }
 
+        self.set_transition(&app.id, ProcessStatus::Starting);
+        let result = self.start_official_after_transition(app).await;
+        self.clear_transition(&app.id);
+        result
+    }
+
+    async fn start_official_after_transition(&self, app: &OfficialApp) -> AppResult<u32> {
         let source = crate::official_app_installer::source_dir(&app.id)?;
         let working_dir = source.join(&app.process.working_directory);
         if !working_dir.starts_with(&source) || !working_dir.is_dir() {
@@ -243,12 +257,16 @@ impl ProcessManager {
 
     /// 停止子应用
     pub async fn stop(&self, id: &str) -> AppResult<()> {
+        self.set_transition(id, ProcessStatus::Stopping);
         let entry = {
             let mut table = self.table.lock().unwrap();
             table.entries.remove(id)
         };
 
-        let entry = entry.ok_or_else(|| AppError::Process(format!("{} 未在运行", id)))?;
+        let Some(entry) = entry else {
+            self.clear_transition(id);
+            return Err(AppError::Process(format!("{} 未在运行", id)));
+        };
 
         // 先发 kill_tx 通知监控协程退出 select 分支
         if let Some(tx) = entry.kill_tx {
@@ -265,6 +283,7 @@ impl ProcessManager {
         for _ in 0..50 {
             if !self.pid_alive(pid) {
                 let _ = remove_runtime_record(id);
+                self.clear_transition(id);
                 return Ok(());
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -275,6 +294,7 @@ impl ProcessManager {
             libc::kill(pid, libc::SIGKILL);
         }
         let _ = remove_runtime_record(id);
+        self.clear_transition(id);
         Ok(())
     }
 
@@ -301,17 +321,18 @@ impl ProcessManager {
     /// 获取所有应用状态（包括未运行的）
     pub fn get_all_states(&self, ids: &[String]) -> AppResult<Vec<AppState>> {
         let issues = self.issues.lock().unwrap();
+        let transitions = self.transitions.lock().unwrap();
         let mut states = Vec::new();
         for id in ids {
             let running = self.is_running(id)?;
             let pid = if running { self.get_pid(id) } else { None };
             states.push(AppState {
                 id: id.clone(),
-                status: if running {
+                status: transitions.get(id).cloned().unwrap_or(if running {
                     ProcessStatus::Running
                 } else {
                     ProcessStatus::Stopped
-                },
+                }),
                 pid,
                 issue: issues.get(id).cloned(),
             });
@@ -351,7 +372,16 @@ impl ProcessManager {
         };
         if removed {
             let _ = remove_runtime_record(id);
+            self.clear_transition(id);
         }
+    }
+
+    fn set_transition(&self, id: &str, status: ProcessStatus) {
+        self.transitions.lock().unwrap().insert(id.into(), status);
+    }
+
+    fn clear_transition(&self, id: &str) {
+        self.transitions.lock().unwrap().remove(id);
     }
 
     fn pid_alive(&self, pid: i32) -> bool {
@@ -659,7 +689,7 @@ mod tests {
     use super::{
         check_official_source, command_for_official_app, command_matches,
         ensure_ready_port_available, read_runtime_record_at, resolve_program,
-        write_runtime_record_at, ProcessManager, RuntimeRecord,
+        write_runtime_record_at, ProcessManager, ProcessStatus, RuntimeRecord,
     };
     use crate::official_market::{OfficialApp, OfficialArtifact, OfficialProcess};
     use std::sync::Mutex;
@@ -674,6 +704,16 @@ mod tests {
     #[tokio::test]
     async fn 没有子进程时停止全部不会失败() {
         ProcessManager::default().stop_all().await;
+    }
+
+    #[test]
+    fn 过渡状态优先于进程表返回() {
+        let manager = ProcessManager::default();
+        manager.set_transition("demo", ProcessStatus::Starting);
+
+        let states = manager.get_all_states(&["demo".into()]).unwrap();
+
+        assert_eq!(states[0].status, ProcessStatus::Starting);
     }
 
     #[tokio::test]

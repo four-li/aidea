@@ -1,10 +1,13 @@
 use crate::config::app_data_dir;
 use crate::error::{AppError, AppResult};
+use futures_util::StreamExt;
 use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+const MAX_AI_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
 #[cfg(test)]
 mod ai_http_tests {
@@ -96,6 +99,33 @@ fn validate_ai_url(value: &str) -> AppResult<reqwest::Url> {
     Ok(url)
 }
 
+async fn read_ai_response_body(response: reqwest::Response, max_bytes: usize) -> AppResult<String> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(AppError::Network(format!(
+            "AI 响应体超过 {} MB 限制",
+            max_bytes / 1024 / 1024
+        )));
+    }
+
+    let mut body = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| AppError::Network(error.to_string()))?;
+        if body.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(AppError::Network(format!(
+                "AI 响应体超过 {} MB 限制",
+                max_bytes / 1024 / 1024
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    String::from_utf8(body).map_err(|error| AppError::Network(error.to_string()))
+}
+
 #[tauri::command]
 pub async fn send_ai_http_request(request: AiHttpRequest) -> AppResult<AiHttpResponse> {
     let url = validate_ai_url(&request.url)?;
@@ -118,10 +148,7 @@ pub async fn send_ai_http_request(request: AiHttpRequest) -> AppResult<AiHttpRes
         .await
         .map_err(|e| AppError::Network(e.to_string()))?;
     let status = response.status().as_u16();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| AppError::Network(e.to_string()))?;
+    let text = read_ai_response_body(response, MAX_AI_RESPONSE_BYTES).await?;
     let body = serde_json::from_str(&text).unwrap_or_else(|_| serde_json::Value::String(text));
     Ok(AiHttpResponse {
         status,
@@ -206,7 +233,10 @@ pub fn load_ai_config(id: String) -> AppResult<AiSavedConfig> {
 
 #[cfg(test)]
 mod tests {
-    use super::open_database_at;
+    use super::{open_database_at, send_ai_http_request, AiHttpRequest};
+    use std::collections::HashMap;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     #[test]
     fn ai配置使用_dev_tools自己的_app_db() {
@@ -222,5 +252,34 @@ mod tests {
             .is_ok());
         drop(connection);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn ai响应体超过限制时拒绝读取() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                super::MAX_AI_RESPONSE_BYTES + 1
+            )
+            .unwrap();
+        });
+
+        let result = send_ai_http_request(AiHttpRequest {
+            url: format!("http://{address}"),
+            method: "GET".to_string(),
+            headers: HashMap::new(),
+            body: None,
+        })
+        .await;
+
+        assert!(
+            matches!(result, Err(crate::error::AppError::Network(message)) if message.contains("超过"))
+        );
     }
 }

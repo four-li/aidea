@@ -16,8 +16,8 @@ enabled: true
 
 | 内容 | 远程地址 | 本机开发路径 |
 | --- | --- | --- |
-| 官方市场收录 | `https://gitee.com/aidea-org/aidea-market.git` | `/Users/fourli/Desktop/app/aidea-apps/aidea-market/` |
-| 官方应用 | `https://gitee.com/aidea-org/<app-id>.git` | `/Users/fourli/Desktop/app/aidea-apps/<app-id>/` |
+| 官方市场收录 | `https://gitee.com/aidea-org/aidea-market.git` | `/Users/fourli/Desktop/app/aidea-plugins/aidea-market/` |
+| 官方应用 | `https://gitee.com/aidea-org/<app-id>.git` | `/Users/fourli/Desktop/app/aidea-plugins/<app-id>/` |
 
 市场链路固定为：开搞的 `market-source.yaml` -> 市场仓库 `official/<app-id>.yaml` -> 应用仓库 `aidea.yaml`。市场收录只决定哪些官方应用可见及其仓库地址；应用定义决定展示信息、固定源码版本或预编译包、架构和运行命令。
 
@@ -75,7 +75,18 @@ process:
 - binary 的 `process.command[0]` 可以是裸命令，例如 `mail-center`。aIdea 会将解压后包根目录置于该子进程 `PATH` 的最前面，供正式启动和 staging 健康检查共同使用；不支持 `process.path` 或多目录配置。
 - 官方应用不得在 `aidea.yaml` 声明 `settings` 或 `settings.reset_command`。账户、同步周期和其他业务配置由应用自己的主页面提供入口、校验和保存；不要把业务字段塞进 manifest，也不要期待 aIdea 提供统一表单。
 
-发布顺序必须先提交可安装源码，再在后续提交的 `aidea.yaml` 写入该源码 commit 的 `revision`。不要让配置文件指向包含自身的同一提交，这会形成无法验证的自引用。
+## 发布链路
+
+正式 binary 发布固定为 `C1 源码 -> Release 附件 -> C2 manifest -> C3 市场收录`：
+
+| 阶段 | 内容 | 必须成立的关系 |
+| --- | --- | --- |
+| C1 | 应用源码提交 | 已推送；不含本次 `aidea.yaml`；完整 SHA 保存为 C1。 |
+| Release | `vX.Y.Z` tag 和唯一 arm64 附件 | tag 解引用、Release target 和附件构建来源均为 C1。 |
+| C2 | 应用仓库根目录 `aidea.yaml` | 已推送默认分支；`revision` 等于 C1，不指向 C2。 |
+| C3 | 市场仓库 `official/<app-id>.yaml` | 只含 `schema_version`、`repository`、`enabled`；已有内容正确时只验证，不创建空提交。 |
+
+不要让配置文件指向包含自身的同一提交，这会形成无法验证的自引用。应用仓库的 tag、Release、附件上传和市场收录使用 `$aidea-app-release`；用户一次明确授权发布覆盖该次链路内的必要提交、推送和远端发布操作。
 
 ## 安装、更新与网络
 
@@ -90,7 +101,7 @@ process:
 
 安装日志中的 `git checkout <完整 SHA>` 会进入 detached HEAD，这是按固定源码版本安装的正常状态，不需要 `git switch`。打包版 aIdea 不继承 Finder 启动时的终端 `PATH`；安装器会自动查找系统目录和用户级 `~/.local/bin`、`~/.npm-global/bin`、`~/.bun/bin` 中的运行时命令。
 
-官方应用服务只监听 `127.0.0.1`，WebView 只打开本地地址，健康检查成功前不展示 WebView。工作目录不得借相对路径逃出安装目录。
+官方应用服务只监听 `127.0.0.1`，WebView 只打开本地地址，健康检查成功前不展示 WebView。工作目录不得借相对路径逃出安装目录。aIdea 只接管工作目录位于该应用安装 `source/` 内、且 `ready_url` 健康检查成功的遗留监听进程；开发目录手动启动的服务不接管。开发时若端口被占用，关闭手动服务后在 aIdea 中重试启动已安装版本，避免停止操作误杀调试进程。
 
 应用主页面会收到 aIdea 追加的 `aidea_theme=light|dark` 查询参数。页面优先使用该参数适配主题；独立运行时没有该参数，则使用系统的 `prefers-color-scheme`。
 
@@ -114,6 +125,12 @@ aIdea 的应用管理只保存通用运行偏好：是否显示在主页，以�
 
 官方应用不读取 aIdea 壳数据库，也不依赖平台凭据服务。应用直接读写自己的 `app.db`。
 
+## Release 历史
+
+aIdea 应用管理支持从官方应用仓库读取最近 20 条公开 Release，当前支持 Gitee、GitHub 和 GitLab（包括自部署实例）。壳根据 `repository` 的域名选择对应 API，并将版本号、标题、说明、发布时间、预发布状态和 Release 页面地址转换为统一结构；前端不直接请求外网。
+
+GitLab 使用实例自身的 `/api/v4/projects/<url-encoded-project>/releases` 接口，因此 `http://dev03.ushopal.com:10083/ChenChuanFeng/atlas` 这类地址可以直接工作。首期只发送匿名请求，不保存或发送 Token；私有项目若未对匿名用户开放 Release，会显示请求失败并保留打开远程仓库的入口。HTTP 实例不用于传输认证 Token，后续需要认证时应先提供 HTTPS。
+
 ## 邮件官方应用
 
 邮件官方应用固定使用应用 ID `mail-center` 和自己的 `AIDEA_APP_DATA_DIR/app.db`。它是独立应用，不迁移、不读取、不兼容旧内置邮件的账户、索引、凭据或数据库；aIdea 壳也不提供旧内置邮件的兼容层。
@@ -126,8 +143,8 @@ UI 遵守 [UI 规范](aidea-ui.md)，并同时验证浅色和深色主题。邮�
 npm test
 npm run build
 git diff --check
-git rev-parse --verify <revision>^{commit}
-git show <revision>:aidea.yaml
+git rev-parse --verify <C1>^{commit}
+git show origin/<default-branch>:aidea.yaml
 ```
 
-同时确认：版本符合语义版本、`revision` 是完整 SHA、命令不越出安装目录、健康检查是本地地址、日志不含敏感值。应用自身提交、推送和发布由用户明确授权；aIdea 的发布只使用 `$aidea-release`。
+同时确认：默认分支 `aidea.yaml` 的 `revision` 等于 C1、版本符合语义版本、命令不越出安装目录、健康检查是本地地址、日志不含敏感值。应用自身提交、推送和发布由用户明确授权；aIdea 的发布只使用 `$aidea-release`。

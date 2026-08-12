@@ -32,9 +32,10 @@ export function WebviewFrame({ app, state, path, theme, onFrameRef }: Props) {
     );
   }
   if (app.process && state?.status !== 'running') {
+    const message = state?.status === 'starting' ? '正在启动...' : state?.status === 'stopping' ? '正在停止...' : '服务未启动';
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
-        <p className="text-muted-foreground text-sm">{app.name} 服务未启动</p>
+        <p className="text-muted-foreground text-sm">{app.name} {message}</p>
       </div>
     );
   }

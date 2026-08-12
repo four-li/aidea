@@ -4,6 +4,7 @@ use crate::manifest::{find_manifest, load_all_manifests, AppManifest};
 use crate::process::{AppState, ProcessManager};
 use tauri::{Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
+use tokio::process::Command;
 
 #[derive(serde::Serialize)]
 pub struct AideaUpdate {
@@ -27,6 +28,24 @@ pub fn get_os_username() -> AppResult<String> {
         .ok()
         .filter(|username| !username.trim().is_empty())
         .ok_or_else(|| AppError::Config("无法读取 macOS 短用户名".into()))
+}
+
+#[tauri::command]
+pub async fn open_external_url(url: String) -> AppResult<()> {
+    let parsed = reqwest::Url::parse(&url)
+        .map_err(|error| AppError::Config(format!("外部链接无效: {error}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err(AppError::Config("只允许打开 HTTP(S) 外部链接".into()));
+    }
+    let status = Command::new("open")
+        .arg(&url)
+        .status()
+        .await
+        .map_err(|error| AppError::Process(format!("打开外部链接失败: {error}")))?;
+    if !status.success() {
+        return Err(AppError::Process(format!("打开外部链接失败: {status}")));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -98,6 +117,17 @@ pub async fn list_apps() -> AppResult<Vec<AppManifest>> {
 #[tauri::command]
 pub async fn list_official_apps() -> AppResult<Vec<crate::official_market::OfficialAppListing>> {
     crate::official_market::add_install_status(crate::official_market::load_cached_official_apps()?)
+}
+
+#[tauri::command]
+pub async fn list_official_app_releases(
+    id: String,
+) -> AppResult<Vec<crate::official_releases::OfficialRelease>> {
+    let app = crate::official_market::load_cached_official_apps()?
+        .into_iter()
+        .find(|app| app.id == id)
+        .ok_or_else(|| AppError::AppNotFound(id.clone()))?;
+    crate::official_releases::list_releases(&app.repository).await
 }
 
 #[tauri::command]

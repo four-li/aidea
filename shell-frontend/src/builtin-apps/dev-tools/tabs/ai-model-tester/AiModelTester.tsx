@@ -48,6 +48,14 @@ interface RequestTemplate {
   extractor?: (response: unknown) => unknown;
 }
 
+function encodeTemplateValue(value: string): string {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\r');
+}
+
 const TEMPLATES: Record<TesterTab, string> = {
   connectivity:
     '({\n  request: {\n    url: "{{baseUrl}}/v1/chat/completions",\n    method: "POST",\n    headers: {\n      "Authorization": "Bearer {{apiKey}}",\n      "Content-Type": "application/json"\n    },\n    body: {\n      model: "{{model}}",\n      messages: [{ role: "user", content: "请只回复 OK" }],\n      max_tokens: 5,\n      temperature: 0\n    }\n  },\n  extractor: (response) => response?.choices?.[0]?.message?.content\n})',
@@ -61,10 +69,10 @@ const TEMPLATES: Record<TesterTab, string> = {
 
 function renderTemplate(source: string, config: AiTestConfig, imageData: string): RequestTemplate {
   const filled = source
-    .replaceAll('{{baseUrl}}', config.base_url.replace(/\/$/, ''))
-    .replaceAll('{{apiKey}}', config.api_key)
-    .replaceAll('{{model}}', config.model)
-    .replaceAll('{{imageData}}', imageData);
+    .replaceAll('{{baseUrl}}', encodeTemplateValue(config.base_url.replace(/\/$/, '')))
+    .replaceAll('{{apiKey}}', encodeTemplateValue(config.api_key))
+    .replaceAll('{{model}}', encodeTemplateValue(config.model))
+    .replaceAll('{{imageData}}', encodeTemplateValue(imageData));
   const template = Function('"use strict"; return (' + filled + ');')() as unknown;
   if (!template || typeof template !== 'object' || !('request' in template)) {
     throw new Error('模板必须返回含 request 字段的对象');
@@ -171,8 +179,14 @@ export function AiModelTester() {
         config.api_key.trim() &&
         config.base_url.trim()
       ) {
-        await ipc.saveAiConfig(config);
-        await loadHistory();
+        try {
+          await ipc.saveAiConfig(config);
+          setHistory(await ipc.listAiConfigs());
+        } catch (cause) {
+          toast.error('请求成功，但历史配置保存失败', {
+            description: cause instanceof Error ? cause.message : String(cause),
+          });
+        }
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -233,8 +247,8 @@ export function AiModelTester() {
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="grid h-full grid-cols-[10rem_minmax(0,1fr)] overflow-hidden rounded-lg border border-border">
-        <aside className="flex min-h-0 flex-col gap-1 border-r border-border bg-muted/40 p-2">
+      <div className="grid h-full grid-cols-[10rem_minmax(0,1fr)] overflow-hidden">
+        <aside className="flex min-h-0 flex-col gap-1 border-r border-border bg-muted/20 p-2">
           <div className="px-2 pb-2 pt-1 text-xs font-semibold text-foreground">AI 模型测试</div>
           {TESTER_TABS.map((tab) => (
             <button
@@ -252,8 +266,8 @@ export function AiModelTester() {
             </button>
           ))}
         </aside>
-        <div className="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(12rem,1fr)_2rem] items-center gap-2">
+        <div className="flex min-h-0 flex-col overflow-hidden">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(12rem,1fr)_2rem] items-center gap-2 border-b border-border px-3 py-3">
             <div className="relative min-w-0">
               <Label htmlFor="ai-api-key" className="sr-only">
                 API Key
@@ -275,6 +289,7 @@ export function AiModelTester() {
                     variant="ghost"
                     size="icon"
                     className="absolute right-0 top-0 h-8 w-8"
+                    aria-label={showApiKey ? '隐藏 App Key' : '显示 App Key'}
                     onClick={() => setShowApiKey((value) => !value)}
                   >
                     {showApiKey ? <EyeOff /> : <Eye />}
@@ -296,10 +311,10 @@ export function AiModelTester() {
                 className="h-8 text-xs"
               />
             </div>
-            <div className="relative min-w-0" role="group" aria-label="Model">
+            <div className="flex min-w-0 items-center gap-1" role="group" aria-label="Model">
               <Label className="sr-only">Model</Label>
               <Select value={config.model} onValueChange={(value) => update('model', value)}>
-                <SelectTrigger aria-label="Model" className="h-8 pr-9 text-xs">
+                <SelectTrigger aria-label="Model" className="h-8 min-w-0 text-xs">
                   <SelectValue placeholder="先同步模型列表" />
                 </SelectTrigger>
                 <SelectContent>
@@ -322,7 +337,7 @@ export function AiModelTester() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-0 top-0 h-8 w-8 text-muted-foreground hover:text-foreground"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
                     aria-label="同步模型列表"
                     onClick={() => void syncModels()}
                     disabled={syncingModels}
@@ -338,9 +353,9 @@ export function AiModelTester() {
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
                       aria-label="历史配置"
                       onClick={() => setHistoryOpen(true)}
                     >
@@ -395,14 +410,19 @@ export function AiModelTester() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
+          <div className="flex min-h-0 flex-1 flex-col p-3">
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-3">
               <div className="flex min-h-0 flex-col gap-2">
                 <div className="flex h-8 items-center justify-between">
                   <Label htmlFor={'template-' + activeTab}>请求模板</Label>
-                  <span className="text-xs text-muted-foreground">
-                    {TESTER_TABS.find((tab) => tab.id === activeTab)?.label}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {TESTER_TABS.find((tab) => tab.id === activeTab)?.label}
+                    </span>
+                    <Button size="sm" className="h-8" onClick={send} disabled={!canSend}>
+                      {running ? <Loader2 className="animate-spin" /> : <Play />}发送请求
+                    </Button>
+                  </div>
                 </div>
                 {activeTab === 'multimodal' && (
                   <div className="rounded-md border border-dashed border-primary/40 bg-primary/5 p-2">
@@ -450,7 +470,7 @@ export function AiModelTester() {
                     )}
                   </div>
                 )}
-                <div className="relative flex min-h-0 flex-1">
+                <div className="flex min-h-0 flex-1">
                   <Textarea
                     id={'template-' + activeTab}
                     aria-label="请求模板"
@@ -458,16 +478,8 @@ export function AiModelTester() {
                     onChange={(event) =>
                       setTemplates((old) => ({ ...old, [activeTab]: event.target.value }))
                     }
-                    className="min-h-0 flex-1 resize-none pb-14 font-mono text-xs leading-5"
+                    className="min-h-0 flex-1 resize-none font-mono text-xs leading-5"
                   />
-                  <Button
-                    size="sm"
-                    className="absolute bottom-3 right-3"
-                    onClick={send}
-                    disabled={!canSend}
-                  >
-                    {running ? <Loader2 className="animate-spin" /> : <Play />}发送请求
-                  </Button>
                 </div>
               </div>
               <div className="flex min-h-0 flex-col gap-2">
@@ -479,19 +491,21 @@ export function AiModelTester() {
                     </span>
                   )}
                 </Label>
-                {error ? (
-                  <div className="rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+                {error && (
+                  <div
+                    role="alert"
+                    className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                  >
                     {error}
                   </div>
-                ) : (
-                  <Textarea
-                    aria-label="原始响应"
-                    value={displayedResponse}
-                    readOnly
-                    placeholder="发送请求后显示原始响应"
-                    className="min-h-0 flex-1 resize-none font-mono text-xs leading-5"
-                  />
                 )}
+                <Textarea
+                  aria-label="原始响应"
+                  value={displayedResponse}
+                  readOnly
+                  placeholder={error ? '请求失败，未返回响应' : '发送请求后显示原始响应'}
+                  className="min-h-0 flex-1 resize-none font-mono text-xs leading-5"
+                />
                 {displayedExtracted && !error && (
                   <>
                     <Label>提取结果</Label>

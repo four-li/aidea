@@ -26,6 +26,15 @@ export interface OfficialApp {
   installed_version?: string;
 }
 
+export interface OfficialRelease {
+  version: string;
+  title: string;
+  body: string;
+  published_at?: string;
+  prerelease: boolean;
+  url: string;
+}
+
 export interface InstalledApp {
   id: string;
   version: string;

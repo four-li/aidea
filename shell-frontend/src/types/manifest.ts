@@ -3,7 +3,7 @@
 
 export type UiMode = 'webview' | 'builtin' | 'none';
 export type AppStatus = 'active' | 'disabled' | 'deprecated';
-export type ProcessStatus = 'running' | 'stopped';
+export type ProcessStatus = 'starting' | 'running' | 'stopping' | 'stopped';
 
 export interface UiConfig {
   mode: UiMode;

@@ -29,7 +29,9 @@ function App() {
       selectApp(appId);
       if (app.process && states[appId]?.status !== 'running') {
         try {
-          await ipc.startApp(appId);
+          const request = ipc.startApp(appId);
+          void refresh();
+          await request;
           void refresh();
         } catch (error) {
           toast.error('启动应用失败', { description: String(error) });
@@ -152,6 +154,8 @@ function App() {
         open={showSettings}
         onOpenChange={setShowSettings}
         onAppsChanged={refreshApps}
+        states={states}
+        onRefreshStates={refresh}
         appOrder={appOrder}
         onReorder={setAppOrder}
         onShowLog={setLogApp}

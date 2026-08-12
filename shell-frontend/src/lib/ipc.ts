@@ -13,18 +13,21 @@ import type {
   AiHttpResponse,
   AiTestConfig,
 } from '../types/ai-test';
-import type { InstalledApp, OfficialApp } from '../types/official-app';
+import type { InstalledApp, OfficialApp, OfficialRelease } from '../types/official-app';
 import type { DevToolsSettings } from '../types/dev-tools';
 import type { AideaUpdate } from '../types/update';
 
 export const ipc = {
   getAideaVersion: (): Promise<string> => invoke('get_aidea_version'),
   getOsUsername: (): Promise<string> => invoke('get_os_username'),
+  openExternalUrl: (url: string): Promise<void> => invoke('open_external_url', { url }),
   checkAideaUpdate: (): Promise<AideaUpdate | null> => invoke('check_aidea_update'),
   installAideaUpdate: (): Promise<void> => invoke('install_aidea_update'),
   /** 列出所有已加载的子应用 */
   listApps: (): Promise<AppManifest[]> => invoke<AppManifest[]>('list_apps'),
   listOfficialApps: (): Promise<OfficialApp[]> => invoke('list_official_apps'),
+  listOfficialAppReleases: (id: string): Promise<OfficialRelease[]> =>
+    invoke('list_official_app_releases', { id }),
   refreshOfficialApps: (): Promise<OfficialApp[]> => invoke('refresh_official_apps'),
   listInstalledOfficialApps: (): Promise<InstalledApp[]> =>
     invoke('list_installed_official_apps'),

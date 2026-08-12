@@ -3,11 +3,14 @@ import { listen } from '@tauri-apps/api/event';
 import {
   ArrowLeft,
   Ellipsis,
+  ExternalLink,
   FileText,
   GripVertical,
+  History,
   Package,
   Play,
   RefreshCw,
+  Rocket,
   RotateCcw,
   Settings,
   Square,
@@ -33,16 +36,15 @@ import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
 import { ipc } from '../lib/ipc';
 import type { AppManifest, AppState, AppUserSettings } from '../types/manifest';
-import type { InstalledApp, OfficialApp } from '../types/official-app';
+import type { InstalledApp, OfficialApp, OfficialRelease } from '../types/official-app';
 import { BUILTIN_SETTINGS_PAGES } from '../builtin-apps/settings';
-import { AppIcon } from './AppIcon';
+import { AppIcon, ProcessStatusIndicator } from './AppIcon';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -60,6 +62,8 @@ import {
 interface Props {
   onAppsChanged: () => void;
   onShowLog: (app: AppManifest) => void;
+  states?: Record<string, AppState>;
+  onRefreshStates?: () => void;
   appOrder?: string[];
   onReorder?: (newOrder: string[]) => void;
 }
@@ -82,11 +86,18 @@ function actionLabel(action: 'start' | 'stop' | 'restart' | 'hide' | 'show' | 'u
   }[action];
 }
 
-export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorder }: Props) {
+export function AppManagementPage({
+  onAppsChanged,
+  onShowLog,
+  states = {},
+  onRefreshStates,
+  appOrder,
+  onReorder,
+}: Props) {
   const [apps, setApps] = useState<AppManifest[]>([]);
   const [settings, setSettings] = useState<Record<string, AppUserSettings>>({});
-  const [states, setStates] = useState<Record<string, AppState>>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [officialApps, setOfficialApps] = useState<OfficialApp[]>([]);
   const [installedOfficialApps, setInstalledOfficialApps] = useState<InstalledApp[]>([]);
@@ -97,17 +108,16 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   const [installLog, setInstallLog] = useState('');
   const [installLogOpen, setInstallLogOpen] = useState(false);
   const [uninstallApp, setUninstallApp] = useState<AppManifest | null>(null);
+  const [releaseApp, setReleaseApp] = useState<OfficialApp | null>(null);
+  const [releaseCache, setReleaseCache] = useState<Record<string, OfficialRelease[]>>({});
+  const [releaseLoading, setReleaseLoading] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [allApps, config, appStates] = await Promise.all([
-        ipc.listApps(),
-        ipc.getShellConfig(),
-        ipc.getAppStates(),
-      ]);
+      const [allApps, config] = await Promise.all([ipc.listApps(), ipc.getShellConfig()]);
       setApps(allApps);
       setSettings(config.app_settings);
-      setStates(Object.fromEntries(appStates.map((state) => [state.id, state])));
     } catch (error) {
       toast.error('读取应用状态失败', { description: String(error) });
     }
@@ -126,11 +136,6 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
       setMarketError(String(error));
     }
   }, []);
-
-  useEffect(() => {
-    void load();
-    void loadMarket();
-  }, [load, loadMarket]);
 
   useEffect(() => {
     const pending = listen<InstallProgress>('official-app-install-progress', (event) => {
@@ -157,13 +162,25 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   const controlProcess = async (app: AppManifest, action: 'start' | 'stop' | 'restart') => {
     setPendingId(app.id);
     try {
-      if (action === 'stop') await ipc.stopApp(app.id);
-      if (action === 'restart') {
-        await ipc.stopApp(app.id);
-        await ipc.startApp(app.id);
+      if (action === 'stop') {
+        const request = ipc.stopApp(app.id);
+        onRefreshStates?.();
+        await request;
       }
-      if (action === 'start') await ipc.startApp(app.id);
-      await load();
+      if (action === 'restart') {
+        const stopRequest = ipc.stopApp(app.id);
+        onRefreshStates?.();
+        await stopRequest;
+        const startRequest = ipc.startApp(app.id);
+        onRefreshStates?.();
+        await startRequest;
+      }
+      if (action === 'start') {
+        const request = ipc.startApp(app.id);
+        onRefreshStates?.();
+        await request;
+      }
+      onRefreshStates?.();
     } catch (error) {
       toast.error(`${actionLabel(action)}失败`, { description: String(error) });
     } finally {
@@ -184,7 +201,7 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
     }
   };
 
-  const refreshMarket = async () => {
+  const refreshMarket = useCallback(async () => {
     setMarketRefreshing(true);
     try {
       const [market, records] = await Promise.all([
@@ -200,7 +217,12 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
     } finally {
       setMarketRefreshing(false);
     }
-  };
+  }, [load]);
+
+  useEffect(() => {
+    void load();
+    void loadMarket().finally(() => void refreshMarket());
+  }, [load, loadMarket, refreshMarket]);
 
   const installOfficialApp = async (app: OfficialApp, update = false) => {
     setPendingId(app.id);
@@ -229,6 +251,34 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
     } catch (error) {
       setMarketError(`读取安装日志失败：${String(error)}`);
     }
+  };
+
+  const openReleaseHistory = async (app: OfficialApp) => {
+    setReleaseApp(app);
+    setReleaseError(null);
+    if (releaseCache[app.id]) return;
+    setReleaseLoading(true);
+    try {
+      const releases = await ipc.listOfficialAppReleases(app.id);
+      setReleaseCache((current) => ({ ...current, [app.id]: releases }));
+    } catch (error) {
+      setReleaseError(String(error));
+    } finally {
+      setReleaseLoading(false);
+    }
+  };
+
+  const openExternalUrl = (url: string) => {
+    void ipc.openExternalUrl(url).catch((error) => {
+      toast.error('打开链接失败', { description: String(error) });
+    });
+  };
+
+  const releaseListUrl = (repository: string) => {
+    const normalized = repository.replace(/\/$/, '').replace(/\.git$/, '');
+    return /\/gitlab(?:\.|\/|:)/i.test(normalized) || /:\d+\//.test(normalized)
+      ? `${normalized}/-/releases`
+      : `${normalized}/releases`;
   };
 
   const resetSettings = async (app: AppManifest) => {
@@ -279,7 +329,7 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   }
 
   return (
-    <TooltipProvider delayDuration={400}>
+    <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col">
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">已安装应用</p>
@@ -307,15 +357,17 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                   const builtin = app.ui.mode === 'builtin';
                   const officialApp = officialApps.find((item) => item.id === app.id);
                   const appSettings = settings[app.id] ?? defaultSettings;
-                  const running = states[app.id]?.status === 'running';
-                  const issue = app.issue ?? states[app.id]?.issue;
+                  const state = states[app.id];
+                  const running = state?.status === 'running';
+                  const transitioning = state?.status === 'starting' || state?.status === 'stopping';
+                  const issue = app.issue ?? state?.issue;
                   const pending = pendingId === app.id;
                   return (
                     <SortableAppCard key={app.id} appId={app.id}>
-                      <div className="flex min-h-36 flex-col gap-4 rounded-lg border border-border bg-card p-4 pl-10">
+                      <div className="flex min-h-36 flex-col gap-3 rounded-lg border border-border bg-card p-4 pl-10">
                         <div className="flex min-w-0 items-start gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
-                            <AppIcon app={app} state={states[app.id]} />
+                            <AppIcon app={app} state={state} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
@@ -325,9 +377,10 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                               </span>
                               {issue && <Badge variant="outline">异常</Badge>}
                             </div>
-                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                               v{app.version}
-                              {!builtin && ` · ${running ? '运行中' : '已停止'}`}
+                              {!builtin && <span>·</span>}
+                              {!builtin && <ProcessStatusIndicator state={state} issue={!!issue} />}
                               {!appSettings.visible && ' · 已隐藏'}
                             </div>
                             {app.description && (
@@ -351,16 +404,28 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                                 <Settings size={16} />
                               </ActionButton>
                             )}
-                            <Switch
-                              aria-label={`${app.name} 显示在主页`}
-                              checked={appSettings.visible}
-                              disabled={pending}
-                              onCheckedChange={(checked) =>
-                                void saveSettings(app, { ...appSettings, visible: checked })
-                              }
-                            />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex">
+                                  <Switch
+                                    aria-label={`${app.name} 显示在主页`}
+                                    checked={appSettings.visible}
+                                    disabled={pending}
+                                    onCheckedChange={(checked) =>
+                                      void saveSettings(app, { ...appSettings, visible: checked })
+                                    }
+                                  />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {appSettings.visible ? '显示在主页' : '从主页隐藏'}
+                              </TooltipContent>
+                            </Tooltip>
                             {!builtin && (
-                              <DropdownMenu>
+                              <DropdownMenu
+                                open={openMenuId === app.id}
+                                onOpenChange={(open) => setOpenMenuId(open ? app.id : null)}
+                              >
                                 <DropdownMenuTrigger asChild>
                                   <Button
                                     variant="ghost"
@@ -372,15 +437,15 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  {!running && !issue && (
+                                  {!running && !transitioning && (
                                     <DropdownMenuItem
                                       onSelect={() => void controlProcess(app, 'start')}
                                     >
                                       <Play size={16} />
-                                      启动
+                                      {issue ? '重试启动' : '启动'}
                                     </DropdownMenuItem>
                                   )}
-                                  {running && !issue && (
+                                  {running && !transitioning && (
                                     <>
                                       <DropdownMenuItem
                                         onSelect={() => void controlProcess(app, 'stop')}
@@ -396,19 +461,36 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                                       </DropdownMenuItem>
                                     </>
                                   )}
+                                  {transitioning && (
+                                    <DropdownMenuItem disabled>
+                                      {state.status === 'starting' ? '启动中...' : '停止中...'}
+                                    </DropdownMenuItem>
+                                  )}
+                                  {app.process && <DropdownMenuSeparator />}
                                   {app.process && (
-                                    <DropdownMenuCheckboxItem
-                                      checked={appSettings.startup_mode === 'with-aidea'}
+                                    <DropdownMenuItem
                                       disabled={pending}
-                                      onCheckedChange={(checked) =>
+                                      onSelect={(event) => {
+                                        event.preventDefault();
                                         void saveSettings(app, {
                                           ...appSettings,
-                                          startup_mode: checked ? 'with-aidea' : 'manual',
-                                        })
-                                      }
+                                          startup_mode:
+                                            appSettings.startup_mode === 'with-aidea'
+                                              ? 'manual'
+                                              : 'with-aidea',
+                                        });
+                                      }}
                                     >
+                                      <Rocket
+                                        size={16}
+                                        className={
+                                          appSettings.startup_mode === 'with-aidea'
+                                            ? 'text-primary'
+                                            : 'text-muted-foreground'
+                                        }
+                                      />
                                       随开搞启动
-                                    </DropdownMenuCheckboxItem>
+                                    </DropdownMenuItem>
                                   )}
                                   {officialApp?.update_available && (
                                     <DropdownMenuItem
@@ -418,6 +500,7 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                                       更新
                                     </DropdownMenuItem>
                                   )}
+                                  <DropdownMenuSeparator />
                                   <DropdownMenuItem onSelect={() => onShowLog(app)}>
                                     日志
                                   </DropdownMenuItem>
@@ -434,6 +517,31 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                             )}
                           </div>
                         </div>
+                        {!builtin && officialApp && (
+                          <div className="flex items-center justify-between gap-3 border-t border-border pt-3 pl-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="px-2 text-muted-foreground"
+                              onClick={() => void openReleaseHistory(officialApp)}
+                            >
+                              <History size={14} />
+                              更新日志
+                            </Button>
+                            {officialApp.update_available && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                aria-label={`更新 ${app.name} 到 v${officialApp.version}`}
+                                disabled={pending}
+                                onClick={() => void installOfficialApp(officialApp, true)}
+                              >
+                                <RefreshCw size={14} />
+                                更新至 v{officialApp.version}
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </SortableAppCard>
                   );
@@ -546,6 +654,72 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
             <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted p-3 text-xs text-foreground">
               {installLog}
             </pre>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={releaseApp !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setReleaseApp(null);
+              setReleaseError(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{releaseApp?.name} 更新日志</DialogTitle>
+              <DialogDescription>来自官方仓库的最近版本发布记录。</DialogDescription>
+            </DialogHeader>
+            {releaseLoading && (
+              <p className="py-8 text-center text-sm text-muted-foreground">正在读取更新日志...</p>
+            )}
+            {releaseError && (
+              <div className="space-y-3 rounded-md border border-destructive/30 p-3 text-sm">
+                <p className="text-destructive">读取更新日志失败：{releaseError}</p>
+                {releaseApp && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                    onClick={() => openExternalUrl(releaseListUrl(releaseApp.repository))}
+                  >
+                    打开远程 Release <ExternalLink size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+            {releaseApp && !releaseLoading && !releaseError && (
+              <div className="max-h-[60vh] space-y-3 overflow-auto pr-1">
+                {(releaseCache[releaseApp.id] ?? []).map((release) => (
+                  <article key={`${release.version}-${release.url}`} className="border-b border-border pb-3 last:border-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-medium">
+                        {release.title} <span className="text-muted-foreground">({release.version})</span>
+                      </h3>
+                      <button
+                        type="button"
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => openExternalUrl(release.url)}
+                        aria-label={`打开 ${release.version} Release`}
+                      >
+                        <ExternalLink size={14} />
+                      </button>
+                    </div>
+                    {release.published_at && (
+                      <p className="mt-1 text-xs text-muted-foreground">{release.published_at}</p>
+                    )}
+                    {release.body && (
+                      <pre className="mt-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                        {release.body}
+                      </pre>
+                    )}
+                  </article>
+                ))}
+                {(releaseCache[releaseApp.id] ?? []).length === 0 && (
+                  <p className="py-8 text-center text-sm text-muted-foreground">暂无发布记录</p>
+                )}
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

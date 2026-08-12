@@ -9,7 +9,6 @@ export function useApps() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const result = await loadVisibleApps();

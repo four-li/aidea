@@ -12,7 +12,11 @@ describe('设置关于页', () => {
     vi.mocked(invoke).mockImplementation((command) => {
       if (command === 'list_apps' || command === 'get_app_states') return Promise.resolve([]);
       if (command === 'get_shell_config') return Promise.resolve({ app_settings: {} });
-      if (command === 'list_official_apps' || command === 'list_installed_official_apps') {
+      if (
+        command === 'list_official_apps' ||
+        command === 'refresh_official_apps' ||
+        command === 'list_installed_official_apps'
+      ) {
         return Promise.resolve([]);
       }
       return Promise.resolve(undefined);

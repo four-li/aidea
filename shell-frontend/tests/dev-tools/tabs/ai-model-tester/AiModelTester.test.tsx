@@ -73,6 +73,53 @@ describe('AiModelTester', () => {
     expect(screen.getByLabelText('提取结果')).toHaveValue('"OK"');
   });
 
+  it('模板变量包含 JavaScript 特殊字符时仍能正确发送', async () => {
+    mockTestAiModel.mockResolvedValue({ status: 200, elapsed_ms: 1, body: {} });
+
+    render(<AiModelTester />);
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'key"with\\slash' },
+    });
+    fireEvent.change(screen.getByLabelText('Base URL'), {
+      target: { value: 'https://api.example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '发送请求' }));
+
+    await waitFor(() => expect(mockTestAiModel).toHaveBeenCalled());
+    expect(mockTestAiModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer key"with\\slash',
+        }),
+      }),
+    );
+  });
+
+  it('请求成功但历史配置保存失败时仍保留响应', async () => {
+    mockTestAiModel.mockResolvedValue({
+      status: 200,
+      elapsed_ms: 1,
+      body: { ok: true },
+    });
+    mockSaveAiConfig.mockRejectedValue(new Error('database unavailable'));
+
+    render(<AiModelTester />);
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test' } });
+    fireEvent.change(screen.getByLabelText('Base URL'), {
+      target: { value: 'https://api.example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '发送请求' }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('原始响应')).toHaveValue('{\n  "ok": true\n}'),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mockToastError).toHaveBeenCalledWith(
+      '请求成功，但历史配置保存失败',
+      expect.objectContaining({ description: 'database unavailable' }),
+    );
+  });
+
   it('点击同步按钮后拉取模型列表并填充下拉', async () => {
     mockTestAiModel.mockResolvedValue({
       status: 200,
