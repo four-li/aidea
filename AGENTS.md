@@ -9,10 +9,10 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 - **内置应用**：代码在本仓库内，随 aIdea 一起发布；前端位于壳的 WebView 中，通过 `shell-frontend/src/lib/ipc.ts` 调用自己的 Rust 业务代码。
 - **官方应用**：独立仓库、独立进程，由 aIdea 安装、启动和展示；应用通过 `AIDEA_APP_DATA_DIR` 和 `AIDEA_APP_LOG_DIR` 管理自己的数据与日志。
 - 两类应用统一使用自己的 `app-data/<app-id>/app.db`，包括普通配置、业务数据和凭据；应用不读 aIdea 或其他应用的数据库，凭据不写日志。
-- aIdea 只管理应用生命周期、显示/启动偏好、安装运行环境、设置入口和日志；不解析应用业务配置，也不提供共享凭据服务。
+- aIdea 只管理应用生命周期、显示/启动偏好、安装运行环境和日志；内置应用可使用壳内设置入口，官方应用的业务设置由自己的主页面组织。aIdea 不解析应用业务配置，也不提供共享凭据服务。
 - 内置应用和官方应用的 `version` 都是发布契约的一部分：只要改动会影响用户可见功能、界面、交互、设置页、数据格式或业务行为，就必须同步升版本；纯重构、测试和文档不要求升版本。
-- 官方应用的发布运行时与实现语言无关。正式发布优先使用 `runtime: binary` 加预编译包：包内必须带齐启动所需的运行时和应用依赖，用户无需安装 Rust、Cargo、Node、npm、Python 或 SQLite。Python、Node 应用也可使用系统运行时，但必须由平台先检查版本和必需工具，再只在应用安装目录内安装应用依赖；aIdea 不自动安装、升级系统运行时或修改用户 `PATH`。
-- 官方应用仅支持 macOS Apple Silicon（arm64）；不发布或维护 Intel Mac、Windows、iOS、Android 等其他平台的安装包。`runtime: binary` 已支持单个 arm64 预编译包；Python、Node 等系统运行时的环境检查仍属于待实现能力，应用不得提前依赖。
+- 官方应用的发布运行时与实现语言无关。当前正式发布只使用 `runtime: binary` 加单个 arm64 预编译包：包内必须带齐启动所需的运行时和应用依赖，用户无需安装 Rust、Cargo、Node、npm、Python 或 SQLite。aIdea 不自动安装、升级用户的 Python、Node 或其他系统运行时，也不修改用户 `PATH`。
+- 官方应用仅支持 macOS Apple Silicon（arm64）；不发布或维护 Intel Mac、Windows、iOS、Android 等其他平台的安装包。Python、Node 等系统运行时的环境检查尚未实现；源码安装实现仅供现有开发验证，新的正式市场应用不得依赖。
 - 内置邮件管理已经从 aIdea 移除；新邮件管理必须在独立官方应用仓库中实现，固定应用 ID 为 `mail-center`，不得依赖旧内置邮件的 IPC、Rust 模块、前端组件或数据结构。
 - 旧邮件不做数据迁移、不做双写、不保留兼容读取。历史 `mail-manager` 数据路径不是兼容目标，aIdea 新代码不得读取或写入，也不自动删除这些路径。
 

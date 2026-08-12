@@ -31,8 +31,6 @@ process:
 - `process.ready_url` 必须是快速的 `GET /health` JSON 检查地址。
 - 主页面固定使用同一服务的根路径 `/`；aIdea 从 `process.ready_url` 的 origin 派生主页面地址，不再要求应用定义额外的 `ui.url`。
 - 官方应用服务只监听 `127.0.0.1`，端口从 `43000-43999` 中稳定分配。
-- 所有官方应用都提供 `GET /settings`，即使暂时没有业务设置也要返回一个可访问的空设置页。
-- App Bridge v1 只服务应用主页面。`/settings` 由 aIdea 设置页直接打开，只读取 `aidea_theme` 做首屏主题，不发送 `ready`，也不接收运行期 Bridge 消息。
 
 `/health` 只表示应用服务可以接收请求，不检查邮件服务器或其他外部依赖：
 
@@ -43,7 +41,7 @@ Content-Type: application/json
 {"status":"ok"}
 ```
 
-aIdea 的设置入口固定打开同一应用的 `/settings`，不解析页面字段，也不保存业务配置。业务配置由应用自己校验并写入自己的 `app-data/<app-id>/app.db`。
+业务配置由应用自己的主页面导航组织、校验并写入自己的 `app-data/<app-id>/app.db`；aIdea 不提供业务设置页或统一表单。
 
 ## 传输
 
@@ -231,7 +229,5 @@ message.appId == 自己的 appId
 4. 应用刷新或进程重启后重新发送 `ready`。
 5. iframe 销毁时，壳删除连接；旧 iframe 发来的消息不再处理。
 6. 未完成请求由请求方超时并返回失败，不永久挂起。
-
-`/settings` 不参与上述握手和生命周期。它只需要能被 aIdea 打开，并根据 URL 中的 `aidea_theme` 完成首屏渲染；设置表单、保存和校验全部由应用自己负责。
 
 搜索、页面快捷键、业务消息和业务数据都由应用自己管理，不能借 App Bridge 偷渡成壳侧能力。

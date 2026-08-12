@@ -1,5 +1,5 @@
 // 官方应用入口：按 docs/guide/aidea-app-bridge.md 手写最小 postMessage 接入。
-const APP_ID = 'mail-center';
+const APP_ID = 'reference-app';
 const PROTOCOL = 'aidea-app-bridge';
 const VERSION = 1;
 const SHELL_ORIGINS = new Set(['tauri://localhost', 'http://localhost:5173']);
@@ -55,12 +55,11 @@ function applyTheme(mode: unknown): void {
 applyTheme(new URLSearchParams(window.location.search).get('aidea_theme'));
 
 function render(): void {
-  const settings = window.location.pathname === '/settings';
   document.body.innerHTML = `
     <main>
-      <h1>${settings ? '示例应用设置' : 'aIdea App Bridge 范本'}</h1>
-      <p>${settings ? '这里放应用自己的配置表单。' : '搜索、业务路由和数据都由应用自己负责。'}</p>
-      ${settings ? '' : '<button id="notify">发送原生通知</button>'}
+      <h1>aIdea App Bridge 范本</h1>
+      <p>搜索、业务路由和数据都由应用自己负责。</p>
+      <button id="notify">发送原生通知</button>
     </main>
   `;
   document.querySelector<HTMLButtonElement>('#notify')?.addEventListener('click', () => {
@@ -68,9 +67,8 @@ function render(): void {
   });
 }
 
-const isSettingsPage = window.location.pathname === '/settings';
 shellOrigin = getShellOrigin();
-if (shellOrigin && !isSettingsPage) {
+if (shellOrigin) {
   window.addEventListener('message', (event: MessageEvent<Envelope>) => {
     const message = event.data;
     if (

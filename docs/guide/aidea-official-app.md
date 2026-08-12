@@ -27,6 +27,8 @@ enabled: true
 
 ## `aidea.yaml`
 
+以下是**仅供本地开发验证**的源码安装格式，不能作为新的正式市场应用定义。当前 Node、Python 等系统运行时没有安装前环境检查，正式发布请使用后面的 `runtime: binary` 示例：
+
 ```yaml
 schema_version: 1
 id: stock-assistant
@@ -44,8 +46,6 @@ process:
   command: [node, node_modules/vite/bin/vite.js, --host, 127.0.0.1, --port, '43120']
   working_directory: .
   ready_url: http://127.0.0.1:43120/health
-settings:
-  reset_command: [node, scripts/reset-config.mjs]
 update_notes: 首期版本。
 ```
 
@@ -69,11 +69,11 @@ process:
 - `name`、`description`、`category`、`icon` 是市场展示信息。
 - `version` 与 `min_aidea_version` 都使用三段式语义版本；`aidea.yaml` 建立后，只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。默认使用 patch 版本递增，只有兼容性范围变化时才升 minor 或 major。定义建立前，应用自己的发布版本仍必须与实际行为一致。
 - `revision` 是本次源码的完整 40 位十六进制 commit SHA；不得使用分支名、tag 或短 SHA。
-- `runtime` 是已实现或已发布的运行时类型。`node`、`python`、`system` 等源码安装仍依赖用户系统运行时；`binary` 使用上述单个 arm64 预编译包，包内必须带齐运行时和依赖。Python、Node 的系统运行时环境检查尚未实现。
-- `install`、`process.command` 和 `settings.reset_command` 都是程序及参数数组，不得使用 shell 字符串、`sh -c` 或 `bash -c`。
+- 正式市场应用的 `runtime` 必须是 `binary`。`node`、`python`、`system` 等源码安装仍依赖用户系统运行时；虽然安装器保留相关实现，但 Python、Node 的环境检查尚未实现，只能用于本地开发验证，不能作为新的正式发布路径。`binary` 使用上述单个 arm64 预编译包，包内必须带齐运行时和依赖。
+- `install` 和 `process.command` 都是程序及参数数组，不得使用 shell 字符串、`sh -c` 或 `bash -c`。
 - `process.working_directory` 默认 `.`，且必须位于安装目录内；`ready_url` 必须是 `http://127.0.0.1:<port>`。
 - binary 的 `process.command[0]` 可以是裸命令，例如 `mail-center`。aIdea 会将解压后包根目录置于该子进程 `PATH` 的最前面，供正式启动和 staging 健康检查共同使用；不支持 `process.path` 或多目录配置。
-- aIdea 始终在应用列表提供通用设置入口，并在设置弹窗中打开固定的本地 `/settings` 页面，不解析页面字段；即使暂时没有业务字段，应用也应提供可打开的空设置页。`reset_command` 是可选的配置重置命令，只能重置配置，不能删除整个 `app-data/<app-id>/`。
+- 官方应用不得在 `aidea.yaml` 声明 `settings` 或 `settings.reset_command`。账户、同步周期和其他业务配置由应用自己的主页面提供入口、校验和保存；不要把业务字段塞进 manifest，也不要期待 aIdea 提供统一表单。
 
 发布顺序必须先提交可安装源码，再在后续提交的 `aidea.yaml` 写入该源码 commit 的 `revision`。不要让配置文件指向包含自身的同一提交，这会形成无法验证的自引用。
 
@@ -92,20 +92,15 @@ process:
 
 官方应用服务只监听 `127.0.0.1`，WebView 只打开本地地址，健康检查成功前不展示 WebView。工作目录不得借相对路径逃出安装目录。
 
-应用主页面和 `/settings` 页面都会收到 aIdea 追加的 `aidea_theme=light|dark` 查询参数。页面优先使用该参数适配主题；独立运行时没有该参数，则使用系统的 `prefers-color-scheme`。
+应用主页面会收到 aIdea 追加的 `aidea_theme=light|dark` 查询参数。页面优先使用该参数适配主题；独立运行时没有该参数，则使用系统的 `prefers-color-scheme`。
 
-应用主页面加载后按 [App Bridge 契约](aidea-app-bridge.md) 发送 `ready`，运行时主题通过 `theme` 消息同步。跨源 iframe 中不能读取 `window.parent.origin`；应用必须从 `document.referrer` 获取并精确校验壳 origin，只允许 `tauri://localhost` 和 `http://localhost:5173`，拿不到合法来源时作为独立页面运行、不握手。`/settings` 只使用首屏主题参数，不参与 App Bridge 握手。官方应用需要的通知和应用内跳转也通过 App Bridge 完成，不得依赖 Tauri IPC。搜索属于应用页面自身能力，遵守 [应用内搜索规范](aidea-search.md)。
+应用主页面加载后按 [App Bridge 契约](aidea-app-bridge.md) 发送 `ready`，运行时主题通过 `theme` 消息同步。跨源 iframe 中不能读取 `window.parent.origin`；应用必须从 `document.referrer` 获取并精确校验壳 origin，只允许 `tauri://localhost` 和 `http://localhost:5173`，拿不到合法来源时作为独立页面运行、不握手。官方应用需要的通知和应用内跳转也通过 App Bridge 完成，不得依赖 Tauri IPC。搜索属于应用页面自身能力，遵守 [应用内搜索规范](aidea-search.md)。
 
-所有官方应用必须提供以下两个 HTTP 入口：
-
-- `GET /health`：快速返回 `200` JSON，例如 `{"status":"ok"}`；只表示服务可用，不检查外部依赖。
-- `GET /settings`：返回应用自己的设置页；没有业务设置时也返回空设置页。
-
-aIdea 的应用设置入口固定打开 `/settings`，不把业务配置字段加入 manifest，也不代替应用保存业务配置。
+官方应用必须提供 `GET /health`：快速返回 `200` JSON，例如 `{"status":"ok"}`；只表示服务可用，不检查外部依赖。
 
 ## 应用设置、数据与凭据
 
-aIdea 的应用管理只保存通用运行偏好：是否显示应用，以及是否随 aIdea 启动。官方应用的业务配置（例如邮件账户、同步周期和服务商选项）由应用自己的 `/settings` 页面负责展示、校验和保存；不要把业务字段塞进 aIdea manifest，也不要期待 aIdea 提供统一表单。
+aIdea 的应用管理只保存通用运行偏好：是否显示在主页，以及是否随 aIdea 启动。官方应用的业务配置（例如邮件账户、同步周期和服务商选项）由应用自己的主页面负责展示、校验和保存；不要把业务字段塞进 aIdea manifest，也不要期待 aIdea 提供统一表单。
 
 启动时 aIdea 注入以下环境变量，官方应用直接使用它们，不需要猜测目录：
 

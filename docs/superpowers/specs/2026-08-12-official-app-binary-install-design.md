@@ -1,6 +1,6 @@
 # 官方应用 Binary 安装 v1 设计
 
-> 本文是 aIdea 官方应用预编译安装能力的实施设计。当前正式运行契约仍以 `docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-platform.md` 为准；实现完成并发布后，再将已落地的字段写入正式规范。
+> **历史设计记录**：本文记录 aIdea 官方应用预编译安装能力的设计过程。该能力已随 aIdea 0.1.11 发布；当前正式运行契约以 `docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-platform.md` 为准。
 
 ## 目标
 
@@ -168,7 +168,7 @@ definition: <安装时 manifest 快照>
 - 更新失败后恢复旧目录、旧安装记录和原运行状态。
 - binary manifest 缺少 artifact、URL 非法、SHA-256 非法时拒绝读取。
 
-mail-center 在平台测试通过后进行端到端验证：安装、启动、主页面、主题握手、`/settings`、更新、卸载和业务数据保留。
+mail-center 在平台测试通过后进行端到端验证：安装、启动、主页面、主题握手、从主页面进入业务设置、更新、卸载和业务数据保留。
 
 ## 发布顺序
 
@@ -177,4 +177,4 @@ mail-center 在平台测试通过后进行端到端验证：安装、启动、�
 3. 从 `C1` 构建并发布 arm64 tar.gz 到 Gitee Release，取得 SHA-256。
 4. 后续 commit `C2` 创建 `aidea.yaml`，其 `revision` 指向 `C1`，并填写 artifact URL 与 SHA-256。
 5. 在官方市场收录 `mail-center`。
-6. 用已发布的 aIdea 完成真实安装、更新、主题、设置和卸载验证。
+6. 用已发布的 aIdea 完成真实安装、更新、主题、应用管理生命周期操作和卸载验证；业务设置从应用主页面验收。

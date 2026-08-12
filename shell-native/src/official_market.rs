@@ -1,6 +1,5 @@
 use crate::config::project_root;
 use crate::error::{AppError, AppResult};
-use crate::manifest::SettingsConfig;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -43,8 +42,6 @@ pub struct OfficialAppDefinition {
     pub artifact: Option<OfficialArtifact>,
     pub process: OfficialProcess,
     #[serde(default)]
-    pub settings: Option<SettingsConfig>,
-    #[serde(default)]
     pub update_notes: String,
 }
 
@@ -70,7 +67,6 @@ impl CachedOfficialApp {
             install: self.definition.install,
             artifact: self.definition.artifact,
             process: self.definition.process,
-            settings: self.definition.settings,
             update_notes: self.definition.update_notes,
             update_available: false,
         }
@@ -93,8 +89,6 @@ pub struct OfficialApp {
     #[serde(default)]
     pub artifact: Option<OfficialArtifact>,
     pub process: OfficialProcess,
-    #[serde(default)]
-    pub settings: Option<SettingsConfig>,
     #[serde(default)]
     pub update_notes: String,
     /// 仅用于市场 IPC 展示，不参与仓库定义和缓存。
@@ -221,11 +215,6 @@ fn validate_definition(app: &OfficialAppDefinition) -> AppResult<()> {
     validate_process(&app.process, &app.id)?;
     for command in &app.install {
         validate_command(command, &app.id)?;
-    }
-    if let Some(settings) = &app.settings {
-        if let Some(command) = &settings.reset_command {
-            validate_command(command, &app.id)?;
-        }
     }
     Ok(())
 }
@@ -704,7 +693,6 @@ mod tests {
         load_from_dir, refresh_official_definitions_from_dir, validate_catalog_entry,
         validate_definition, CachedOfficialApp, OfficialAppDefinition, OfficialCatalogEntry,
     };
-    use crate::manifest::SettingsConfig;
     use std::fs;
 
     fn valid_definition(revision: &str) -> OfficialAppDefinition {
@@ -726,19 +714,15 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            settings: None,
             update_notes: String::new(),
         }
     }
 
     #[test]
-    fn 设置重置命令不能使用_shell_包装器() {
-        let mut definition = valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b");
-        definition.settings = Some(SettingsConfig {
-            reset_command: Some(vec!["sh".into(), "-c".into(), "echo bad".into()]),
-        });
+    fn 官方应用定义不允许声明设置重置命令() {
+        let definition = "schema_version: 1\nid: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Box\nrevision: d351c25ac9a970abb1e13016dcf26128fa8e200b\nmin_aidea_version: 0.1.0\nruntime: system\nprocess:\n  command: [python, -m, app]\n  ready_url: http://127.0.0.1:43120/health\nsettings:\n  reset_command: [builtin, dev-tools]\n";
 
-        assert!(validate_definition(&definition).is_err());
+        assert!(serde_yaml::from_str::<OfficialAppDefinition>(definition).is_err());
     }
 
     #[test]

@@ -712,7 +712,6 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: format!("http://127.0.0.1:{port}/health"),
             },
-            settings: None,
             update_notes: String::new(),
             update_available: false,
         };
@@ -747,7 +746,6 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            settings: None,
             update_notes: String::new(),
             update_available: false,
         };

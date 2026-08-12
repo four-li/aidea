@@ -30,7 +30,7 @@
 
 所有页面、内置应用和官方应用都必须同时适配浅色与深色主题。业务组件不得写死 `#fff`、`#000`、固定灰色或固定背景色；优先使用主题变量和 Tailwind token。
 
-官方应用嵌入 aIdea 时，aIdea 会在主页面和 `/settings` URL 追加 `aidea_theme=light` 或 `aidea_theme=dark`，用于首屏主题；应用页面应优先使用这个值渲染主题，独立运行且没有该参数时回退到 `prefers-color-scheme`。只有主页面发送 `ready` 后，主题变化才通过 App Bridge 的 `theme` 消息同步，不重新加载主页面 iframe；`/settings` 不参与 App Bridge。
+官方应用嵌入 aIdea 时，aIdea 会在主页面 URL 追加 `aidea_theme=light` 或 `aidea_theme=dark`，用于首屏主题；应用页面应优先使用这个值渲染主题，独立运行且没有该参数时回退到 `prefers-color-scheme`。主页面发送 `ready` 后，主题变化通过 App Bridge 的 `theme` 消息同步，不重新加载 iframe。
 
 邮件正文、Markdown 预览、富文本、第三方 HTML 等内容区必须单独验证：如果保留原始内容样式，内容区必须有明确可读的背景和文字颜色；如果跟随主题，必须覆盖内联颜色造成的低对比度问题。链接、引用、代码块、表格边框和图片占位状态也要在两个主题下可读。
 

@@ -1,5 +1,3 @@
-import type { SettingsConfig } from './manifest';
-
 export interface OfficialArtifact {
   url: string;
   sha256: string;
@@ -22,7 +20,6 @@ export interface OfficialApp {
     working_directory: string;
     ready_url: string;
   };
-  settings?: SettingsConfig;
   update_notes: string;
   /** 由后端按已安装记录计算，市场版本更高时为 true。 */
   update_available: boolean;

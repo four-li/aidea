@@ -6,6 +6,10 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn() },
 }));
 
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(() => undefined),
+}));
+
 const mockListApps = vi.fn();
 const mockGetShellConfig = vi.fn();
 const mockGetAppStates = vi.fn();
@@ -15,6 +19,12 @@ const mockStartApp = vi.fn();
 const mockStopApp = vi.fn();
 const mockUninstallOfficialApp = vi.fn();
 const mockGetDevToolsSettings = vi.fn();
+const mockListOfficialApps = vi.fn();
+const mockRefreshOfficialApps = vi.fn();
+const mockListInstalledOfficialApps = vi.fn();
+const mockInstallOfficialApp = vi.fn();
+const mockUpdateOfficialApp = vi.fn();
+const mockReadOfficialAppInstallLog = vi.fn();
 
 vi.mock('../../src/lib/ipc', () => ({
   ipc: {
@@ -28,6 +38,12 @@ vi.mock('../../src/lib/ipc', () => ({
     uninstallOfficialApp: (...args: unknown[]) => mockUninstallOfficialApp(...args),
     getDevToolsSettings: (...args: unknown[]) => mockGetDevToolsSettings(...args),
     saveDevToolsSettings: vi.fn(),
+    listOfficialApps: (...args: unknown[]) => mockListOfficialApps(...args),
+    refreshOfficialApps: (...args: unknown[]) => mockRefreshOfficialApps(...args),
+    listInstalledOfficialApps: (...args: unknown[]) => mockListInstalledOfficialApps(...args),
+    installOfficialApp: (...args: unknown[]) => mockInstallOfficialApp(...args),
+    updateOfficialApp: (...args: unknown[]) => mockUpdateOfficialApp(...args),
+    readOfficialAppInstallLog: (...args: unknown[]) => mockReadOfficialAppInstallLog(...args),
   },
 }));
 
@@ -43,6 +59,12 @@ describe('AppManagementPage', () => {
     mockStopApp.mockResolvedValue(undefined);
     mockUninstallOfficialApp.mockResolvedValue(undefined);
     mockGetDevToolsSettings.mockResolvedValue({ hidden_tabs: [] });
+    mockListOfficialApps.mockResolvedValue([]);
+    mockRefreshOfficialApps.mockResolvedValue([]);
+    mockListInstalledOfficialApps.mockResolvedValue([]);
+    mockInstallOfficialApp.mockResolvedValue(undefined);
+    mockUpdateOfficialApp.mockResolvedValue(undefined);
+    mockReadOfficialAppInstallLog.mockResolvedValue('');
   });
 
   it('没有已安装应用时显示空状态', async () => {
@@ -81,7 +103,7 @@ describe('AppManagementPage', () => {
     expect(screen.queryByRole('button', { name: '重置设置' })).not.toBeInTheDocument();
   });
 
-  it('进入应用详情后显示自启动和详情页内的重置按钮', async () => {
+  it('官方应用只在菜单中管理启动偏好，不提供壳内设置页', async () => {
     mockListApps.mockResolvedValue([
       {
         id: 'official-mail',
@@ -91,62 +113,34 @@ describe('AppManagementPage', () => {
         status: 'active',
         ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
         process: {},
-        settings: { reset_command: ['node', 'reset.js'] },
       },
     ]);
     mockGetAppStates.mockResolvedValue([{ id: 'official-mail', status: 'running', pid: 123 }]);
 
     render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '邮件管理 设置' }));
+    await screen.findByText('邮件管理');
+    expect(screen.queryByRole('button', { name: '邮件管理 设置' })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('邮件管理')).not.toBeInTheDocument();
 
-    expect(await screen.findByText('邮件管理设置')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: '邮件管理 随开搞启动' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重置' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '返回应用管理' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '邮件管理 日志' })).not.toBeInTheDocument();
-    expect(screen.getByTitle('邮件管理')).toHaveAttribute(
-      'src',
-      'http://127.0.0.1:43120/settings',
+    fireEvent.click(screen.getByRole('switch', { name: '邮件管理 显示在主页' }));
+    await waitFor(() =>
+      expect(mockSaveAppUserSettings).toHaveBeenCalledWith('official-mail', {
+        visible: false,
+        startup_mode: 'manual',
+      }),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '重置' }));
-    expect(screen.getByRole('heading', { name: '确认重置应用配置' })).toBeInTheDocument();
-    expect(
-      screen.getByText('重置后将清除当前应用的所有用户配置，并恢复默认设置。此操作不可撤销。'),
-    ).toBeInTheDocument();
-    expect(mockResetAppSettings).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
-    expect(mockResetAppSettings).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: '重置' }));
-    fireEvent.click(screen.getByRole('button', { name: '确认重置' }));
-    await waitFor(() => expect(mockResetAppSettings).toHaveBeenCalledWith('official-mail'));
-  });
-
-  it('停止的官方应用进入设置前会先启动应用', async () => {
-    mockListApps.mockResolvedValue([
-      {
-        id: 'official-mail',
-        name: '邮件管理',
-        version: '1.0.0',
-        category: 'test',
-        status: 'active',
-        ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
-        process: {},
-      },
-    ]);
-    mockGetAppStates
-      .mockResolvedValueOnce([{ id: 'official-mail', status: 'stopped', pid: null }])
-      .mockResolvedValue([{ id: 'official-mail', status: 'running', pid: 123 }]);
-
-    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '邮件管理 设置' }));
-
-    await waitFor(() => expect(mockStartApp).toHaveBeenCalledWith('official-mail'));
-    expect(await screen.findByText('邮件管理设置')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('button', { name: '邮件管理 更多操作' }), {
+      key: 'ArrowDown',
+    });
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: '随开搞启动' }));
+    await waitFor(() =>
+      expect(mockSaveAppUserSettings).toHaveBeenCalledWith('official-mail', {
+        visible: false,
+        startup_mode: 'with-aidea',
+      }),
+    );
   });
 
   it('内置应用设置页通过显式注册表打开', async () => {
@@ -188,6 +182,110 @@ describe('AppManagementPage', () => {
     expect(screen.queryByText('添加应用')).not.toBeInTheDocument();
     await screen.findByText('邮件管理');
     expect(screen.getByRole('button', { name: '邮件管理 更多操作' })).toBeInTheDocument();
+  });
+
+  it('统一显示已安装和可安装官方应用，并从对应位置执行操作', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        description: '本地邮件管理',
+        version: '0.1.0',
+        category: '效率',
+        status: 'active',
+        ui: { mode: 'webview', url: 'http://127.0.0.1:43130' },
+        process: {},
+      },
+    ]);
+    mockListOfficialApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        description: '本地邮件管理',
+        category: '效率',
+        version: '0.1.1',
+        icon: 'Mail',
+        repository: 'https://gitee.com/aidea-org/mail-manager.git',
+        revision: 'a'.repeat(40),
+        runtime: 'binary',
+        install: [],
+        artifact: {
+          url: 'https://gitee.com/aidea-org/mail-manager/releases/download/v0.1.1/mail-center.tar.gz',
+          sha256: 'b'.repeat(64),
+        },
+        process: {
+          command: ['mail-center'],
+          working_directory: '.',
+          ready_url: 'http://127.0.0.1:43130/health',
+        },
+        update_notes: '修复同步',
+        update_available: true,
+        installed_version: '0.1.0',
+      },
+      {
+        id: 'available-app',
+        name: '待安装应用',
+        description: '等待安装',
+        category: '效率',
+        version: '0.1.0',
+        icon: 'Package',
+        repository: 'https://gitee.com/aidea-org/available-app.git',
+        revision: 'c'.repeat(40),
+        runtime: 'binary',
+        install: [],
+        artifact: {
+          url: 'https://gitee.com/aidea-org/available-app/releases/download/v0.1.0/available-app.tar.gz',
+          sha256: 'd'.repeat(64),
+        },
+        process: {
+          command: ['available-app'],
+          working_directory: '.',
+          ready_url: 'http://127.0.0.1:43131/health',
+        },
+        update_notes: '',
+        update_available: false,
+      },
+    ]);
+    mockListInstalledOfficialApps.mockResolvedValue([
+      { id: 'official-mail', version: '0.1.0', revision: 'a'.repeat(40), status: 'installed' },
+    ]);
+
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
+
+    expect(await screen.findByText('可安装应用')).toBeInTheDocument();
+    await screen.findByRole('button', { name: '安装 待安装应用' });
+    expect(screen.getAllByText('邮件管理')).toHaveLength(1);
+    expect(screen.getByText('待安装应用')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '安装 待安装应用' })).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '邮件管理 更多操作' }), {
+      key: 'ArrowDown',
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '更新' }));
+    await waitFor(() => expect(mockUpdateOfficialApp).toHaveBeenCalledWith('official-mail'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '邮件管理 更多操作' })).toBeEnabled(),
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '邮件管理 更多操作' }), {
+      key: 'ArrowDown',
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '卸载' }));
+    expect(screen.getByRole('heading', { name: '确认卸载应用' })).toBeInTheDocument();
+    expect(mockUninstallOfficialApp).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(mockUninstallOfficialApp).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '邮件管理 更多操作' }), {
+      key: 'ArrowDown',
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '卸载' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认卸载' }));
+    await waitFor(() => expect(mockUninstallOfficialApp).toHaveBeenCalledWith('official-mail'));
+
+    fireEvent.click(screen.getByRole('button', { name: '安装 待安装应用' }));
+    await waitFor(() => expect(mockInstallOfficialApp).toHaveBeenCalledWith('available-app'));
   });
 
   it('按外部顺序显示应用并提供拖拽手柄', async () => {

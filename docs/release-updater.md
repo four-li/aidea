@@ -1,31 +1,42 @@
-# aIdea 签名更新发布
+# aIdea 发布与更新
 
-应用内更新只使用 Tauri updater。项目明确不接入 Apple Developer、Developer ID 代码签名、Apple ID 公证或 stapling；首次安装的 macOS 放行流程见 README。
+aIdea 只发布 macOS Apple Silicon 版本。安装包和应用内更新均使用 Gitee；不使用 GitHub、Apple Developer、Developer ID、Apple ID 公证或 stapling。
 
-## 一次性配置
+## 发布
 
-私钥保存于仓库根目录的 `aidea-updater.key`（已加入 `.gitignore`，不进仓库），公钥已写入 `shell-native/tauri.conf.json`。私钥只用于 Tauri updater 安装包签名；不要上传到 Gitee、GitHub 或任何 CI 平台。
-
-本机发布还需要 Gitee Token，用于创建 `aidea-org/aidea-app` 的 Gitee Release 和上传附件。将 Token 存入当前 macOS 用户钥匙串服务 `aidea-gitee-release-token` 后，发布脚本会自动读取；不需要手动 `export`，Token 不写入仓库或文档。
-
-私钥丢失后，旧版无法信任使用新密钥签名的更新；不得删除或轮换它，除非同时设计密钥迁移发布。
-
-## 每次发布
-
-使用 `$aidea-release`。发布前先在 `shell-frontend/src/data/changelog.json` 添加目标版本的更新日志：版本必须为 `X.Y.Z`、全局唯一、正文非空。它是应用内更新日志、`latest.json` 的 `notes` 和 Gitee Release 正文的唯一来源；日志随功能代码先提交，脚本不生成占位文案。缺少、重复或格式错误时，脚本会在读取凭据、联网和构建前停止。
-
-脚本从 `shell-native/tauri.conf.json` 读取目标版本并同步 Cargo、前端包和 lockfile，在本机构建并生成：DMG、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`。验证成功后，脚本把 `latest.json` 写入并提交到 `updater/latest.json`，创建 Gitee tag 和 Release，并上传这些产物。
-
-应用固定读取 `https://gitee.com/aidea-org/aidea-app/raw/main/updater/latest.json`。不要改回 `releases/latest/download/latest.json`：Gitee 没有这个 GitHub 兼容地址，会返回 404；版本化附件地址仍使用对应 tag 的 Release 下载地址。
-
-发布脚本会先调用 Gitee `GET /api/v5/user` 验证 Token，再开始构建。创建 Release 使用 Gitee OpenAPI 的表单参数：`access_token`、`tag_name`、`name`、`body`、`target_commitish`，其中 `body` 必填；Gitee 返回的已上传附件字段是 `assets`。不要改成 JSON 请求，也不要用 `attach_files` 判断附件是否存在。
-
-如果 commit 和 tag 已推送、但创建 Release 或上传附件时中断，运行：
+在仓库根目录的正常 macOS 用户 shell 运行：
 
 ```bash
-bash "$CODEX_HOME/skills/aidea-release/scripts/resume-release.sh" X.Y.Z
+bash scripts/release.sh
 ```
 
-它只校验当前 tag 与已有产物并补传缺失附件，同时校验 Release 正文和 `latest.json.notes` 与版本日志一致；不会重新构建、提交、推送或覆盖 tag。
+这是唯一发布入口。不要手工改版本、更新 `changelog.json`、`git add`、commit、推送、传版本号或使用 Skill 目录中的脚本副本。
 
-发布后应从已安装的旧版执行“检查更新”，确认能读取 Raw 的 `latest.json` 并发现新版本；点击“更新并重启”后，Tauri 必须在重启前验证签名。删除或篡改 `.sig`、更新包或 `latest.json` 时，安装必须失败且保留旧版。
+受限自动化环境若无法读取登录钥匙串，不代表 Token 丢失。不要重建 Token、改为手动 `export`，或改用另一套发布命令；应在正常用户 shell 重试同一条命令。
+
+脚本自动纳入正常的已修改和未跟踪文件，自动计算版本、生成用户更新说明，并执行测试、构建、Tauri updater 签名、提交、tag、Gitee Release、四个附件上传和线上核验。构建失败前会还原自己修改的版本、更新日志和更新清单文件，不创建发布提交。
+
+发布前仅检查：
+
+```bash
+bash scripts/release.sh --prepare-only
+```
+
+## 凭据与产物
+
+- `aidea-updater.key` 位于仓库根目录且不提交，只用于 Tauri updater 签名；不得上传、删除或轮换。
+- Gitee Token 存在当前 macOS 用户钥匙串服务 `aidea-gitee-release-token`；脚本自动读取，不写入仓库或文档。
+- 固定更新清单：`https://gitee.com/aidea-org/aidea-app/raw/main/updater/latest.json`。不要改为 `releases/latest/download/latest.json`。
+- Release 必须包含 DMG、`.app.tar.gz`、`.app.tar.gz.sig` 和 `latest.json`；Gitee 自动生成的源码压缩包不算额外发布产物。
+
+## 中断恢复
+
+只有脚本已经明确报告 `main` 和 tag 推送成功、但创建 Release 或上传附件失败时，才运行：
+
+```bash
+bash scripts/resume-release.sh X.Y.Z
+```
+
+它只补齐 Release、附件和线上核验，不重新构建、提交、推送或覆盖 tag。
+
+发布后从已安装旧版检查更新，确认能读取 Raw 更新清单并完成签名校验。

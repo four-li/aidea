@@ -5,20 +5,27 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 prepare_only=false
-target_version=""
 for arg in "$@"; do
   case "$arg" in
     --prepare-only) prepare_only=true ;;
-    v*|[0-9]*.[0-9]*.[0-9]*) target_version="${arg#v}" ;;
-    *) echo "用法：bash scripts/release.sh [X.Y.Z] [--prepare-only]" >&2; exit 1 ;;
+    *) echo "用法：bash scripts/release.sh [--prepare-only]" >&2; exit 1 ;;
   esac
 done
 
 release_lock_dir="/private/tmp/aidea-release.lock"
-if ! mkdir "$release_lock_dir" 2>/dev/null; then
-  echo "错误：已有发布流程正在运行，请等待其完成后再试。" >&2
-  exit 1
+if [[ -d "$release_lock_dir" ]]; then
+  if [[ -f "$release_lock_dir/pid" ]] && kill -0 "$(<"$release_lock_dir/pid")" 2>/dev/null; then
+    echo "错误：已有发布流程正在运行，请等待其完成后再试。" >&2
+    exit 1
+  fi
+  rm -f "$release_lock_dir/pid"
+  rmdir "$release_lock_dir" 2>/dev/null || {
+    echo "错误：发布锁异常，无法安全清理：$release_lock_dir" >&2
+    exit 1
+  }
 fi
+mkdir "$release_lock_dir"
+printf '%s\n' "$$" > "$release_lock_dir/pid"
 
 tauri_file="shell-native/tauri.conf.json"
 cargo_file="shell-native/Cargo.toml"
@@ -44,6 +51,7 @@ cleanup() {
   [[ -n "$backup_dir" ]] && rm -rf "$backup_dir"
   [[ -n "$release_dir" ]] && rm -rf "$release_dir"
   [[ -n "$build_marker" ]] && rm -f "$build_marker"
+  rm -f "$release_lock_dir/pid"
   rmdir "$release_lock_dir" 2>/dev/null || true
   exit "$status"
 }
@@ -59,7 +67,10 @@ done
 [[ "$(git branch --show-current)" == "main" ]] || { echo "错误：必须在 main 分支发布。" >&2; exit 1; }
 git diff --check
 git diff --cached --check
-git diff --name-only --diff-filter=U | grep -q . && { echo "错误：存在未解决的 Git 冲突。" >&2; exit 1; } || true
+if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
+  echo "错误：存在未解决的 Git 冲突。" >&2
+  exit 1
+fi
 
 origin_url="$(git config --get remote.origin.url || true)"
 [[ "$origin_url" =~ (gitee\.com[:/])[^/]+/[^/]+(\.git)?$ ]] || {
@@ -69,7 +80,7 @@ origin_url="$(git config --get remote.origin.url || true)"
 repo="$(printf '%s' "$origin_url" | sed -E 's#git@gitee\.com:##; s#https://gitee\.com/##; s#\.git$##')"
 gitee_api="https://gitee.com/api/v5/repos/$repo/releases"
 
-if hdiutil info 2>/dev/null | grep -qE '/Volumes/aIdea(/|$)'; then
+if hdiutil info 2>/dev/null | grep -E '/Volumes/aIdea(/|$)' >/dev/null; then
   echo "错误：检测到已挂载的 /Volumes/aIdea，请先在 Finder 推出该磁盘映像。" >&2
   exit 1
 fi
@@ -130,8 +141,7 @@ process.stdout.write("0");
   echo "错误：当前版本 ${current_version} 低于最近正式版本 ${latest_version}，请先修复版本号。" >&2
   exit 1
 }
-if [[ -z "$target_version" ]]; then
-  target_version="$(node -e '
+target_version="$(node -e '
 const [current, latest] = process.argv.slice(1).map(v => v.split(".").map(Number));
 const compare = (a, b) => {
   for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
@@ -140,7 +150,6 @@ const compare = (a, b) => {
 if (compare(current, latest) > 0) process.stdout.write(current.join("."));
 else process.stdout.write(`${latest[0]}.${latest[1]}.${latest[2] + 1}`);
 ' "$current_version" "$latest_version")"
-fi
 [[ "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "错误：版本必须是 X.Y.Z。" >&2; exit 1; }
 node -e '
 const [target, latest] = process.argv.slice(1).map(v => v.split(".").map(Number));
@@ -149,7 +158,10 @@ process.exit(1);
 ' "$target_version" "$latest_version" || { echo "错误：发布版本必须高于 ${latest_tag}。" >&2; exit 1; }
 
 tag="v$target_version"
-git show-ref --tags --verify --quiet "refs/tags/$tag" && { echo "错误：本地 tag $tag 已存在。" >&2; exit 1; } || true
+if git show-ref --tags --verify --quiet "refs/tags/$tag"; then
+  echo "错误：本地 tag $tag 已存在。" >&2
+  exit 1
+fi
 remote_tag_ref="$(git ls-remote --tags origin "refs/tags/$tag" 2>/dev/null)" || { echo "错误：无法检查远端 tag。" >&2; exit 1; }
 [[ -z "$remote_tag_ref" ]] || { echo "错误：远端 tag ${tag} 已存在，请运行 scripts/resume-release.sh ${target_version}。" >&2; exit 1; }
 

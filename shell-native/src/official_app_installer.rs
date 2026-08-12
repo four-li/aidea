@@ -597,7 +597,7 @@ fn installed_app_manifest(definition: &OfficialApp) -> AppResult<AppManifest> {
             url: Some(url.into()),
             icon: Some(definition.icon.clone()),
         },
-        settings: definition.settings.clone(),
+        settings: None,
         process: Some(ProcessConfig {
             log_file: Some(
                 data_root()?
@@ -677,7 +677,6 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            settings: None,
             update_notes: String::new(),
             update_available: false,
         };
@@ -758,7 +757,6 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            settings: None,
             update_notes: String::new(),
             update_available: false,
         };
@@ -787,7 +785,6 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            settings: None,
             update_notes: String::new(),
             update_available: false,
         };

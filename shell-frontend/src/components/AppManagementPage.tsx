@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import {
   ArrowLeft,
   Ellipsis,
+  FileText,
   GripVertical,
+  Package,
   Play,
+  RefreshCw,
   RotateCcw,
   Settings,
   Square,
@@ -27,18 +31,18 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
-import type { ThemeMode } from '../hooks/useTheme';
 import { ipc } from '../lib/ipc';
 import type { AppManifest, AppState, AppUserSettings } from '../types/manifest';
+import type { InstalledApp, OfficialApp } from '../types/official-app';
 import { BUILTIN_SETTINGS_PAGES } from '../builtin-apps/settings';
 import { AppIcon } from './AppIcon';
-import { WebviewFrame } from './WebviewFrame';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -58,10 +62,14 @@ interface Props {
   onShowLog: (app: AppManifest) => void;
   appOrder?: string[];
   onReorder?: (newOrder: string[]) => void;
-  theme?: Exclude<ThemeMode, 'system'>;
 }
 
 const defaultSettings: AppUserSettings = { visible: true, startup_mode: 'manual' };
+
+interface InstallProgress {
+  id: string;
+  message: string;
+}
 
 function actionLabel(action: 'start' | 'stop' | 'restart' | 'hide' | 'show' | 'uninstall'): string {
   return {
@@ -74,12 +82,21 @@ function actionLabel(action: 'start' | 'stop' | 'restart' | 'hide' | 'show' | 'u
   }[action];
 }
 
-export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorder, theme }: Props) {
+export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorder }: Props) {
   const [apps, setApps] = useState<AppManifest[]>([]);
   const [settings, setSettings] = useState<Record<string, AppUserSettings>>({});
   const [states, setStates] = useState<Record<string, AppState>>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [officialApps, setOfficialApps] = useState<OfficialApp[]>([]);
+  const [installedOfficialApps, setInstalledOfficialApps] = useState<InstalledApp[]>([]);
+  const [marketRefreshing, setMarketRefreshing] = useState(false);
+  const [marketError, setMarketError] = useState<string | null>(null);
+  const [installStage, setInstallStage] = useState<string | null>(null);
+  const [failedAppId, setFailedAppId] = useState<string | null>(null);
+  const [installLog, setInstallLog] = useState('');
+  const [installLogOpen, setInstallLogOpen] = useState(false);
+  const [uninstallApp, setUninstallApp] = useState<AppManifest | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -96,9 +113,33 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
     }
   }, []);
 
+  const loadMarket = useCallback(async () => {
+    try {
+      const [market, records] = await Promise.all([
+        ipc.listOfficialApps(),
+        ipc.listInstalledOfficialApps(),
+      ]);
+      setOfficialApps(market);
+      setInstalledOfficialApps(records);
+      setMarketError(null);
+    } catch (error) {
+      setMarketError(String(error));
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadMarket();
+  }, [load, loadMarket]);
+
+  useEffect(() => {
+    const pending = listen<InstallProgress>('official-app-install-progress', (event) => {
+      if (event.payload.id === pendingId) setInstallStage(event.payload.message);
+    });
+    return () => {
+      void pending.then((dispose) => dispose());
+    };
+  }, [pendingId]);
 
   const saveSettings = async (app: AppManifest, next: AppUserSettings) => {
     setPendingId(app.id);
@@ -134,12 +175,59 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
     setPendingId(app.id);
     try {
       await ipc.uninstallOfficialApp(app.id);
-      await load();
+      await Promise.all([load(), loadMarket()]);
       onAppsChanged();
     } catch (error) {
       toast.error('卸载失败', { description: String(error) });
     } finally {
       setPendingId(null);
+    }
+  };
+
+  const refreshMarket = async () => {
+    setMarketRefreshing(true);
+    try {
+      const [market, records] = await Promise.all([
+        ipc.refreshOfficialApps(),
+        ipc.listInstalledOfficialApps(),
+      ]);
+      setOfficialApps(market);
+      setInstalledOfficialApps(records);
+      setMarketError(null);
+      await load();
+    } catch (error) {
+      setMarketError(String(error));
+    } finally {
+      setMarketRefreshing(false);
+    }
+  };
+
+  const installOfficialApp = async (app: OfficialApp, update = false) => {
+    setPendingId(app.id);
+    setMarketError(null);
+    setFailedAppId(null);
+    setInstallStage(update ? '准备更新...' : '准备安装...');
+    try {
+      if (update) await ipc.updateOfficialApp(app.id);
+      else await ipc.installOfficialApp(app.id);
+      await Promise.all([load(), loadMarket()]);
+      onAppsChanged();
+    } catch (error) {
+      setMarketError(String(error));
+      setFailedAppId(app.id);
+    } finally {
+      setPendingId(null);
+      setInstallStage(null);
+    }
+  };
+
+  const openInstallLog = async () => {
+    if (!failedAppId) return;
+    try {
+      setInstallLog(await ipc.readOfficialAppInstallLog(failedAppId));
+      setInstallLogOpen(true);
+    } catch (error) {
+      setMarketError(`读取安装日志失败：${String(error)}`);
     }
   };
 
@@ -156,22 +244,7 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
     }
   };
 
-  const openSettings = async (app: AppManifest) => {
-    setPendingId(app.id);
-    try {
-      if (app.ui.mode === 'webview' && app.process && states[app.id]?.status !== 'running') {
-        await ipc.startApp(app.id);
-        await load();
-      }
-      setDetailId(app.id);
-    } catch (error) {
-      toast.error('打开应用设置失败', { description: String(error) });
-    } finally {
-      setPendingId(null);
-    }
-  };
-
-  const detailApp = apps.find((app) => app.id === detailId) ?? null;
+  const detailApp = apps.find((app) => app.id === detailId && app.ui.mode === 'builtin') ?? null;
   const orderedIds = [
     ...(appOrder?.length ? appOrder : []),
     ...apps.map((app) => app.id).filter((id) => !appOrder?.includes(id)),
@@ -179,6 +252,9 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   const orderedApps = orderedIds
     .map((id) => apps.find((app) => app.id === id))
     .filter((app): app is AppManifest => app !== undefined);
+  const availableOfficialApps = officialApps.filter(
+    (app) => !installedOfficialApps.some((record) => record.id === app.id),
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -192,17 +268,12 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   };
 
   if (detailApp) {
-    const appSettings = settings[detailApp.id] ?? defaultSettings;
     return (
       <AppSettingsDetail
         app={detailApp}
-        state={states[detailApp.id]}
-        appSettings={appSettings}
         pending={pendingId === detailApp.id}
         onBack={() => setDetailId(null)}
-        onSaveSettings={(next) => void saveSettings(detailApp, next)}
         onResetSettings={() => void resetSettings(detailApp)}
-        theme={theme}
       />
     );
   }
@@ -210,8 +281,15 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   return (
     <TooltipProvider delayDuration={400}>
       <div className="flex h-full flex-col">
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">已安装应用</p>
+          <ActionButton
+            label="刷新官方应用"
+            disabled={marketRefreshing}
+            onClick={() => void refreshMarket()}
+          >
+            <RefreshCw className={marketRefreshing ? 'animate-spin' : undefined} size={16} />
+          </ActionButton>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
@@ -227,6 +305,7 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
               <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {orderedApps.map((app) => {
                   const builtin = app.ui.mode === 'builtin';
+                  const officialApp = officialApps.find((item) => item.id === app.id);
                   const appSettings = settings[app.id] ?? defaultSettings;
                   const running = states[app.id]?.status === 'running';
                   const issue = app.issue ?? states[app.id]?.issue;
@@ -263,15 +342,17 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
-                            <ActionButton
-                              label={`${app.name} 设置`}
-                              disabled={pending}
-                              onClick={() => void openSettings(app)}
-                            >
-                              <Settings size={16} />
-                            </ActionButton>
+                            {builtin && (
+                              <ActionButton
+                                label={`${app.name} 设置`}
+                                disabled={pending}
+                                onClick={() => setDetailId(app.id)}
+                              >
+                                <Settings size={16} />
+                              </ActionButton>
+                            )}
                             <Switch
-                              aria-label={`${app.name} 显示`}
+                              aria-label={`${app.name} 显示在主页`}
                               checked={appSettings.visible}
                               disabled={pending}
                               onCheckedChange={(checked) =>
@@ -315,13 +396,35 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
                                       </DropdownMenuItem>
                                     </>
                                   )}
+                                  {app.process && (
+                                    <DropdownMenuCheckboxItem
+                                      checked={appSettings.startup_mode === 'with-aidea'}
+                                      disabled={pending}
+                                      onCheckedChange={(checked) =>
+                                        void saveSettings(app, {
+                                          ...appSettings,
+                                          startup_mode: checked ? 'with-aidea' : 'manual',
+                                        })
+                                      }
+                                    >
+                                      随开搞启动
+                                    </DropdownMenuCheckboxItem>
+                                  )}
+                                  {officialApp?.update_available && (
+                                    <DropdownMenuItem
+                                      onSelect={() => void installOfficialApp(officialApp, true)}
+                                    >
+                                      <RefreshCw size={16} />
+                                      更新
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem onSelect={() => onShowLog(app)}>
                                     日志
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     className="text-destructive focus:text-destructive"
-                                    onSelect={() => void uninstall(app)}
+                                    onSelect={() => setUninstallApp(app)}
                                   >
                                     <Trash2 size={16} />
                                     卸载
@@ -338,7 +441,113 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
               </div>
             </SortableContext>
           </DndContext>
+
+          {marketError && (
+            <div className="mt-6 flex items-center justify-between gap-3 border-y border-destructive/30 py-3 text-sm text-destructive">
+              <p className="min-w-0 break-words">{marketError}</p>
+              {failedAppId && (
+                <Button variant="outline" size="sm" onClick={() => void openInstallLog()}>
+                  <FileText size={14} />
+                  查看安装日志
+                </Button>
+              )}
+            </div>
+          )}
+
+          <section className="mt-8 border-t border-border pt-6">
+            <h2 className="text-sm text-muted-foreground">可安装应用</h2>
+            {availableOfficialApps.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">暂无可安装的官方应用</p>
+            ) : (
+              <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {availableOfficialApps.map((app) => {
+                  const pending = pendingId === app.id;
+                  return (
+                    <div
+                      key={app.id}
+                      className="flex gap-3 rounded-lg border border-border bg-card p-4"
+                    >
+                      <Package className="mt-0.5 shrink-0 text-primary" size={20} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="truncate text-sm font-medium text-foreground">
+                            {app.name}
+                          </h3>
+                          <Button
+                            size="sm"
+                            disabled={pending}
+                            aria-label={`安装 ${app.name}`}
+                            onClick={() => void installOfficialApp(app)}
+                          >
+                            {pending ? '处理中' : '安装'}
+                          </Button>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {app.description}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          v{app.version} · {app.category}
+                        </p>
+                        {pending && installStage && (
+                          <p className="mt-2 text-xs text-primary" role="status">
+                            {installStage}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </div>
+
+        <Dialog
+          open={uninstallApp !== null}
+          onOpenChange={(open) => !open && setUninstallApp(null)}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>确认卸载应用</DialogTitle>
+              <DialogDescription>
+                {`将移除“${uninstallApp?.name}”的安装文件。应用数据和日志会保留，重新安装后仍可使用已有数据。`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setUninstallApp(null)}
+                disabled={pendingId !== null}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={pendingId !== null}
+                onClick={() => {
+                  if (!uninstallApp) return;
+                  const app = uninstallApp;
+                  setUninstallApp(null);
+                  void uninstall(app);
+                }}
+              >
+                确认卸载
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={installLogOpen} onOpenChange={setInstallLogOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>安装日志</DialogTitle>
+              <DialogDescription>显示最近 200 行安装输出。</DialogDescription>
+            </DialogHeader>
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted p-3 text-xs text-foreground">
+              {installLog}
+            </pre>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   );
@@ -346,22 +555,14 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
 
 function AppSettingsDetail({
   app,
-  state,
-  appSettings,
   pending,
   onBack,
-  onSaveSettings,
   onResetSettings,
-  theme,
 }: {
   app: AppManifest;
-  state?: AppState;
-  appSettings: AppUserSettings;
   pending: boolean;
   onBack: () => void;
-  onSaveSettings: (settings: AppUserSettings) => void;
   onResetSettings: () => void;
-  theme?: Exclude<ThemeMode, 'system'>;
 }) {
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const BuiltinSettingsPage = BUILTIN_SETTINGS_PAGES[app.id];
@@ -380,30 +581,8 @@ function AppSettingsDetail({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
-          {app.process && (
-            <div className="mb-6 flex items-center justify-between border-y border-border py-4">
-              <div>
-                <div className="text-sm font-medium">随开搞启动</div>
-                <div className="mt-1 text-xs text-muted-foreground">启动开搞时自动启动此应用</div>
-              </div>
-              <Switch
-                aria-label={`${app.name} 随开搞启动`}
-                checked={appSettings.startup_mode === 'with-aidea'}
-                disabled={pending}
-                onCheckedChange={(checked) =>
-                  onSaveSettings({
-                    ...appSettings,
-                    startup_mode: checked ? 'with-aidea' : 'manual',
-                  })
-                }
-              />
-            </div>
-          )}
-
           <div className="min-h-[360px] overflow-hidden border border-border bg-background">
-            {app.ui.mode === 'webview' ? (
-              <WebviewFrame app={app} state={state} path="/settings" theme={theme} />
-            ) : BuiltinSettingsPage ? (
+            {BuiltinSettingsPage ? (
               <BuiltinSettingsPage embedded onClose={onBack} />
             ) : (
               <div className="flex h-full min-h-[360px] items-center justify-center p-6">

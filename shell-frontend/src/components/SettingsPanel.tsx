@@ -21,7 +21,6 @@ import { Switch } from './ui/switch';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { OfficialMarketPage } from '../builtin-apps/official-market';
 import { AppManagementPage } from './AppManagementPage';
 import { ipc } from '../lib/ipc';
 import type { AideaUpdate } from '../types/update';
@@ -38,12 +37,10 @@ interface Props {
   onShowLog: (app: AppManifest) => void;
   category?: SettingsCategory;
   checkUpdate?: number;
-  theme?: Exclude<ThemeMode, 'system'>;
 }
 
 type SettingsCategory =
   | 'apps'
-  | 'official-apps'
   | 'account'
   | 'general'
   | 'appearance'
@@ -61,7 +58,6 @@ interface CategoryDef {
 
 const CATEGORIES: CategoryDef[] = [
   { id: 'apps', label: '应用管理', icon: <LayoutGrid size={18} /> },
-  { id: 'official-apps', label: '应用市场', icon: <LayoutGrid size={18} /> },
   { id: 'account', label: '账号', icon: <User size={18} /> },
   { id: 'general', label: '通用', icon: <Settings size={18} /> },
   { id: 'appearance', label: '外观', icon: <Palette size={18} /> },
@@ -89,7 +85,6 @@ export function SettingsPanel({
   onShowLog,
   category,
   checkUpdate,
-  theme,
 }: Props) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('apps');
   useEffect(() => {
@@ -151,11 +146,7 @@ export function SettingsPanel({
                   appOrder={appOrder}
                   onReorder={onReorder}
                   onShowLog={onShowLog}
-                  theme={theme}
                 />
-              )}
-              {activeCategory === 'official-apps' && (
-                <OfficialMarketPage onAppsChanged={onAppsChanged} />
               )}
               {activeCategory === 'account' && <AccountSettings />}
               {activeCategory === 'general' && <GeneralSettings />}

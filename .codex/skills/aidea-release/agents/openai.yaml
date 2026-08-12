@@ -1,4 +1,4 @@
 interface:
   display_name: "发布 aIdea"
   short_description: "验证、打版本并发布 aIdea DMG 安装包"
-  default_prompt: "发布当前 aIdea，自动递增补丁版本并触发 GitHub DMG Release。"
+  default_prompt: "发布当前 aIdea 到 Gitee。"

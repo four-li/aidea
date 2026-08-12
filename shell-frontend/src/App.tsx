@@ -157,7 +157,6 @@ function App() {
         onShowLog={setLogApp}
         category={settingsCategory}
         checkUpdate={checkUpdate}
-        theme={resolvedTheme}
       />
       <Toaster />
     </div>

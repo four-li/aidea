@@ -1,6 +1,6 @@
 # 官方应用 Binary 安装 v1 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
+> **历史实施记录，已完成。** 本计划保留 binary 安装 v1 的实施过程，不应再次执行。当前运行契约以 `docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-platform.md` 为准。
 
 **Goal:** 让 aIdea 能安装、更新并运行 Gitee Release 提供的 macOS Apple Silicon 官方应用 binary 包。
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust、Tokio、Reqwest、SHA-256（sha2）、flate2、tar、serde_yaml、现有 Tauri 命令与 ProcessManager。
 
-> **当前状态（2026-08-12）：** Task 1-6 的实现、测试和正式契约文档已完成。步骤中的 RED/FAIL 文字保留为实施过程记录；aIdea 0.1.11 尚未发布，mail-center 尚未创建正式 `aidea.yaml`，因此真实 Gitee 下载链路仍待发布后验收。
+> **历史状态（2026-08-12）：** Task 1-6 的实现、测试和正式契约文档已完成。步骤中的 RED/FAIL 文字保留为实施过程记录。aIdea 0.1.11 已发布；mail-center 的真实 Gitee 下载链路仍需在其首个正式包发布后验收。
 
 ## 全局约束
 
