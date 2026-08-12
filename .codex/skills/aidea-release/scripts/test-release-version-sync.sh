@@ -82,6 +82,12 @@ rg -Fq 'verify_online_release()' "$skill_dir/scripts/release.sh" || {
   echo "错误：发布脚本必须在上传后校验线上更新清单和附件。" >&2
   exit 1
 }
+rg -Fq -- "--glob '!docs/**'" "$skill_dir/scripts/release.sh" \
+  && rg -Fq -- "--glob '!.codex/**'" "$skill_dir/scripts/release.sh" \
+  && rg -Fq -- 'rg "${path_scan_args[@]}" --fixed-strings "$personal_home"' "$skill_dir/scripts/release.sh" || {
+  echo "错误：个人路径扫描必须忽略不打包的文档和 Skill。" >&2
+  exit 1
+}
 [[ -f "$resume_script" ]] || {
   echo "错误：发布 Skill 必须提供已推送 tag 后的 Release 补传脚本。" >&2
   exit 1
@@ -216,6 +222,12 @@ fi
 exec "$git_bin" "\$@"
 EOF
 chmod +x "$tool_bin/git"
+
+cat > "$tool_bin/security" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$tool_bin/security"
 
 set +e
 result="$(cd "$fixture" && PATH="$tool_bin:$PATH" env -u TAURI_SIGNING_PRIVATE_KEY bash "$skill_dir/scripts/release.sh" 0.1.5 2>&1)"

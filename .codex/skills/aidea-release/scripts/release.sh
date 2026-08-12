@@ -136,9 +136,10 @@ if command -v hdiutil >/dev/null 2>&1 && hdiutil info 2>/dev/null | grep -qE '/V
 fi
 
 scan_args=(--files-with-matches --hidden --glob '!.git/**' --glob '!shell-frontend/node_modules/**' --glob '!shell-native/target/**' --glob '!README.md' --glob '!docs/guide/aidea-official-app.md')
+path_scan_args=(--files-with-matches --hidden --glob '!.git/**' --glob '!shell-frontend/node_modules/**' --glob '!shell-native/target/**' --glob '!README.md' --glob '!docs/**' --glob '!.codex/**')
 personal_home="/Users/${USER}/"
 if rg "${scan_args[@]}" '(sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]+|-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----)' . \
-  || rg "${scan_args[@]}" --fixed-strings "$personal_home" .; then
+  || rg "${path_scan_args[@]}" --fixed-strings "$personal_home" .; then
   echo "错误：发现疑似密钥或个人绝对路径，已停止发布。" >&2
   exit 1
 fi
