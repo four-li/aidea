@@ -177,7 +177,7 @@ cleanup() {
 trap cleanup EXIT
 
 node -e "const fs=require('fs'); const p='$tauri_file'; const v=JSON.parse(fs.readFileSync(p)); v.version='$target_version'; fs.writeFileSync(p, JSON.stringify(v, null, 2)+'\\n')"
-node -e "const fs=require('fs'); const p='$cargo_file'; const source=fs.readFileSync(p,'utf8'); const next=source.replace(/^version = \"[0-9]+\\.[0-9]+\\.[0-9]+\"$/m, 'version = \"$target_version\"'); if (next === source) process.exit(1); fs.writeFileSync(p,next)"
+node -e "const fs=require('fs'); const p='$cargo_file'; const source=fs.readFileSync(p,'utf8'); const next=source.replace(/^version = \"[0-9]+\\.[0-9]+\\.[0-9]+\"$/m, 'version = \"$target_version\"'); fs.writeFileSync(p,next)"
 node -e "const fs=require('fs'); const p='$frontend_file'; const v=JSON.parse(fs.readFileSync(p)); v.version='$target_version'; fs.writeFileSync(p, JSON.stringify(v, null, 2)+'\\n')"
 node -e "const fs=require('fs'); const p='$lock_file'; const v=JSON.parse(fs.readFileSync(p)); v.version='$target_version'; v.packages[''].version='$target_version'; fs.writeFileSync(p, JSON.stringify(v, null, 2)+'\\n')"
 updated_tauri="$(node -p "require('./$tauri_file').version")"

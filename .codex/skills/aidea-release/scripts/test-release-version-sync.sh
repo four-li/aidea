@@ -82,6 +82,10 @@ rg -Fq 'verify_online_release()' "$skill_dir/scripts/release.sh" || {
   echo "错误：发布脚本必须在上传后校验线上更新清单和附件。" >&2
   exit 1
 }
+if rg -Fq 'if (next === source) process.exit(1);' "$skill_dir/scripts/release.sh"; then
+  echo "错误：目标版本已写入 Cargo.toml 时，发布脚本必须继续执行。" >&2
+  exit 1
+fi
 rg -Fq -- "--glob '!docs/**'" "$skill_dir/scripts/release.sh" \
   && rg -Fq -- "--glob '!.codex/**'" "$skill_dir/scripts/release.sh" \
   && rg -Fq -- 'rg "${path_scan_args[@]}" --fixed-strings "$personal_home"' "$skill_dir/scripts/release.sh" || {
