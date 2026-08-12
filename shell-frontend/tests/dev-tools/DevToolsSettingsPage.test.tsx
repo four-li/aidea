@@ -26,7 +26,9 @@ describe('DevToolsSettingsPage', () => {
   it('将已隐藏的工具显示为未选中', async () => {
     render(<DevToolsSettingsPage onClose={vi.fn()} />);
 
-    expect(await screen.findByRole('checkbox', { name: 'IP 查询' })).not.toBeChecked();
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: 'IP 查询' })).not.toBeChecked(),
+    );
     expect(screen.getByRole('checkbox', { name: 'JSON 格式化' })).toBeChecked();
   });
 

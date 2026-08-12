@@ -1,11 +1,11 @@
 {
-  "version": "0.1.9",
-  "notes": "Release v0.1.9",
-  "pub_date": "2026-08-10T14:23:18.778Z",
+  "version": "0.1.11",
+  "notes": "新增\n- 迁移至官方应用体系并新增应用桥接，移除内置邮件\n- 新增更新日志页面并统一发布日志来源\n\n修复\n- 移除版本号未变化时中止发布脚本的行为\n- 排除文档路径误报",
+  "pub_date": "2026-08-12T10:18:00.572Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.1.9/开搞.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3VrMzBGbXJYbkFQb2VFYllBdUdtbG1LUWpsYXZsQk1DSUJWTkpncGw0a2paK2w2eS9lbUdUd2JJR2dUWW13R2NuWG96N0pPaDdBdWpIYlZ5dS9CdmdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MzcxNzk4CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKNEtoVUVxK3gwQU9xeXhBWk9wcEV1MFFEd1NtWERkQk5zZGtIc1BQOFFkS0oxTXd5OUJLczRaMndqQnliZFFEclF4UXFIRkJXdktPb2RaV1lXdDlSRFE9PQo="
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.1.11/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3R0MlFSZGN4Yi9MekVTMTIwVHVOSVl2UDNCWlFrdzQyZjFoZ3U5WHJkalhxZloyL2NDcitCMFdhbG5rZ3RDbTJVSmsxeVZ2ZGZkQzEzb0N4dHY1aVEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTI5ODgwCWZpbGU65byA5pCeLmFwcC50YXIuZ3oKUWxNWE80Ujg4QVM5SGJsenJBaG9oVWVYcHpuTkJCNmhzVXFEblV3Um5ndGF3ZERpRzhXUEdxUU9HU3doQlVJd3g1OXk4RE5VQkpYK1Z5ckxkWjdIRFE9PQo="
     }
   }
 }
