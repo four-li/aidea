@@ -4,7 +4,7 @@
 
 ## 目录与注册
 
-邮件管理是待删除的旧内置应用。不得在本仓库继续新增邮件业务功能；新邮件功能必须进入独立官方应用 `mail-center`。删除内置邮件时同时移除 manifest、前端入口、Rust 业务模块、IPC、迁移文件，并按发布契约清理旧邮件数据。
+当前没有内置邮件管理。新邮件功能必须进入独立官方应用 `mail-center`，不得依赖旧内置邮件的 manifest、前端入口、Rust 业务模块、IPC、迁移文件或数据结构。
 
 一个内置应用对应一个 manifest 和一个 `shell-frontend/src/builtin-apps/<app-id>/` 目录。入口固定为 `index.tsx`，应用通过 `BuiltinPage.tsx` 显式注册，暂不自动扫描。
 
@@ -27,24 +27,25 @@ id: dev-tools
 name: DevTools
 version: 0.3.1
 category: 开发
-path: shell-frontend/src/builtin-apps/dev-tools
 status: active
 ui:
   mode: builtin
   icon: Wrench
 settings:
-  enabled: true
   reset_command: [builtin, dev-tools]
 ```
 
 - `id` 全局唯一且使用 kebab-case；`name` 是显示名称；只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。
-- `path` 定位源码目录；`status` 为 `active`、`disabled` 或 `deprecated`。
 - `ui.mode` 固定为 `builtin`；`ui.icon` 使用 lucide-react 图标名或图片路径。
-- `settings.enabled` 保留用于兼容旧 manifest，不控制设置入口；应用管理页始终提供 aIdea 的通用设置详情，没有业务设置的应用显示空配置状态。
-- 内置应用的业务设置由应用自己负责，统一保存在 `app-data/<app-id>/app.db`，不写入 `shell.config.json` 或壳数据库。邮件账户设置属于邮件应用自己的业务设置，DevTools 的工具显示偏好也保存在自己的 `app.db`。
+- 应用管理页始终提供 aIdea 的通用设置详情，没有业务设置的应用显示空配置状态。
+- 内置应用的业务设置由应用自己负责，统一保存在 `app-data/<app-id>/app.db`，不写入 `shell.config.json` 或壳数据库。DevTools 的工具显示偏好保存在自己的 `app.db`。
 - `settings.reset_command` 只能使用已注册的壳内处理器。aIdea 先完成页面确认，再执行配置重置；处理器不能删除整个应用数据目录或业务数据库。
 
 ## IPC 与类型
+
+内置应用继续使用 Tauri IPC，并统一通过 `shell-frontend/src/lib/ipc.ts` 调用自己的 Rust 业务代码。内置应用不接入官方应用的跨源 App Bridge。
+
+内置应用需要搜索时，搜索框、快捷键、匹配、高亮和翻页都在该内置应用页面内完成，遵守 [应用内搜索规范](aidea-search.md)。aIdea 壳不提供全局 `Cmd+F` 搜索。
 
 Rust IPC 命令按业务职责放在 `shell-native/src/commands/`，由 `lib.rs` 负责模块声明、状态初始化和命令注册。内置应用前端统一通过 `shell-frontend/src/lib/ipc.ts` 调用；修改命令名、参数或返回值时，同步 Rust 实现、TypeScript 类型和测试。
 

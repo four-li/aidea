@@ -1,11 +1,12 @@
-// 数据格式化 tab（v0.3：JSON/XML/YAML 互转 + 实时同步 + Unicode 反转义）
+// JSON 格式化 tab（v0.3：JSON/XML/YAML 互转 + 实时同步 + Unicode 反转义）
 // 设计：
 // - 输入格式自动识别，无手动选择器
 // - 输出格式默认跟随输入识别的格式，用户手选后停止跟随
 // - 输出区实时 pretty 同步（useMemo，无 debounce）
 // - 格式化按钮：把输入区原文 pretty 后写回输入区
 // - 压缩按钮：把输出 minify 后临时覆盖显示（输入变化后自动恢复 pretty 同步）
-import { useEffect, useMemo, useState } from 'react';
+// - 页面搜索由当前应用按 docs/guide/aidea-search.md 自行实现
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { xml } from '@codemirror/lang-xml';
@@ -91,6 +92,14 @@ export function DataFormatter({ input, onChange }: DataFormatterProps) {
   const [unescape, setUnescape] = useState(true);
   // 压缩覆盖：用户点压缩按钮后临时显示 minify 版本，输入变化后清除
   const [minifyOverride, setMinifyOverride] = useState<string | null>(null);
+
+  // 输入区 CodeMirror view ref：用于点击容器空白区域时聚焦编辑器
+  const inputViewRef = useRef<EditorView | null>(null);
+
+  // 点击输入区容器任意位置聚焦编辑器（CodeMirror 内容没撑满容器时点击空白也能聚焦）
+  const handleInputAreaClick = () => {
+    inputViewRef.current?.focus();
+  };
 
   // 自动识别输入格式（空输入按 json 处理，避免空输入报错）
   const resolvedInputFormat: DataFormat = useMemo(
@@ -209,7 +218,7 @@ export function DataFormatter({ input, onChange }: DataFormatterProps) {
   };
 
   return (
-    <div className="flex flex-col h-full gap-2">
+    <div className="flex flex-col h-full gap-2 relative">
       {/* 工具栏：输出格式 + 反转义 */}
       <div className="flex items-center gap-4 flex-shrink-0 px-1">
         <div className="flex items-center gap-2">
@@ -276,13 +285,16 @@ export function DataFormatter({ input, onChange }: DataFormatterProps) {
               </TooltipProvider>
             </div>
           </div>
-          <div className="flex-1 min-h-0 border border-border rounded-md overflow-hidden">
+          <div className="flex-1 min-h-0 border border-border rounded-md overflow-hidden" onClick={handleInputAreaClick}>
             <CodeMirror
               value={input}
               onChange={onChange}
               extensions={inputExtensions}
               height="100%"
               autoFocus
+              onCreateEditor={(view) => {
+                inputViewRef.current = view;
+              }}
               basicSetup={{
                 lineNumbers: false,
                 highlightActiveLine: false,

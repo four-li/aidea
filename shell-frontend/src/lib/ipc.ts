@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AppManifest,
   AppState,
-  AppOverride,
   AppUserSettings,
   ShellConfig,
 } from '../types/manifest';
@@ -14,16 +13,7 @@ import type {
   AiHttpResponse,
   AiTestConfig,
 } from '../types/ai-test';
-import type {
-  MailAccount,
-  MailMessageDetail,
-  MailMessagePage,
-  MailMessageQuery,
-  SaveMailAccountRequest,
-  SyncResult,
-  MailSyncTask,
-} from '../types/mail';
-import type { InstalledPlugin, OfficialPlugin } from '../types/plugin-market';
+import type { InstalledApp, OfficialApp } from '../types/official-app';
 import type { DevToolsSettings } from '../types/dev-tools';
 import type { AideaUpdate } from '../types/update';
 
@@ -32,33 +22,23 @@ export const ipc = {
   getOsUsername: (): Promise<string> => invoke('get_os_username'),
   checkAideaUpdate: (): Promise<AideaUpdate | null> => invoke('check_aidea_update'),
   installAideaUpdate: (): Promise<void> => invoke('install_aidea_update'),
-  /** 列出所有已加载的子应用（已合并用户 overrides） */
+  /** 列出所有已加载的子应用 */
   listApps: (): Promise<AppManifest[]> => invoke<AppManifest[]>('list_apps'),
-  listOfficialPlugins: (): Promise<OfficialPlugin[]> => invoke('list_official_plugins'),
-  refreshOfficialPlugins: (): Promise<OfficialPlugin[]> => invoke('refresh_official_plugins'),
-  listInstalledOfficialPlugins: (): Promise<InstalledPlugin[]> =>
-    invoke('list_installed_official_plugins'),
-  installOfficialPlugin: (id: string): Promise<InstalledPlugin> =>
-    invoke('install_official_plugin', { id }),
-  updateOfficialPlugin: (id: string): Promise<InstalledPlugin> =>
-    invoke('update_official_plugin', { id }),
-  readOfficialPluginInstallLog: (id: string): Promise<string> =>
-    invoke('read_official_plugin_install_log', { id }),
-  uninstallOfficialPlugin: (id: string): Promise<void> =>
-    invoke('uninstall_official_plugin', { id }),
-  /** 保存设置页创建的本地应用 manifest */
-  saveAppManifest: (manifest: AppManifest): Promise<void> =>
-    invoke<void>('save_app_manifest', { manifest }),
-
+  listOfficialApps: (): Promise<OfficialApp[]> => invoke('list_official_apps'),
+  refreshOfficialApps: (): Promise<OfficialApp[]> => invoke('refresh_official_apps'),
+  listInstalledOfficialApps: (): Promise<InstalledApp[]> =>
+    invoke('list_installed_official_apps'),
+  installOfficialApp: (id: string): Promise<InstalledApp> =>
+    invoke('install_official_app', { id }),
+  updateOfficialApp: (id: string): Promise<InstalledApp> =>
+    invoke('update_official_app', { id }),
+  readOfficialAppInstallLog: (id: string): Promise<string> =>
+    invoke('read_official_app_install_log', { id }),
+  uninstallOfficialApp: (id: string): Promise<void> =>
+    invoke('uninstall_official_app', { id }),
   /** 加载壳全局设置 */
   getShellConfig: (): Promise<ShellConfig> => invoke<ShellConfig>('get_shell_config'),
 
-  /** 保存单个子应用的覆盖配置，重启 aIdea 后生效 */
-  saveAppOverride: (id: string, overrideCfg: AppOverride): Promise<void> =>
-    invoke<void>('save_app_override', { id, overrideCfg }),
-
-  /** 删除单个子应用的覆盖配置，恢复 manifest 默认 */
-  resetAppOverride: (id: string): Promise<void> => invoke<void>('reset_app_override', { id }),
   resetAppSettings: (id: string): Promise<void> => invoke<void>('reset_app_settings', { id }),
   saveAppUserSettings: (id: string, settings: AppUserSettings): Promise<void> =>
     invoke<void>('save_app_user_settings', { id, settings }),
@@ -92,24 +72,4 @@ export const ipc = {
     invoke<AiTestConfig>('load_ai_config', { id }),
   /** 删除 AI 配置历史。 */
   deleteAiConfig: (id: string): Promise<void> => invoke<void>('delete_ai_config', { id }),
-  listMailAccounts: (): Promise<MailAccount[]> => invoke('list_mail_accounts'),
-  saveMailAccount: (request: SaveMailAccountRequest): Promise<MailAccount> =>
-    invoke('save_mail_account', { request }),
-  loadMailAccountSecret: (id: string): Promise<string> =>
-    invoke('load_mail_account_secret', { id }),
-  testMailAccountConnection: (request: SaveMailAccountRequest): Promise<void> =>
-    invoke('test_mail_account_connection', { request }),
-  deleteMailAccount: (id: string): Promise<void> => invoke('delete_mail_account', { id }),
-  syncMailAccounts: (): Promise<SyncResult> => invoke('sync_mail_accounts'),
-  syncMailHistory: (request: { since: number; until?: number | null }): Promise<SyncResult> =>
-    invoke('sync_mail_history', { request }),
-  cancelMailSync: (): Promise<void> => invoke('cancel_mail_sync'),
-  listMailSyncTasks: (): Promise<MailSyncTask[]> => invoke('list_mail_sync_tasks'),
-  listMailMessages: (query: MailMessageQuery = {}): Promise<MailMessagePage> =>
-    invoke('list_mail_messages', { query }),
-  getMailMessage: (id: number): Promise<MailMessageDetail> => invoke('get_mail_message', { id }),
-  markMailRead: (id: number): Promise<void> => invoke('mark_mail_read', { id }),
-  markMailUnread: (id: number): Promise<void> => invoke('mark_mail_unread', { id }),
-  moveMailToDeleted: (id: number): Promise<void> => invoke('move_mail_to_deleted', { id }),
-  openMailWebmail: (accountId: string): Promise<void> => invoke('open_mail_webmail', { accountId }),
 };

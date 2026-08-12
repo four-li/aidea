@@ -1,0 +1,35 @@
+# aIdea 官方应用接入范本（App Bridge）
+
+这是 aIdea 壳 ↔ 子应用通信契约的**最小可运行接入范本**，给所有官方应用做参考。完整协议见仓库根 `docs/guide/aidea-app-bridge.md`。
+
+> 本目录是模板，不是真实应用。通信代码直接写在 `src/main.ts`，没有 SDK 或搜索依赖。
+
+## 目录内容
+
+| 文件 | 作用 |
+| --- | --- |
+| `aidea.yaml` | 完整 manifest 示例（id / runtime / process / ready_url 均按官方应用规范） |
+| `index.html` | 最小页面骨架 |
+| `src/main.ts` | 入口：手写 `postMessage`、声明 `supported`、处理主题和跳转 |
+| `vite.config.ts` | 提供契约要求的 `GET /health` |
+| `package.json` / `tsconfig.json` | 让范本可独立运行的工具配置 |
+
+## 接入清单（子应用必须遵循）
+
+1. **appId 一致**：消息中的 `appId` 必须与 `aidea.yaml` 的 `id` 完全相同。
+2. **明确目标源**：从 `document.referrer` 取得父窗口 origin，只接受 `tauri://localhost` 或 `http://localhost:5173`；跨源 iframe 不要读取 `window.parent.origin`，禁止使用 `'*'` 或模糊匹配。拿不到合法来源时作为独立页面运行，不发送 `ready`。
+3. **声明 `supported`**：只列出应用实际支持的壳下发能力。本范本声明 `navigate`；`theme` 是基础能力，不需要声明。
+4. **发送 `ready`**：主页面加载和刷新后都发送一次；`/settings` 只读取首屏主题参数，不参与 App Bridge。
+5. **主题适配**：首屏读取 `aidea_theme=light|dark`，运行期处理壳发来的 `theme` 消息。
+6. **端口固定**：`process.command` 监听 `127.0.0.1:43xxx`，`ready_url` 固定使用同端口的 `/health`；禁止监听 `0.0.0.0`。
+7. **搜索自理**：搜索 UI 和逻辑放在应用页面内，遵守 `docs/guide/aidea-search.md`，不通过 App Bridge。
+
+## 本地运行（独立调试，不依赖 aIdea）
+
+```bash
+npm install
+npm run dev
+# 打开 http://127.0.0.1:43120
+```
+
+此时页面照常工作，但不会启用 App Bridge。要体验主题、通知和跳转，需用 aIdea 壳加载本应用（由 `aidea.yaml` 驱动）。

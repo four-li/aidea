@@ -13,7 +13,7 @@ const mockResetAppSettings = vi.fn();
 const mockSaveAppUserSettings = vi.fn();
 const mockStartApp = vi.fn();
 const mockStopApp = vi.fn();
-const mockUninstallOfficialPlugin = vi.fn();
+const mockUninstallOfficialApp = vi.fn();
 const mockGetDevToolsSettings = vi.fn();
 
 vi.mock('../../src/lib/ipc', () => ({
@@ -25,7 +25,7 @@ vi.mock('../../src/lib/ipc', () => ({
     saveAppUserSettings: (...args: unknown[]) => mockSaveAppUserSettings(...args),
     startApp: (...args: unknown[]) => mockStartApp(...args),
     stopApp: (...args: unknown[]) => mockStopApp(...args),
-    uninstallOfficialPlugin: (...args: unknown[]) => mockUninstallOfficialPlugin(...args),
+    uninstallOfficialApp: (...args: unknown[]) => mockUninstallOfficialApp(...args),
     getDevToolsSettings: (...args: unknown[]) => mockGetDevToolsSettings(...args),
     saveDevToolsSettings: vi.fn(),
   },
@@ -41,7 +41,7 @@ describe('AppManagementPage', () => {
     mockSaveAppUserSettings.mockResolvedValue(undefined);
     mockStartApp.mockResolvedValue(123);
     mockStopApp.mockResolvedValue(undefined);
-    mockUninstallOfficialPlugin.mockResolvedValue(undefined);
+    mockUninstallOfficialApp.mockResolvedValue(undefined);
     mockGetDevToolsSettings.mockResolvedValue({ hidden_tabs: [] });
   });
 
@@ -59,17 +59,14 @@ describe('AppManagementPage', () => {
         description: '用于测试简介展示',
         version: '1.0.0',
         category: 'test',
-        path: '',
         status: 'active',
         ui: { mode: 'builtin' },
-        settings: { enabled: true },
       },
       {
         id: 'without-settings',
         name: '无设置',
         version: '1.0.0',
         category: 'test',
-        path: '',
         status: 'active',
         ui: { mode: 'builtin' },
       },
@@ -91,11 +88,10 @@ describe('AppManagementPage', () => {
         name: '邮件管理',
         version: '1.0.0',
         category: 'test',
-        path: '/tmp/mail',
         status: 'active',
         ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
-        process: { start: 'mail', stop: 'SIGTERM', autostart: false },
-        settings: { enabled: true, reset_command: ['node', 'reset.js'] },
+        process: {},
+        settings: { reset_command: ['node', 'reset.js'] },
       },
     ]);
     mockGetAppStates.mockResolvedValue([{ id: 'official-mail', status: 'running', pid: 123 }]);
@@ -109,6 +105,10 @@ describe('AppManagementPage', () => {
     expect(screen.getByRole('button', { name: '重置' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '返回应用管理' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '邮件管理 日志' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('邮件管理')).toHaveAttribute(
+      'src',
+      'http://127.0.0.1:43120/settings',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '重置' }));
     expect(screen.getByRole('heading', { name: '确认重置应用配置' })).toBeInTheDocument();
@@ -132,11 +132,9 @@ describe('AppManagementPage', () => {
         name: '邮件管理',
         version: '1.0.0',
         category: 'test',
-        path: '/tmp/mail',
         status: 'active',
         ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
-        process: { start: 'mail', stop: 'SIGTERM', autostart: false },
-        settings: { enabled: true },
+        process: {},
       },
     ]);
     mockGetAppStates
@@ -158,7 +156,6 @@ describe('AppManagementPage', () => {
         name: 'DevTools',
         version: '1.0.0',
         category: '开发',
-        path: '',
         status: 'active',
         ui: { mode: 'builtin' },
       },
@@ -169,7 +166,7 @@ describe('AppManagementPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'DevTools 设置' }));
 
     await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
-    expect(screen.getByRole('checkbox', { name: '数据格式化' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'JSON 格式化' })).toBeChecked();
   });
 
   it('官方应用的进程和卸载操作收进更多菜单', async () => {
@@ -179,10 +176,9 @@ describe('AppManagementPage', () => {
         name: '邮件管理',
         version: '1.0.0',
         category: 'test',
-        path: '/tmp/mail',
         status: 'active',
         ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
-        process: { start: 'mail', stop: 'SIGTERM', autostart: false },
+        process: {},
       },
     ]);
 
@@ -201,7 +197,6 @@ describe('AppManagementPage', () => {
         name: '第一个',
         version: '1.0.0',
         category: 'test',
-        path: '',
         status: 'active',
         ui: { mode: 'builtin' },
       },
@@ -210,7 +205,6 @@ describe('AppManagementPage', () => {
         name: '第二个',
         version: '1.0.0',
         category: 'test',
-        path: '',
         status: 'active',
         ui: { mode: 'builtin' },
       },

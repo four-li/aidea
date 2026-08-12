@@ -6,6 +6,7 @@ import type { AppManifest, AppState } from '../types/manifest';
 import { WebviewFrame } from './WebviewFrame';
 import { BuiltinPage } from './BuiltinPage';
 import { EmptyState } from './EmptyState';
+import type { AppFrameRef } from '../hooks/useAppBridge';
 import type { ThemeMode } from '../hooks/useTheme';
 
 interface Props {
@@ -13,9 +14,10 @@ interface Props {
   activeApp: AppManifest | null;
   states: Record<string, AppState>;
   theme?: Exclude<ThemeMode, 'system'>;
+  onFrameRef?: AppFrameRef;
 }
 
-export function ContentArea({ apps, activeApp, states, theme }: Props) {
+export function ContentArea({ apps, activeApp, states, theme, onFrameRef }: Props) {
   // 所有 webview 子应用都挂载，用 CSS 控制显隐，避免切换时 iframe 重载
   const webviewApps = useMemo(() => apps.filter((a) => a.ui.mode === 'webview'), [apps]);
 
@@ -51,7 +53,12 @@ export function ContentArea({ apps, activeApp, states, theme }: Props) {
             className="absolute inset-0"
             style={{ visibility: app.id === activeApp.id ? 'visible' : 'hidden' }}
           >
-            <WebviewFrame app={app} state={states[app.id]} theme={theme} />
+            <WebviewFrame
+              app={app}
+              state={states[app.id]}
+              theme={theme}
+              onFrameRef={onFrameRef}
+            />
           </div>
         ))}
 

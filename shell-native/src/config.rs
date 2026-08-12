@@ -24,20 +24,6 @@ mod tests {
     }
 }
 
-/// 单个子应用的用户覆盖配置
-/// 只存放用户实际修改过的字段，其余字段保持 manifest 原值
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AppOverride {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub start: Option<String>,
-}
-
 /// 官方应用的启动策略。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -76,28 +62,14 @@ impl Default for AppUserSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShellConfig {
-    /// 主题：强制 auto（跟随系统）
-    #[serde(default = "default_theme")]
-    pub theme: String,
-
-    /// 用户对子应用的覆盖配置，key = app id
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub overrides: BTreeMap<String, AppOverride>,
-
     /// 已安装或内置应用的用户级显示与启动偏好。
     #[serde(default)]
     pub app_settings: BTreeMap<String, AppUserSettings>,
-
 }
 
-fn default_theme() -> String {
-    "auto".to_string()
-}
 impl Default for ShellConfig {
     fn default() -> Self {
         Self {
-            theme: default_theme(),
-            overrides: BTreeMap::new(),
             app_settings: BTreeMap::new(),
         }
     }
@@ -130,7 +102,9 @@ pub fn app_data_dir(app_id: &str) -> AppResult<PathBuf> {
     if app_id.is_empty()
         || app_id == "."
         || app_id == ".."
-        || app_id.chars().any(|value| value.is_control() || value == '/' || value == '\\')
+        || app_id
+            .chars()
+            .any(|value| value.is_control() || value == '/' || value == '\\')
     {
         return Err(crate::error::AppError::Config("应用 ID 无效".into()));
     }
@@ -141,7 +115,6 @@ pub fn app_data_dir(app_id: &str) -> AppResult<PathBuf> {
 pub fn ensure_data_dirs() -> AppResult<PathBuf> {
     let root = data_root()?;
     for path in [
-        root.join("apps/local"),
         root.join("apps/installed"),
         root.join("runtime/processes"),
         root.join("runtime/state"),
@@ -152,7 +125,7 @@ pub fn ensure_data_dirs() -> AppResult<PathBuf> {
     Ok(root)
 }
 
-/// 从旧源码目录迁移一次用户配置和本地 manifest。
+/// 从旧源码目录迁移一次用户配置。
 pub fn migrate_legacy_data() -> AppResult<()> {
     let root = ensure_data_dirs()?;
     let marker = root.join(".migration-v1");
@@ -168,25 +141,6 @@ pub fn migrate_legacy_data() -> AppResult<()> {
         fs::copy(&legacy_config, backup)?;
         let config: ShellConfig = serde_json::from_str(&fs::read_to_string(legacy_config)?)?;
         fs::write(config_path, serde_json::to_string_pretty(&config)?)?;
-    }
-
-    let legacy_apps = legacy_root.join("apps");
-    let local_apps = root.join("apps/local");
-    if legacy_apps.exists() {
-        for entry in fs::read_dir(legacy_apps)? {
-            let entry = entry?;
-            let source = entry.path();
-            if source.extension().and_then(|value| value.to_str()) != Some("yaml") {
-                continue;
-            }
-            let Some(name) = source.file_name() else {
-                continue;
-            };
-            let target = local_apps.join(name);
-            if !target.exists() {
-                fs::copy(source, target)?;
-            }
-        }
     }
 
     fs::write(marker, "1\n")?;

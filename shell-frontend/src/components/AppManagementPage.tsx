@@ -133,7 +133,7 @@ export function AppManagementPage({ onAppsChanged, onShowLog, appOrder, onReorde
   const uninstall = async (app: AppManifest) => {
     setPendingId(app.id);
     try {
-      await ipc.uninstallOfficialPlugin(app.id);
+      await ipc.uninstallOfficialApp(app.id);
       await load();
       onAppsChanged();
     } catch (error) {

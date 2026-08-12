@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.11",
+    "notes": "支持官方应用 macOS Apple Silicon 预编译包安装、SHA-256 校验和 staging 健康检查。"
+  },
+  {
+    "version": "0.1.10",
+    "notes": "移除已废弃的内置邮件管理。邮件管理由独立官方应用 mail-center 承担。"
+  },
+  {
     "version": "0.1.9",
     "notes": "优化 AI 模型测试工具的布局与能力。\n支持同步模型列表和图片理解测试。"
   },

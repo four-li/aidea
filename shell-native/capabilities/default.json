@@ -9,6 +9,7 @@
     "core:event:allow-emit",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
+    "notification:default",
     "updater:default"
   ]
 }

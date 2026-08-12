@@ -1,15 +1,15 @@
 // 子进程管理模块
-// 档位：中量（启停 + 状态 + 自启 + 日志）
-// 不做：健康检查、崩溃自动重启、资源监控、启动顺序/依赖
+// 负责官方应用启停、健康检查、异常恢复和日志；不做崩溃自动重启、资源监控、启动顺序/依赖。
 use crate::error::{AppError, AppResult};
-use crate::manifest::{find_manifest, AppIssue, UiMode};
-use crate::plugin_market::OfficialPlugin;
+use crate::manifest::AppIssue;
+use crate::official_market::OfficialApp;
 use crate::{
     config::{load_config, StartupMode},
-    plugin_installer,
+    official_app_installer,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
@@ -143,78 +143,77 @@ impl ProcessManager {
         Ok(states)
     }
 
-    /// 启动官方插件。命令与参数由市场定义提供，不经 shell 解析。
-    pub async fn start_official(&self, plugin: &OfficialPlugin) -> AppResult<u32> {
-        if self.is_running(&plugin.id)? {
+    /// 启动官方应用。命令与参数由市场定义提供，不经 shell 解析。
+    pub async fn start_official(&self, app: &OfficialApp) -> AppResult<u32> {
+        if self.is_running(&app.id)? {
             return self
-                .get_pid(&plugin.id)
-                .ok_or_else(|| AppError::Process(format!("{} 已运行但 PID 丢失", plugin.id)));
+                .get_pid(&app.id)
+                .ok_or_else(|| AppError::Process(format!("{} 已运行但 PID 丢失", app.id)));
         }
 
-        let source = crate::plugin_installer::source_dir(&plugin.id)?;
-        let working_dir = source.join(&plugin.process.working_directory);
+        let source = crate::official_app_installer::source_dir(&app.id)?;
+        let working_dir = source.join(&app.process.working_directory);
         if !working_dir.starts_with(&source) || !working_dir.is_dir() {
-            return Err(AppError::Process(format!("{} 工作目录无效", plugin.id)));
+            return Err(AppError::Process(format!("{} 工作目录无效", app.id)));
         }
-        if let Some(pid) = adoptable_process(&source, &plugin.process.ready_url).await {
-            self.table.lock().unwrap().entries.insert(
-                plugin.id.clone(),
-                ProcessEntry {
-                    pid,
-                    kill_tx: None,
-                },
-            );
-            self.clear_issue(&plugin.id);
+        if let Some(pid) = adoptable_process(&source, &app.process.ready_url).await {
+            self.table
+                .lock()
+                .unwrap()
+                .entries
+                .insert(app.id.clone(), ProcessEntry { pid, kill_tx: None });
+            self.clear_issue(&app.id);
             return Ok(pid);
         }
-        ensure_ready_port_available(&plugin.process.ready_url)?;
-        let log_dir = crate::config::data_root()?.join("logs").join(&plugin.id);
+        ensure_ready_port_available(&app.process.ready_url)?;
+        let log_dir = crate::config::data_root()?.join("logs").join(&app.id);
         std::fs::create_dir_all(&log_dir)?;
-        let log_path = log_dir.join("plugin.log");
+        let log_path = log_dir.join("app.log");
         let log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_path)?;
-        let app_data_dir = crate::config::data_root()?
-            .join("app-data")
-            .join(&plugin.id);
+        let app_data_dir = crate::config::data_root()?.join("app-data").join(&app.id);
         std::fs::create_dir_all(&app_data_dir)?;
 
-        let program = resolve_program(&plugin.process.command[0]);
-        let mut child = Command::new(&program)
-            .args(&plugin.process.command[1..])
+        let (program, path) = command_for_official_app(app, &source)?;
+        let mut command = Command::new(&program);
+        command
+            .args(&app.process.command[1..])
             .current_dir(&working_dir)
-            .env("AIDEA_APP_ID", &plugin.id)
+            .env("AIDEA_APP_ID", &app.id)
             .env("AIDEA_APP_DATA_DIR", &app_data_dir)
             .env("AIDEA_APP_LOG_DIR", &log_dir)
             .stdout(Stdio::from(log_file.try_clone()?))
-            .stderr(Stdio::from(log_file))
-            .spawn()
-            .map_err(|error| {
-                AppError::Process(format!(
-                    "启动 {} 失败（{}）: {}",
-                    plugin.id,
-                    program.display(),
-                    error
-                ))
-            })?;
+            .stderr(Stdio::from(log_file));
+        if let Some(path) = path {
+            command.env("PATH", path);
+        }
+        let mut child = command.spawn().map_err(|error| {
+            AppError::Process(format!(
+                "启动 {} 失败（{}）: {}",
+                app.id,
+                program.display(),
+                error
+            ))
+        })?;
         let pid = child
             .id()
-            .ok_or_else(|| AppError::Process(format!("获取 {} PID 失败", plugin.id)))?;
+            .ok_or_else(|| AppError::Process(format!("获取 {} PID 失败", app.id)))?;
         write_runtime_record(&RuntimeRecord {
-            app_id: plugin.id.clone(),
+            app_id: app.id.clone(),
             pid,
             started_at: chrono::Utc::now().timestamp(),
             process_started_at: process_started_at(pid).unwrap_or_default(),
-            command: plugin.process.command.clone(),
+            command: app.process.command.clone(),
             working_directory: working_dir.to_string_lossy().into_owned(),
-            ready_url: plugin.process.ready_url.clone(),
+            ready_url: app.process.ready_url.clone(),
             log_path: log_path.to_string_lossy().into_owned(),
-            version: plugin.version.clone(),
+            version: app.version.clone(),
             instance_id: uuid::Uuid::new_v4().to_string(),
         })?;
         let (kill_tx, kill_rx) = oneshot::channel::<()>();
-        let id = plugin.id.clone();
+        let id = app.id.clone();
         let manager = self.clone();
         tokio::spawn(async move {
             tokio::select! {
@@ -226,127 +225,19 @@ impl ProcessManager {
             }
         });
         self.table.lock().unwrap().entries.insert(
-            plugin.id.clone(),
+            app.id.clone(),
             ProcessEntry {
                 pid,
                 kill_tx: Some(kill_tx),
             },
         );
-        if let Err(error) = wait_until_ready(&plugin.process.ready_url).await {
-            let _ = self.stop(&plugin.id).await;
+        if let Err(error) = wait_until_ready(&app.process.ready_url).await {
+            let _ = self.stop(&app.id).await;
             return Err(AppError::Process(format!(
                 "{} 服务未就绪: {}",
-                plugin.id, error
+                app.id, error
             )));
         }
-        Ok(pid)
-    }
-
-    /// 启动子应用
-    pub async fn start(&self, id: &str) -> AppResult<u32> {
-        // 已运行则直接返回 pid
-        if self.is_running(id)? {
-            return self
-                .get_pid(id)
-                .ok_or_else(|| AppError::Process(format!("{} 已运行但 PID 丢失", id)));
-        }
-
-        let manifest = find_manifest(id)?;
-        let process_cfg = manifest
-            .process
-            .as_ref()
-            .ok_or_else(|| AppError::Process(format!("{} 无 process 配置，不能启动", id)))?;
-
-        let working_dir = process_cfg
-            .working_dir
-            .clone()
-            .unwrap_or_else(|| manifest.path.clone());
-
-        // 准备日志输出
-        let log_path = process_cfg.log_file.as_ref();
-        let (stdout, stderr) = if let Some(log_path) = log_path {
-            // 确保日志目录存在
-            let log_path_buf = PathBuf::from(log_path);
-            let log_dir = log_path_buf
-                .parent()
-                .ok_or_else(|| AppError::Process(format!("日志路径无效: {}", log_path)))?;
-            if !log_dir.exists() {
-                std::fs::create_dir_all(log_dir)?;
-            }
-            let f = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(log_path)?;
-            (Stdio::from(f.try_clone()?), Stdio::from(f))
-        } else {
-            (Stdio::null(), Stdio::null())
-        };
-
-        // 解析启动命令（简单按空格切分，复杂场景后续再支持 shell 字符串）
-        let mut parts = process_cfg.start.split_whitespace();
-        let program = parts
-            .next()
-            .ok_or_else(|| AppError::Process(format!("{} 启动命令为空", id)))?;
-        let args: Vec<&str> = parts.collect();
-
-        let program_path = resolve_program(program);
-        let mut child = Command::new(&program_path)
-            .args(&args)
-            .current_dir(&working_dir.as_str())
-            .stdout(stdout)
-            .stderr(stderr)
-            .spawn()
-            .map_err(|e| {
-                AppError::Process(format!(
-                    "启动 {} 失败（{}）: {}",
-                    id,
-                    program_path.display(),
-                    e
-                ))
-            })?;
-
-        let pid = child
-            .id()
-            .ok_or_else(|| AppError::Process(format!("获取 {} PID 失败", id)))?;
-
-        // 起 tokio 任务等待子进程退出，退出后记录日志
-        // 进程表的清理在 is_running 检查时按需做（pid 不存活则视作已退出）
-        let (kill_tx, kill_rx) = oneshot::channel::<()>();
-        let id_owned = id.to_string();
-        let pid_for_wait = pid;
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = child.wait() => {
-                    // 子进程自然退出
-                    eprintln!("子应用 {} (pid={}) 已退出", id_owned, pid_for_wait);
-                }
-                _ = kill_rx => {
-                    // 收到 kill 信号，实际 kill 由 stop 函数处理
-                }
-            }
-        });
-
-        // 记录到进程表
-        {
-            let mut table = self.table.lock().unwrap();
-            table.entries.insert(
-                id.to_string(),
-                ProcessEntry {
-                    pid,
-                    kill_tx: Some(kill_tx),
-                },
-            );
-        }
-
-        if manifest.ui.mode == UiMode::Webview {
-            if let Some(url) = manifest.ui.url.as_deref() {
-                if let Err(error) = wait_until_ready(url).await {
-                    let _ = self.stop(id).await;
-                    return Err(AppError::Process(format!("{} 服务未就绪: {}", id, error)));
-                }
-            }
-        }
-
         Ok(pid)
     }
 
@@ -468,6 +359,67 @@ impl ProcessManager {
         // 返回 0 = 存在；返回 -1 且 errno=ESRCH = 不存在
         pid > 0 && unsafe { libc::kill(pid, 0) == 0 }
     }
+}
+
+/// 在替换安装目录前启动 staging 版本，只验证健康检查，不写入运行记录。
+pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResult<()> {
+    let working_dir = source.join(&app.process.working_directory);
+    if !working_dir.starts_with(source) || !working_dir.is_dir() {
+        return Err(AppError::Process(format!("{} 工作目录无效", app.id)));
+    }
+    ensure_ready_port_available(&app.process.ready_url)?;
+
+    let check_root = std::env::temp_dir().join(format!("aidea-health-{}", uuid::Uuid::new_v4()));
+    let data_dir = check_root.join("data");
+    let log_dir = check_root.join("logs");
+    std::fs::create_dir_all(&data_dir)?;
+    std::fs::create_dir_all(&log_dir)?;
+
+    let (program, path) = command_for_official_app(app, source)?;
+    let mut command = Command::new(&program);
+    command
+        .args(&app.process.command[1..])
+        .current_dir(&working_dir)
+        .env("AIDEA_APP_ID", &app.id)
+        .env("AIDEA_APP_DATA_DIR", &data_dir)
+        .env("AIDEA_APP_LOG_DIR", &log_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(path) = path {
+        command.env("PATH", path);
+    }
+    let child = command
+        .spawn()
+        .map_err(|error| AppError::Process(format!("启动 {} staging 版本失败: {error}", app.id)));
+    let mut child = match child {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(check_root);
+            return Err(error);
+        }
+    };
+
+    let result = wait_until_ready(&app.process.ready_url).await;
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    let _ = std::fs::remove_dir_all(check_root);
+    result.map_err(|error| AppError::Process(format!("{} staging 版本未就绪: {error}", app.id)))
+}
+
+fn command_for_official_app(
+    app: &OfficialApp,
+    source: &Path,
+) -> AppResult<(PathBuf, Option<OsString>)> {
+    if app.runtime != "binary" {
+        return Ok((resolve_program(&app.process.command[0]), None));
+    }
+
+    let inherited_path = std::env::var_os("PATH").unwrap_or_default();
+    let path = std::env::join_paths(
+        std::iter::once(source.to_path_buf()).chain(std::env::split_paths(&inherited_path)),
+    )
+    .map_err(|error| AppError::Process(format!("{} PATH 无效: {error}", app.id)))?;
+    Ok((PathBuf::from(&app.process.command[0]), Some(path)))
 }
 
 fn runtime_records_dir() -> AppResult<PathBuf> {
@@ -647,9 +599,7 @@ async fn adoptable_process(source: &Path, ready_url: &str) -> Option<u32> {
         .await
         .ok()?;
     let cwd_output = String::from_utf8_lossy(&cwd.stdout);
-    let cwd = cwd_output
-        .lines()
-        .find_map(|line| line.strip_prefix('n'))?;
+    let cwd = cwd_output.lines().find_map(|line| line.strip_prefix('n'))?;
     if !Path::new(cwd).starts_with(source) || !is_ready(ready_url).await {
         return None;
     }
@@ -669,31 +619,9 @@ fn ensure_ready_port_available(url: &str) -> AppResult<()> {
         .map(|_| ())
         .map_err(|error| {
             AppError::Process(format!(
-                "端口 {host}:{port} 已被占用，无法启动插件: {error}"
+                "端口 {host}:{port} 已被占用，无法启动官方应用: {error}"
             ))
         })
-}
-
-/// 启动所有 autostart=true 的子应用
-pub async fn start_autostart_apps(manager: &ProcessManager) {
-    let manifests = match crate::manifest::load_all_manifests() {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("加载 manifest 失败，无法执行 autostart: {}", e);
-            return;
-        }
-    };
-    for m in manifests {
-        if let Some(p) = &m.process {
-            if p.autostart {
-                if let Err(e) = manager.start(&m.id).await {
-                    manager.record_issue(&m.id, &e);
-                } else {
-                    manager.clear_issue(&m.id);
-                }
-            }
-        }
-    }
 }
 
 /// 启动用户明确设置为随 aIdea 启动的官方应用。
@@ -705,7 +633,7 @@ pub async fn start_configured_official_apps(manager: &ProcessManager) {
             return;
         }
     };
-    for installed in plugin_installer::list_installed().unwrap_or_default() {
+    for installed in official_app_installer::list_installed().unwrap_or_default() {
         if config
             .app_settings
             .get(&installed.id)
@@ -713,9 +641,9 @@ pub async fn start_configured_official_apps(manager: &ProcessManager) {
         {
             continue;
         }
-        match plugin_installer::installed_definition(&installed.id) {
-            Ok(plugin) => {
-                if let Err(error) = manager.start_official(&plugin).await {
+        match official_app_installer::installed_definition(&installed.id) {
+            Ok(app) => {
+                if let Err(error) = manager.start_official(&app).await {
                     manager.record_issue(&installed.id, &error);
                 } else {
                     manager.clear_issue(&installed.id);
@@ -729,9 +657,14 @@ pub async fn start_configured_official_apps(manager: &ProcessManager) {
 #[cfg(test)]
 mod tests {
     use super::{
-        command_matches, ensure_ready_port_available, read_runtime_record_at, resolve_program,
+        check_official_source, command_for_official_app, command_matches,
+        ensure_ready_port_available, read_runtime_record_at, resolve_program,
         write_runtime_record_at, ProcessManager, RuntimeRecord,
     };
+    use crate::official_market::{OfficialApp, OfficialArtifact, OfficialProcess};
+    use std::sync::Mutex;
+
+    static NETWORK_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn 解析系统程序路径() {
@@ -743,8 +676,95 @@ mod tests {
         ProcessManager::default().stop_all().await;
     }
 
+    #[tokio::test]
+    async fn staging_版本通过健康检查后会退出() {
+        let _guard = NETWORK_TEST_LOCK.lock().unwrap();
+        let directory =
+            std::env::temp_dir().join(format!("aidea-staging-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let script = directory.join("server.py");
+        std::fs::write(
+            &script,
+            "from http.server import BaseHTTPRequestHandler, HTTPServer\nimport sys\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200 if self.path == '/health' else 404)\n        self.end_headers()\n    def log_message(self, *_): pass\nHTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()\n",
+        )
+        .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let app = OfficialApp {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "0.1.0".into(),
+            icon: "Package".into(),
+            repository: "https://example.com/demo.git".into(),
+            revision: "a".repeat(40),
+            runtime: "python".into(),
+            install: vec![],
+            artifact: None,
+            process: OfficialProcess {
+                command: vec![
+                    "python3".into(),
+                    script.to_string_lossy().into_owned(),
+                    port.to_string(),
+                ],
+                working_directory: ".".into(),
+                ready_url: format!("http://127.0.0.1:{port}/health"),
+            },
+            settings: None,
+            update_notes: String::new(),
+            update_available: false,
+        };
+
+        check_official_source(&app, &directory).await.unwrap();
+        assert!(ensure_ready_port_available(&app.process.ready_url).is_ok());
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn binary_命令使用包根目录前置的_path() {
+        let directory = std::env::temp_dir().join(format!("aidea-binary-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let command = format!("test-server-{}", uuid::Uuid::new_v4());
+        let app = OfficialApp {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "0.1.0".into(),
+            icon: "Package".into(),
+            repository: "https://example.com/demo.git".into(),
+            revision: "a".repeat(40),
+            runtime: "binary".into(),
+            install: vec![],
+            artifact: Some(OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            }),
+            process: OfficialProcess {
+                command: vec![command.clone()],
+                working_directory: ".".into(),
+                ready_url: "http://127.0.0.1:43120/health".into(),
+            },
+            settings: None,
+            update_notes: String::new(),
+            update_available: false,
+        };
+
+        let (program, path) = command_for_official_app(&app, &directory).unwrap();
+
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(program, std::path::PathBuf::from(command));
+        assert_eq!(
+            std::env::split_paths(&path.unwrap()).next(),
+            Some(directory)
+        );
+    }
+
     #[test]
     fn 已占用的健康检查端口会在启动前报错() {
+        let _guard = NETWORK_TEST_LOCK.lock().unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let error = ensure_ready_port_available(&format!("http://127.0.0.1:{port}/health"))

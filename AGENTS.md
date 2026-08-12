@@ -12,27 +12,36 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 - aIdea 只管理应用生命周期、显示/启动偏好、安装运行环境、设置入口和日志；不解析应用业务配置，也不提供共享凭据服务。
 - 内置应用和官方应用的 `version` 都是发布契约的一部分：只要改动会影响用户可见功能、界面、交互、设置页、数据格式或业务行为，就必须同步升版本；纯重构、测试和文档不要求升版本。
 - 官方应用的发布运行时与实现语言无关。正式发布优先使用 `runtime: binary` 加预编译包：包内必须带齐启动所需的运行时和应用依赖，用户无需安装 Rust、Cargo、Node、npm、Python 或 SQLite。Python、Node 应用也可使用系统运行时，但必须由平台先检查版本和必需工具，再只在应用安装目录内安装应用依赖；aIdea 不自动安装、升级系统运行时或修改用户 `PATH`。
-- 官方应用只支持 macOS Apple Silicon 和 Intel；不发布或维护 Windows、iOS、Android 等其他平台的安装包。`runtime: binary` 与运行时环境检查属于待实现的平台能力，应用不得在平台支持前假定可用。
-- 当前邮件管理仍是内置应用，但只作为待删除的旧实现维护；新邮件管理必须在独立官方应用仓库中实现，固定应用 ID 为 `mail-center`，不得复用当前内置邮件的 IPC、Rust 模块、前端组件或数据结构。
-- 邮件拆分不做数据迁移、不做双写、不保留兼容读取。只有官方 `mail-center` 已进入市场并在可安装环境中通过安装和健康检查后，才能发布删除内置邮件的 aIdea 版本。
-- 该删除版本必须移除旧邮件 manifest、页面、IPC、Rust 邮件模块、迁移文件，并在升级首次启动时删除旧的 `app-data/mail-manager/`、`logs/mail-manager/`、`databases/mail-manager.db` 及已知旧邮件凭据路径；删除不可恢复，不得把旧数据复制到 `app-data/mail-center/`。
-- 旧的 `databases/mail-manager.db`、独立凭据存储和 DevTools JSON 不再是兼容目标；新代码不得读取或写入这些路径。
+- 官方应用仅支持 macOS Apple Silicon（arm64）；不发布或维护 Intel Mac、Windows、iOS、Android 等其他平台的安装包。`runtime: binary` 已支持单个 arm64 预编译包；Python、Node 等系统运行时的环境检查仍属于待实现能力，应用不得提前依赖。
+- 内置邮件管理已经从 aIdea 移除；新邮件管理必须在独立官方应用仓库中实现，固定应用 ID 为 `mail-center`，不得依赖旧内置邮件的 IPC、Rust 模块、前端组件或数据结构。
+- 旧邮件不做数据迁移、不做双写、不保留兼容读取。历史 `mail-manager` 数据路径不是兼容目标，aIdea 新代码不得读取或写入，也不自动删除这些路径。
 
 ## 核心边界
 
 - 当前只开发内置应用和官方应用，不实现第三方市场、自定义安装、自动发现或多作者权限系统。
-- 官方应用发布目标只覆盖 macOS Apple Silicon 和 Intel；Windows、iOS、Android 及其他平台不在范围内。当前仓库的发布脚本仍只产出 Apple Silicon，Intel 发布能力完成前不得在发布说明中声称已支持 Intel。
+- 官方应用发布目标只覆盖 macOS Apple Silicon（arm64）；Intel Mac、Windows、iOS、Android 及其他平台不在范围内。二进制安装 v1 只接收一个 arm64 产物，不设计架构选择或 Intel 回退。
 - aIdea 壳管理应用安装、更新、卸载、启动、停止、健康检查、WebView、日志和运行状态；应用管理自己的业务代码、数据、迁移、网络请求和 UI。
 - 内置应用使用 aIdea 内部 Tauri IPC，并统一通过 `shell-frontend/src/lib/ipc.ts` 调用。官方应用不得依赖 Tauri IPC、壳前端封装或 Rust 命令名。
 - 官方应用只使用 aIdea 注入的应用 ID、数据目录和日志目录环境变量；不依赖未定义的平台命令或 aIdea 内部数据库。
+- 内置应用和官方应用如果启动自己的本地 HTTP 服务，服务端口统一从 `43000-43999` 范围内分配，并为每个应用保持稳定且不重复的端口；内置应用仅通过 Tauri IPC 通信时不需要端口。该范围是开发和发布规范，安装时不强制拒绝范围外的既有应用。
 - 所有 UI、内置应用和官方应用都必须检查浅色与深色主题；邮件正文、Markdown、富文本和第三方 HTML 内容区也必须可读。
 - 应用数据和配置保存在自己的 `app-data/<app-id>/app.db`，卸载默认保留；敏感值可以保存在应用自己的数据库，但不得写入日志。
+
+## 开发期架构纪律（临时）
+
+> 本小节为开发期临时纪律，待 Fourli 认为架构稳定、成熟后由本人手动删除；删除前始终有效。
+
+- 开发期内，凡是发现不规范、技术选型不当或方案落后的地方，主动提出来，不要默默绕开或在子应用里打补丁。
+- 该重构就重构，该换技术方案就换技术方案；**不要在挂载了很多子应用之后才回头推翻重构**，那时代价极高、风险极大。开发期应有这种魄力。
+- 壳↔子应用的通信契约（App Bridge，见 `docs/guide/aidea-app-bridge.md`）是当前重点搭建对象。子应用须严格按契约实现；若发现契约自身有问题，优先修订契约规范，而不是在个别子应用里各搞一套兼容。
+- 任何对核心边界、通信契约、应用生命周期的改动，先在本仓库文档（`docs/guide/`）和本文件对齐，再动手；改动后同步更新受影响文档。
 
 ## 开发前文档路由
 
 | 任务 | 先读 |
 | --- | --- |
 | 平台边界、应用生命周期、设置和运行管理 | [docs/guide/aidea-platform.md](docs/guide/aidea-platform.md) |
+| 壳与官方应用通信、主题、通知和应用内搜索 | [docs/guide/aidea-app-bridge.md](docs/guide/aidea-app-bridge.md)、[docs/guide/aidea-search.md](docs/guide/aidea-search.md) |
 | 新增或修改内置应用、manifest、Tauri IPC | [docs/guide/aidea-builtin-app.md](docs/guide/aidea-builtin-app.md)、[docs/guide/aidea-ui.md](docs/guide/aidea-ui.md) |
 | 开发独立官方应用、`aidea.yaml`、市场接入、安装更新 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-platform.md](docs/guide/aidea-platform.md) |
 | 修改 SQLite、缓存、迁移、备份或敏感值 | [docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |

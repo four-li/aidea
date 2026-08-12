@@ -24,6 +24,7 @@ shell.config.local.json
 
 # Superpowers 本地临时状态
 .superpowers/
+.workbuddy/
 
 # aIdea updater 私钥（仅限本机发布使用，禁止提交）
 aidea-updater.key

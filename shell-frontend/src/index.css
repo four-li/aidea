@@ -81,6 +81,9 @@ html, body, #root {
 .cm-editor {
   background-color: hsl(var(--card)) !important;
   color: hsl(var(--foreground)) !important;
+  /* 撑满父容器，避免只有内容区有背景色 */
+  width: 100% !important;
+  height: 100% !important;
 }
 .cm-editor .cm-scroller {
   background-color: hsl(var(--card)) !important;
@@ -94,7 +97,9 @@ html, body, #root {
   border-right-color: hsl(var(--border));
 }
 .cm-editor .cm-activeLine,
-.cm-editor .cm-activeLineGutter {
+.cm-editor .cm-activeLineGutter,
+.cm-editor.cm-focused .cm-activeLine,
+.cm-editor.cm-focused .cm-activeLineGutter {
   background-color: transparent !important;
 }
 .cm-editor.cm-focused .cm-selectionBackground,

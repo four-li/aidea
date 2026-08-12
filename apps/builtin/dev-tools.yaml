@@ -3,11 +3,9 @@ name: DevTools
 description: 面向开发者的实用工具集合
 version: 0.3.1
 category: 开发
-path: shell-frontend/src/builtin-apps/dev-tools
 status: active
 ui:
   mode: builtin
   icon: Wrench
 settings:
-  enabled: true
   reset_command: [builtin, dev-tools]

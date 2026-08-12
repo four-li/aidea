@@ -15,7 +15,6 @@ const app: AppManifest = {
   name: 'Demo',
   version: '0.1.0',
   category: 'test',
-  path: '/tmp/demo',
   status: 'active',
   ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
 };

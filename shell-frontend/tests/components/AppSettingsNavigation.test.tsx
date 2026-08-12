@@ -8,10 +8,8 @@ const app: AppManifest = {
   name: '邮件管理',
   version: '1.0.0',
   category: '效率',
-  path: '',
   status: 'active',
   ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
-  settings: { enabled: true },
 };
 
 describe('应用设置导航', () => {

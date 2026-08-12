@@ -1,9 +1,8 @@
 use crate::config::{
-    app_data_dir, data_root, load_config, save_config, AppOverride, AppUserSettings, ShellConfig,
-    StartupMode,
+    app_data_dir, data_root, load_config, save_config, AppUserSettings, ShellConfig, StartupMode,
 };
 use crate::error::{AppError, AppResult};
-use crate::manifest::{find_manifest, load_all_manifests, save_manifest, AppManifest};
+use crate::manifest::{find_manifest, load_all_manifests, AppManifest};
 use crate::process::{AppState, ProcessManager};
 use tauri::{Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
@@ -70,13 +69,15 @@ fn reset_command_for(manifest: &AppManifest) -> AppResult<&[String]> {
     let settings = manifest
         .settings
         .as_ref()
-        .filter(|settings| settings.enabled)
         .ok_or_else(|| AppError::Config(format!("{} 不支持重置设置", manifest.name)))?;
     let command = settings
         .reset_command
         .as_deref()
         .ok_or_else(|| AppError::Config(format!("{} 不支持重置设置", manifest.name)))?;
-    if command.first().is_none_or(|program| program.trim().is_empty()) {
+    if command
+        .first()
+        .is_none_or(|program| program.trim().is_empty())
+    {
         return Err(AppError::Config("重置设置命令为空".into()));
     }
     Ok(command)
@@ -125,104 +126,125 @@ pub async fn list_apps() -> AppResult<Vec<AppManifest>> {
 }
 
 #[tauri::command]
-pub async fn list_official_plugins() -> AppResult<Vec<crate::plugin_market::OfficialPluginListing>>
-{
-    let cached = crate::plugin_market::load_cached_official_plugins().unwrap_or_default();
-    if cached.is_empty() {
-        crate::plugin_market::add_install_status(crate::plugin_market::load_official_plugins()?)
-    } else {
-        crate::plugin_market::add_install_status(cached)
-    }
+pub async fn list_official_apps() -> AppResult<Vec<crate::official_market::OfficialAppListing>> {
+    crate::official_market::add_install_status(crate::official_market::load_cached_official_apps()?)
 }
 
 #[tauri::command]
-pub async fn refresh_official_plugins(
-) -> AppResult<Vec<crate::plugin_market::OfficialPluginListing>> {
-    crate::plugin_market::add_install_status(
-        crate::plugin_market::refresh_official_definitions()
+pub async fn refresh_official_apps() -> AppResult<Vec<crate::official_market::OfficialAppListing>> {
+    crate::official_market::add_install_status(
+        crate::official_market::refresh_official_definitions()
             .await?
             .into_iter()
-            .map(crate::plugin_market::CachedOfficialPlugin::into_plugin)
+            .map(crate::official_market::CachedOfficialApp::into_app)
             .collect(),
     )
 }
 
 #[tauri::command]
-pub async fn list_installed_official_plugins(
-) -> AppResult<Vec<crate::plugin_installer::InstalledPlugin>> {
-    crate::plugin_installer::list_installed()
+pub async fn list_installed_official_apps(
+) -> AppResult<Vec<crate::official_app_installer::InstalledApp>> {
+    crate::official_app_installer::list_installed()
 }
 
 #[tauri::command]
-pub async fn install_official_plugin(
+pub async fn install_official_app(
     id: String,
     app: tauri::AppHandle,
-) -> AppResult<crate::plugin_installer::InstalledPlugin> {
-    crate::plugin_installer::install_with_progress(&id, move |progress| {
-        let _ = app.emit("official-plugin-install-progress", progress);
+) -> AppResult<crate::official_app_installer::InstalledApp> {
+    crate::official_app_installer::install_with_progress(&id, move |progress| {
+        let _ = app.emit("official-app-install-progress", progress);
     })
     .await
 }
 
 #[tauri::command]
-pub async fn update_official_plugin(
+pub async fn update_official_app(
     id: String,
     manager: State<'_, ProcessManager>,
     app: tauri::AppHandle,
-) -> AppResult<crate::plugin_installer::InstalledPlugin> {
-    if manager.is_running(&id)? {
+) -> AppResult<crate::official_app_installer::InstalledApp> {
+    let was_running = manager.is_running(&id)?;
+    let previous_definition = if was_running {
+        Some(crate::official_app_installer::installed_definition(&id)?)
+    } else {
+        None
+    };
+    if was_running {
         manager.stop(&id).await?;
     }
-    crate::plugin_installer::install_with_progress(&id, move |progress| {
-        let _ = app.emit("official-plugin-install-progress", progress);
-    })
-    .await
+    if !was_running {
+        return crate::official_app_installer::install_with_progress(&id, move |progress| {
+            let _ = app.emit("official-app-install-progress", progress);
+        })
+        .await;
+    }
+
+    let (installed, rollback) =
+        match crate::official_app_installer::install_update_with_progress(&id, move |progress| {
+            let _ = app.emit("official-app-install-progress", progress);
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let previous_definition = previous_definition.expect("运行中的应用必须有旧定义");
+                if let Err(restart_error) = manager.start_official(&previous_definition).await {
+                    manager.record_issue(&id, &restart_error);
+                    return Err(AppError::Process(format!(
+                        "官方应用 {} 更新失败，且恢复旧版本运行失败: {}; 原因: {}",
+                        id, restart_error, error
+                    )));
+                }
+                return Err(error);
+            }
+        };
+
+    let updated_definition = crate::official_app_installer::installed_definition(&id)?;
+    if let Err(error) = manager.start_official(&updated_definition).await {
+        if let Err(rollback_error) = crate::official_app_installer::rollback_update(&id, rollback) {
+            manager.record_issue(&id, &rollback_error);
+            return Err(AppError::Process(format!(
+                "官方应用 {} 更新后启动失败，且回滚失败: {}; 原因: {}",
+                id, rollback_error, error
+            )));
+        }
+        let previous_definition = previous_definition.expect("运行中的应用必须有旧定义");
+        if let Err(restart_error) = manager.start_official(&previous_definition).await {
+            manager.record_issue(&id, &restart_error);
+            return Err(AppError::Process(format!(
+                "官方应用 {} 更新后启动失败，旧版本恢复运行也失败: {}; 原因: {}",
+                id, restart_error, error
+            )));
+        }
+        return Err(AppError::Process(format!(
+            "官方应用 {} 更新后启动失败，已恢复旧版本: {}",
+            id, error
+        )));
+    }
+    crate::official_app_installer::commit_update(rollback)?;
+    Ok(installed)
 }
 
 #[tauri::command]
-pub async fn read_official_plugin_install_log(id: String) -> AppResult<String> {
-    crate::plugin_installer::read_install_log(&id)
+pub async fn read_official_app_install_log(id: String) -> AppResult<String> {
+    crate::official_app_installer::read_install_log(&id)
 }
 
 #[tauri::command]
-pub async fn uninstall_official_plugin(
+pub async fn uninstall_official_app(
     id: String,
     manager: State<'_, ProcessManager>,
 ) -> AppResult<()> {
     if manager.is_running(&id)? {
         manager.stop(&id).await?;
     }
-    crate::plugin_installer::uninstall(&id).await
-}
-
-#[tauri::command]
-pub async fn save_app_manifest(manifest: AppManifest) -> AppResult<()> {
-    save_manifest(&manifest)
+    crate::official_app_installer::uninstall(&id).await
 }
 
 #[tauri::command]
 pub async fn get_shell_config() -> AppResult<ShellConfig> {
     load_config()
-}
-
-#[tauri::command]
-pub async fn save_app_override(id: String, override_cfg: AppOverride) -> AppResult<()> {
-    let mut config = load_config()?;
-    if is_empty_override(&override_cfg) {
-        config.overrides.remove(&id);
-    } else {
-        config.overrides.insert(id, override_cfg);
-    }
-    save_config(&config)
-}
-
-#[tauri::command]
-pub async fn reset_app_override(id: String) -> AppResult<()> {
-    let mut config = load_config()?;
-    if config.overrides.remove(&id).is_none() {
-        return Ok(());
-    }
-    save_config(&config)
 }
 
 #[tauri::command]
@@ -249,11 +271,14 @@ pub async fn reset_app_settings(id: String, manager: State<'_, ProcessManager>) 
     if manifest.ui.mode == crate::manifest::UiMode::Builtin {
         return match id.as_str() {
             "dev-tools" => crate::commands::dev_tools::reset_dev_tools_settings(),
-            _ => Err(AppError::Config(format!("{} 未注册重置处理器", manifest.name))),
+            _ => Err(AppError::Config(format!(
+                "{} 未注册重置处理器",
+                manifest.name
+            ))),
         };
     }
 
-    let plugin = crate::plugin_installer::installed_definition(&id)?;
+    let app = crate::official_app_installer::installed_definition(&id)?;
     let was_running = manager.is_running(&id)?;
     if was_running {
         manager.stop(&id).await?;
@@ -261,7 +286,7 @@ pub async fn reset_app_settings(id: String, manager: State<'_, ProcessManager>) 
 
     let reset_result = run_reset_command(
         command,
-        &crate::plugin_installer::source_dir(&id)?,
+        &crate::official_app_installer::source_dir(&id)?,
         &id,
         &app_data_dir(&id)?,
         &data_root()?.join("logs").join(&id),
@@ -269,16 +294,12 @@ pub async fn reset_app_settings(id: String, manager: State<'_, ProcessManager>) 
     .await;
 
     let restart_result = if should_restart_after_reset(was_running) {
-        manager.start_official(&plugin).await.map(|_| ())
+        manager.start_official(&app).await.map(|_| ())
     } else {
         Ok(())
     };
     reset_result?;
     restart_result
-}
-
-fn is_empty_override(o: &AppOverride) -> bool {
-    o.name.is_none() && o.icon.is_none() && o.url.is_none() && o.start.is_none()
 }
 
 #[cfg(test)]
@@ -301,7 +322,6 @@ mod tests {
             description: String::new(),
             version: "1.0.0".into(),
             category: "test".into(),
-            path: String::new(),
             status: AppStatus::Active,
             ui: UiConfig {
                 mode: UiMode::Webview,
@@ -322,7 +342,6 @@ mod tests {
     #[test]
     fn 空的重置程序会被拒绝() {
         assert!(reset_command_for(&manifest(Some(SettingsConfig {
-            enabled: true,
             reset_command: Some(vec![String::new()]),
         })))
         .is_err());
@@ -359,11 +378,8 @@ mod tests {
 
 #[tauri::command]
 pub async fn start_app(id: String, manager: State<'_, ProcessManager>) -> AppResult<u32> {
-    let result = if let Ok(plugin) = crate::plugin_installer::installed_definition(&id) {
-        manager.start_official(&plugin).await
-    } else {
-        manager.start(&id).await
-    };
+    let app = crate::official_app_installer::installed_definition(&id)?;
+    let result = manager.start_official(&app).await;
     match result {
         Ok(pid) => {
             manager.clear_issue(&id);
@@ -401,7 +417,7 @@ pub async fn read_app_log(id: String) -> AppResult<String> {
             crate::config::data_root()?
                 .join("logs")
                 .join(&id)
-                .join("plugin.log")
+                .join("app.log")
                 .to_string_lossy()
                 .into_owned(),
         );

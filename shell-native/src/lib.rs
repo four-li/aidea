@@ -1,15 +1,12 @@
 pub mod commands;
 pub mod config;
 pub mod error;
-pub mod mail_runtime;
-pub mod mail_store;
-pub mod mail_sync;
 pub mod manifest;
-pub mod plugin_installer;
-pub mod plugin_market;
+pub mod official_app_installer;
+pub mod official_market;
 pub mod process;
 
-use process::{start_autostart_apps, start_configured_official_apps, ProcessManager};
+use process::{start_configured_official_apps, ProcessManager};
 use tauri::menu::{Menu, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
 
@@ -20,6 +17,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(manager.clone())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::shell::get_aidea_version,
@@ -27,17 +25,14 @@ pub fn run() {
             commands::shell::check_aidea_update,
             commands::shell::install_aidea_update,
             commands::shell::list_apps,
-            commands::shell::list_official_plugins,
-            commands::shell::refresh_official_plugins,
-            commands::shell::list_installed_official_plugins,
-            commands::shell::install_official_plugin,
-            commands::shell::update_official_plugin,
-            commands::shell::read_official_plugin_install_log,
-            commands::shell::uninstall_official_plugin,
-            commands::shell::save_app_manifest,
+            commands::shell::list_official_apps,
+            commands::shell::refresh_official_apps,
+            commands::shell::list_installed_official_apps,
+            commands::shell::install_official_app,
+            commands::shell::update_official_app,
+            commands::shell::read_official_app_install_log,
+            commands::shell::uninstall_official_app,
             commands::shell::get_shell_config,
-            commands::shell::save_app_override,
-            commands::shell::reset_app_override,
             commands::shell::reset_app_settings,
             commands::shell::save_app_user_settings,
             commands::shell::start_app,
@@ -52,21 +47,6 @@ pub fn run() {
             commands::ai::list_ai_configs,
             commands::ai::load_ai_config,
             commands::ai::delete_ai_config,
-            commands::mail::save_mail_account,
-            commands::mail::load_mail_account_secret,
-            commands::mail::test_mail_account_connection,
-            commands::mail::list_mail_accounts,
-            commands::mail::delete_mail_account,
-            commands::mail::sync_mail_accounts,
-            commands::mail::sync_mail_history,
-            commands::mail::cancel_mail_sync,
-            commands::mail::list_mail_sync_tasks,
-            commands::mail::list_mail_messages,
-            commands::mail::get_mail_message,
-            commands::mail::mark_mail_read,
-            commands::mail::mark_mail_unread,
-            commands::mail::move_mail_to_deleted,
-            commands::mail::open_mail_webmail,
         ])
         .menu(|app| {
             let menu = Menu::default(app)?;
@@ -118,20 +98,10 @@ pub fn run() {
 
             if let Some(app_menu) = app_menu {
                 // 自定义菜单项统一置于系统默认项之前，后续新增项继续插入到这里。
-                let settings = MenuItem::with_id(
-                    app,
-                    "open-aidea-settings",
-                    "设置",
-                    true,
-                    None::<&str>,
-                )?;
-                let check_update = MenuItem::with_id(
-                    app,
-                    "check-aidea-update",
-                    "检查更新",
-                    true,
-                    None::<&str>,
-                )?;
+                let settings =
+                    MenuItem::with_id(app, "open-aidea-settings", "设置", true, None::<&str>)?;
+                let check_update =
+                    MenuItem::with_id(app, "check-aidea-update", "检查更新", true, None::<&str>)?;
                 app_menu.insert(&check_update, 0)?;
                 app_menu.insert(&settings, 0)?;
             } else {
@@ -153,16 +123,14 @@ pub fn run() {
         .setup(move |_app| {
             config::migrate_legacy_data()
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
-            // 启动 autostart 子应用（clone manager move 进 async task）
+            // 恢复受管进程，并启动用户明确设置为随 aIdea 启动的官方应用。
             let m = startup_manager.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = m.recover_managed_processes().await {
                     eprintln!("恢复受管子应用失败: {error}");
                 }
                 start_configured_official_apps(&m).await;
-                start_autostart_apps(&m).await;
             });
-            mail_runtime::start_all(_app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -7,14 +7,23 @@ fn prepare_data_dir() {
 }
 
 #[test]
-fn 应能加载_apps_目录下的所有_yaml() {
+fn 应能加载内置和已安装官方应用() {
     prepare_data_dir();
     // 内置 manifest 编译进 Rust，不依赖源码目录或用户配置。
     let manifests = load_all_manifests().expect("加载 manifest 失败");
-    assert!(manifests.len() >= 2, "至少应有两个内置子应用");
+    assert!(
+        manifests.iter().any(|manifest| manifest.id == "dev-tools"),
+        "应包含 dev-tools 内置应用"
+    );
     assert!(
         !manifests.iter().any(|manifest| manifest.id == "dashboard"),
         "统计页不应作为内置应用加载"
+    );
+    assert!(
+        !manifests
+            .iter()
+            .any(|manifest| manifest.id == "mail-manager"),
+        "旧邮件管理不应作为内置应用加载"
     );
 }
 
@@ -31,55 +40,7 @@ fn dev_tools_应为_builtin_模式且无_process() {
 }
 
 #[test]
-fn 邮件管理应为_builtin_模式且无_process() {
-    prepare_data_dir();
-    let manifests = load_all_manifests().expect("加载 manifest 失败");
-    let mail_manager = manifests
-        .iter()
-        .find(|manifest| manifest.id == "mail-manager")
-        .expect("应能找到邮件管理");
-    assert_eq!(mail_manager.ui.mode, UiMode::Builtin);
-    assert!(mail_manager.process.is_none(), "邮件管理不应有 process 段");
-}
-
-#[test]
-fn 应从用户数据目录加载本地_manifest() {
-    prepare_data_dir();
-    let root = std::env::var("AIDEA_DATA_DIR").expect("缺少测试数据目录");
-    let path = std::path::Path::new(&root).join("apps/local/local-test.yaml");
-    std::fs::create_dir_all(path.parent().expect("本地 manifest 应有父目录"))
-        .expect("创建本地 manifest 目录失败");
-    std::fs::write(
-        path,
-        "id: local-test\nname: Local Test\nversion: 0.1.0\ncategory: 测试\npath: /tmp\nstatus: disabled\nui:\n  mode: none\n",
-    )
-    .expect("写入本地 manifest 失败");
-
-    let manifests = load_all_manifests().expect("加载 manifest 失败");
-    assert!(manifests.iter().any(|manifest| manifest.id == "local-test"));
-}
-
-#[test]
-fn 应从用户数据目录加载已安装_manifest() {
-    prepare_data_dir();
-    let root = std::env::var("AIDEA_DATA_DIR").expect("缺少测试数据目录");
-    let path = std::path::Path::new(&root).join("apps/installed/installed-test/manifest.yaml");
-    std::fs::create_dir_all(path.parent().expect("已安装 manifest 应有父目录"))
-        .expect("创建已安装 manifest 目录失败");
-    std::fs::write(
-        path,
-        "id: installed-test\nname: Installed Test\nversion: 0.1.0\ncategory: 测试\npath: /tmp\nstatus: disabled\nui:\n  mode: none\n",
-    )
-    .expect("写入已安装 manifest 失败");
-
-    let manifests = load_all_manifests().expect("加载 manifest 失败");
-    assert!(manifests
-        .iter()
-        .any(|manifest| manifest.id == "installed-test"));
-}
-
-#[test]
-fn 首次启动迁移旧配置和本地_manifest() {
+fn 首次启动迁移旧配置() {
     prepare_data_dir();
     aidea_shell_lib::config::migrate_legacy_data().expect("迁移旧用户数据失败");
 

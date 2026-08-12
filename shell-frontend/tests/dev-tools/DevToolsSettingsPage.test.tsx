@@ -27,7 +27,7 @@ describe('DevToolsSettingsPage', () => {
     render(<DevToolsSettingsPage onClose={vi.fn()} />);
 
     expect(await screen.findByRole('checkbox', { name: 'IP 查询' })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: '数据格式化' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'JSON 格式化' })).toBeChecked();
   });
 
   it('隐藏工具时保存应用自己的偏好', async () => {
@@ -46,7 +46,7 @@ describe('DevToolsSettingsPage', () => {
     });
     render(<DevToolsSettingsPage onClose={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole('checkbox', { name: '数据格式化' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'JSON 格式化' }));
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalled());
     expect(mockSaveDevToolsSettings).not.toHaveBeenCalled();

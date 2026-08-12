@@ -1,6 +1,6 @@
 [package]
 name = "aidea-shell"
-version = "0.1.9"
+version = "0.1.11"
 edition = "2021"
 
 [lib]
@@ -21,17 +21,17 @@ thiserror = "1"
 dirs = "5"
 libc = "0.2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 # DevTools IP 查询用
 # reqwest 复用 Tauri 间接依赖（不增加编译成本），rustls-tls 避免系统 OpenSSL 依赖
 # local-ip-address 用于枚举本机所有网络接口的 IP
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 local-ip-address = "0.6"
 sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
-mailparse = "0.15"
-ammonia = "4"
 chrono = "0.4"
-imap = "2.4"
-native-tls = "0.2"
+flate2 = "1"
+futures-util = "0.3"
+tar = "0.4"

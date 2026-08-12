@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
 import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
 import { LogPanel } from './components/LogPanel';
@@ -8,7 +9,9 @@ import { Toaster } from './components/ui/sonner';
 import { useApps } from './hooks/useApps';
 import { useActiveApp } from './hooks/useActiveApp';
 import { useProcessStatus } from './hooks/useProcessStatus';
+import { useAppBridge } from './hooks/useAppBridge';
 import { useTheme } from './hooks/useTheme';
+import { ipc } from './lib/ipc';
 import type { AppManifest } from './types/manifest';
 
 const APP_ORDER_STORAGE_KEY = 'aidea-app-order';
@@ -18,6 +21,24 @@ function App() {
   const { activeAppId, selectApp } = useActiveApp();
   const { states, refresh } = useProcessStatus(apps.length > 0);
   const { mode: themeMode, resolvedTheme, setTheme } = useTheme();
+
+  const handleNavigateRequest = useCallback(
+    async ({ appId }: { appId: string; path?: string }) => {
+      const app = apps.find((item) => item.id === appId);
+      if (!app) return;
+      selectApp(appId);
+      if (app.process && states[appId]?.status !== 'running') {
+        try {
+          await ipc.startApp(appId);
+          void refresh();
+        } catch (error) {
+          toast.error('启动应用失败', { description: String(error) });
+        }
+      }
+    },
+    [apps, states, selectApp, refresh],
+  );
+  const { registerFrame } = useAppBridge(resolvedTheme, handleNavigateRequest);
 
   // apps 加载完成后，自动选中第一个（仅当还没选中时）
   useEffect(() => {
@@ -116,7 +137,13 @@ function App() {
         onOpenSettings={() => setShowSettings(true)}
       />
       <div className="flex-1 overflow-hidden">
-        <ContentArea apps={apps} activeApp={activeApp} states={states} theme={resolvedTheme} />
+        <ContentArea
+          apps={apps}
+          activeApp={activeApp}
+          states={states}
+          theme={resolvedTheme}
+          onFrameRef={registerFrame}
+        />
       </div>
       <LogPanel app={logApp} onClose={() => setLogApp(null)} />
       <SettingsPanel

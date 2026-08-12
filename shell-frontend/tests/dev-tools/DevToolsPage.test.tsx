@@ -21,7 +21,7 @@ describe('DevToolsPage', () => {
     render(<DevToolsPage />);
 
     await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
-    expect(screen.getByRole('tab', { name: '数据格式化' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'JSON 格式化' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'IP 查询' })).not.toBeInTheDocument();
   });
 

@@ -1,0 +1,17 @@
+schema_version: 1
+id: mail-center
+name: 邮件中心（接入范本）
+description: aIdea 官方应用接入 App Bridge 的最小可运行范本
+category: 效率
+version: 0.1.0
+icon: Mail
+revision: 0000000000000000000000000000000000000000
+min_aidea_version: 0.1.9
+runtime: node
+install:
+  - [npm, install]
+process:
+  command: [node, node_modules/vite/bin/vite.js, --host, 127.0.0.1, --port, '43120']
+  working_directory: .
+  ready_url: http://127.0.0.1:43120/health
+update_notes: 范本版本，仅用于演示 App Bridge 接入（theme / notify / navigate）。

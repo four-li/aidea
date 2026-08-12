@@ -12,15 +12,10 @@ export interface UiConfig {
 }
 
 export interface SettingsConfig {
-  enabled: boolean;
   reset_command?: string[];
 }
 
 export interface ProcessConfig {
-  start: string;
-  stop: string | Record<string, string>; // StopMethod 是 untagged enum
-  autostart: boolean;
-  working_dir?: string;
   log_file?: string;
 }
 
@@ -30,7 +25,6 @@ export interface AppManifest {
   description?: string;
   version: string;
   category: string;
-  path: string;
   status: AppStatus;
   ui: UiConfig;
   settings?: SettingsConfig;
@@ -52,8 +46,6 @@ export interface AppIssue {
 }
 
 export interface ShellConfig {
-  theme: string;
-  overrides: Record<string, AppOverride>;
   app_settings: Record<string, AppUserSettings>;
 }
 
@@ -62,12 +54,4 @@ export type StartupMode = 'manual' | 'with-aidea';
 export interface AppUserSettings {
   visible: boolean;
   startup_mode: StartupMode;
-}
-
-// 用户对子应用的覆盖配置，全可选，null 表示清除
-export interface AppOverride {
-  name?: string | null;
-  icon?: string | null;
-  url?: string | null;
-  start?: string | null;
 }

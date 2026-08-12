@@ -26,9 +26,6 @@ pub enum AppError {
 
     #[error("网络错误: {0}")]
     Network(String),
-
-    #[error("邮件错误: {0}")]
-    Mail(String),
 }
 
 // 让 AppError 能通过 Tauri IPC 序列化返回前端

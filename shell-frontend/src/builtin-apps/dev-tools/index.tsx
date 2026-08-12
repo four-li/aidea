@@ -1,5 +1,5 @@
 // DevTools 内置子应用入口
-// 顶部 Tabs 切换数据格式化 / 时间戳转换 / IP 查询，切 tab 不丢输入（state 提升到顶层）
+// 顶部 Tabs 切换 JSON 格式化 / 时间戳转换 / IP 查询，切 tab 不丢输入（state 提升到顶层）
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
