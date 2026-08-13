@@ -1,11 +1,11 @@
 {
-  "version": "0.1.14",
-  "notes": "优化\n- 引入 shadcn/ui 标准并优化应用管理卡片布局\n\n修复\n- 修复发布脚本未同步 package-lock.json 根版本",
-  "pub_date": "2026-08-13T04:24:19.934Z",
+  "version": "0.2.0",
+  "notes": "新增\n- 版本递增改为每段不超过9并新增测试\n- 设置页支持拖拽排序并持久化工具顺序",
+  "pub_date": "2026-08-13T08:43:00.111Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.1.14/开搞.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3RDeFUvTUlJaTNGcU1jUkFVMDFOTGJkalgrb2ZjNmowNGhhMTVDam5Hbk14L2xuQWVldEtQTzVubUs5RDFTWDk3bHJDK3FJV2RWUGwzSnMzbjhHQlFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTk1MDU5CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKTEcwb3plcDZEbGNhTENhNDFHYk1LSWM5RXpQSzh6SEl0emRwK0VWbDl4RlE4OEZyNmd3UGJ6b2FzNmpxcFhwQThiOHBCOFR0NENUNThxellLN21NQkE9PQo="
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.0/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK2g2WUxheDFPUjNPWldlT1luT09VUEYrNU9ZWTNMQU1jSUtCNmhBZjhmcUlwMm1RSStQMzhpbXhZVjVRREI0SnNSZ2tTazlsVUI5a3dyc3orRkhxQXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NjEwNTc5CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKM3EvYmFGWVdMbzRmR09ob0YyUFlMSlRTVVNMZG9zOFZGUG54MnFCeitkMjJyVmtJa1ByNDZibEpQcU9OYXcrRDF6NDg4YXN3QkVpWWZ4enQwZE9pREE9PQo="
     }
   }
 }

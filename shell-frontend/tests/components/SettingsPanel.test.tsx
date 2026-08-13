@@ -6,6 +6,7 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() =
 
 import { invoke } from '@tauri-apps/api/core';
 import { SettingsPanel } from '../../src/components/SettingsPanel';
+import changelog from '../../src/data/changelog.json';
 
 describe('设置关于页', () => {
   beforeEach(() => {
@@ -65,19 +66,25 @@ describe('设置关于页', () => {
     fireEvent.click(screen.getByRole('button', { name: '关于' }));
 
     expect(screen.getByText('更新日志')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '打开 v0.1.14 Release' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '打开 v0.1.13 Release' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '打开 v0.1.12 Release' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '打开 v0.1.11 Release' })).not.toBeInTheDocument();
+    for (const entry of changelog.slice(0, 3)) {
+      expect(
+        screen.getByRole('button', { name: `打开 v${entry.version} Release` }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByRole('button', { name: `打开 v${changelog[3].version} Release` }),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '打开 v0.1.14 Release' }));
+    fireEvent.click(screen.getByRole('button', { name: `打开 v${changelog[0].version} Release` }));
     expect(invoke).toHaveBeenCalledWith('open_external_url', {
-      url: 'https://gitee.com/aidea-org/aidea-app/releases/tag/v0.1.14',
+      url: `https://gitee.com/aidea-org/aidea-app/releases/tag/v${changelog[0].version}`,
     });
-    expect(screen.getAllByText('发布日期：2026-08-13')).not.toHaveLength(0);
+    expect(screen.getAllByText(`发布日期：${changelog[0].date}`)).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: '查看更多更新日志' }));
-    expect(screen.getByRole('button', { name: '打开 v0.1.11 Release' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `打开 v${changelog[3].version} Release` }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '收起更新日志' })).toBeInTheDocument();
   });
 
