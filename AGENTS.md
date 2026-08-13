@@ -25,6 +25,7 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 - 官方应用只使用 aIdea 注入的应用 ID、数据目录和日志目录环境变量；不依赖未定义的平台命令或 aIdea 内部数据库。
 - 内置应用和官方应用如果启动自己的本地 HTTP 服务，服务端口统一从 `43000-43999` 范围内分配，并为每个应用保持稳定且不重复的端口；内置应用仅通过 Tauri IPC 通信时不需要端口。该范围是开发和发布规范，安装时不强制拒绝范围外的既有应用。
 - 所有 UI、内置应用和官方应用都必须检查浅色与深色主题；邮件正文、Markdown、富文本和第三方 HTML 内容区也必须可读。
+- 所有 Web UI 统一使用 shadcn/ui 标准：复用项目已有 shadcn 组件，缺失时只从 shadcn 官方组件或官方 registry 添加；不引入第二套 UI 组件库，不手写 `Button`、`Dialog`、`Select`、`Switch` 等基础交互组件。详细约束见 `docs/guide/aidea-ui.md`。
 - 应用数据和配置保存在自己的 `app-data/<app-id>/app.db`，卸载默认保留；敏感值可以保存在应用自己的数据库，但不得写入日志。
 
 ## 开发期架构纪律（临时）
@@ -46,7 +47,7 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 | 开发独立官方应用、`aidea.yaml`、市场接入、安装更新 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-platform.md](docs/guide/aidea-platform.md) |
 | 修改 SQLite、缓存、迁移、备份或敏感值 | [docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |
 | 修改官方应用运行环境、应用数据或设置页 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |
-| 修改页面视觉、组件、交互或无障碍 | [docs/guide/aidea-ui.md](docs/guide/aidea-ui.md) |
+| 修改页面视觉、组件、交互或无障碍 | [docs/guide/aidea-ui.md](docs/guide/aidea-ui.md)，优先复用 shadcn/ui 组件 |
 | 发布 aIdea、改版本、构建 DMG、推送 tag | 使用 `$aidea-release` Skill；它只负责 aIdea 发布流程 |
 
 独立官方应用仓库还必须先读取其自身根目录 `AGENTS.md`，再根据任务读取本表中 aIdea 仓库的绝对路径文档。文档冲突时，以更具体的专项文档为准；未实现的平台能力不得通过猜测使用。

@@ -136,7 +136,7 @@ describe('AppManagementPage', () => {
     expect(mockListOfficialAppReleases).toHaveBeenCalledWith('official-mail');
   });
 
-  it('每个应用都有设置入口，列表不直接显示重置按钮', async () => {
+  it('内置应用在卡片底部显示图标设置入口，列表不直接显示重置按钮', async () => {
     mockListApps.mockResolvedValue([
       {
         id: 'with-settings',
@@ -160,8 +160,12 @@ describe('AppManagementPage', () => {
     render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
     await screen.findByText('有设置');
-    expect(screen.getByRole('button', { name: '有设置 设置' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '无设置 设置' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '有设置 设置' })).not.toHaveTextContent(
+      '应用设置',
+    );
+    expect(screen.getByRole('button', { name: '无设置 设置' })).not.toHaveTextContent(
+      '应用设置',
+    );
     expect(screen.getByText('用于测试简介展示')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重置设置' })).not.toBeInTheDocument();
   });

@@ -364,8 +364,8 @@ export function AppManagementPage({
                   const pending = pendingId === app.id;
                   return (
                     <SortableAppCard key={app.id} appId={app.id}>
-                      <div className="flex min-h-36 flex-col gap-3 rounded-lg border border-border bg-card p-4 pl-10">
-                        <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-full min-h-36 flex-col rounded-lg border border-border bg-card p-4 pl-10">
+                        <div className="flex min-h-0 flex-1 items-start gap-3 pb-4">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
                             <AppIcon app={app} state={state} />
                           </div>
@@ -384,26 +384,17 @@ export function AppManagementPage({
                               {!appSettings.visible && ' · 已隐藏'}
                             </div>
                             {app.description && (
-                              <div className="mt-2 truncate text-xs text-muted-foreground">
+                              <div className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                                 {app.description}
                               </div>
                             )}
                             {issue && (
-                              <div className="mt-1 truncate text-xs text-muted-foreground">
+                              <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                                 {issue.message}
                               </div>
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
-                            {builtin && (
-                              <ActionButton
-                                label={`${app.name} 设置`}
-                                disabled={pending}
-                                onClick={() => setDetailId(app.id)}
-                              >
-                                <Settings size={16} />
-                              </ActionButton>
-                            )}
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="inline-flex">
@@ -517,31 +508,50 @@ export function AppManagementPage({
                             )}
                           </div>
                         </div>
-                        {!builtin && officialApp && (
-                          <div className="flex items-center justify-between gap-3 border-t border-border pt-3 pl-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="px-2 text-muted-foreground"
-                              onClick={() => void openReleaseHistory(officialApp)}
-                            >
-                              <History size={14} />
-                              更新日志
-                            </Button>
-                            {officialApp.update_available && (
+                        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-border pl-1">
+                          {builtin ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground"
+                                  aria-label={`${app.name} 设置`}
+                                  disabled={pending}
+                                  onClick={() => setDetailId(app.id)}
+                                >
+                                  <Settings size={15} />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>应用设置</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            officialApp && (
                               <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
-                                aria-label={`更新 ${app.name} 到 v${officialApp.version}`}
-                                disabled={pending}
-                                onClick={() => void installOfficialApp(officialApp, true)}
+                                className="h-7 px-1.5 text-xs text-muted-foreground"
+                                onClick={() => void openReleaseHistory(officialApp)}
                               >
-                                <RefreshCw size={14} />
-                                更新至 v{officialApp.version}
+                                <History size={14} />
+                                更新日志
                               </Button>
-                            )}
-                          </div>
-                        )}
+                            )
+                          )}
+                          {!builtin && officialApp?.update_available && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              aria-label={`更新 ${app.name} 到 v${officialApp.version}`}
+                              disabled={pending}
+                              onClick={() => void installOfficialApp(officialApp, true)}
+                            >
+                              <RefreshCw size={14} />
+                              更新至 v{officialApp.version}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </SortableAppCard>
                   );
@@ -859,7 +869,7 @@ function SortableAppCard({ appId, children }: { appId: string; children: React.R
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
-      className="relative"
+      className="relative h-full"
       {...attributes}
     >
       <button

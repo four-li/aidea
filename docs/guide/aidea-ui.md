@@ -1,6 +1,6 @@
 # aIdea UI 规范
 
-本文档是 aIdea 和官方独立应用统一的 UI 基线。独立仓库可以自行实现组件，但行为、视觉、交互和无障碍结果必须等价，不得建立第二套设计系统。
+本文档是 aIdea 和官方独立应用统一的 UI 基线。所有 Web UI 必须使用 shadcn/ui 标准，不得建立第二套设计系统或自行实现基础交互组件。
 
 ## 技术体系
 
@@ -10,6 +10,14 @@
 - lucide-react
 - sonner
 - shadcn 标准 HSL CSS 主题变量
+
+## 组件来源
+
+- 优先复用项目已有的 `components/ui/` shadcn 组件。
+- 缺少组件时，只能从 shadcn 官方组件或官方 registry 添加，并保留 shadcn 的 Radix、Tailwind 和 lucide-react 依赖方式。
+- 禁止引入 Ant Design、MUI、Mantine、Chakra UI、NextUI 等第二套 UI 组件库。
+- 禁止手写或复制 `Button`、`Dialog`、`Sheet`、`Popover`、`DropdownMenu`、`Select`、`Switch`、`Checkbox`、`RadioGroup`、`Tabs`、`Tooltip` 等基础组件；业务组件可以组合已有 shadcn 组件。
+- 不得以“视觉等价”为由在独立官方应用中重建基础组件。确有 shadcn 官方未覆盖的基础交互时，先更新本规范并获得确认后再实现。
 
 ## 组件与操作
 
