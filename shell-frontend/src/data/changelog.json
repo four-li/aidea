@@ -1,7 +1,7 @@
 [
   {
     "version": "0.1.14",
-    "notes": "优化\n- 调整应用管理卡片的信息区与紧凑操作区布局"
+    "notes": "优化\n- 引入 shadcn/ui 标准并优化应用管理卡片布局\n\n修复\n- 修复发布脚本未同步 package-lock.json 根版本"
   },
   {
     "version": "0.1.13",
