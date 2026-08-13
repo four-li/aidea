@@ -162,9 +162,13 @@ const compare = (a, b) => {
   return 0;
 };
 if (compare(current, latest) > 0) process.stdout.write(current.join("."));
-else process.stdout.write(`${latest[0]}.${latest[1]}.${latest[2] + 1}`);
+else process.stdout.write(require("./scripts/release-version.js").nextReleaseVersion(latest.join(".")));
 ' "$current_version" "$latest_version")"
 [[ "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "错误：版本必须是 X.Y.Z。" >&2; exit 1; }
+node -e 'if (!require("./scripts/release-version.js").isSingleDigitVersion(process.argv[1])) process.exit(1)' "$target_version" || {
+  echo "错误：发布版本的每段必须是 0 到 9。" >&2
+  exit 1
+}
 node -e '
 const [target, latest] = process.argv.slice(1).map(v => v.split(".").map(Number));
 for (let i = 0; i < 3; i++) { if (target[i] > latest[i]) process.exit(0); if (target[i] < latest[i]) process.exit(1); }

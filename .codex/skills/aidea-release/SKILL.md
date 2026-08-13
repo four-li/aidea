@@ -14,7 +14,7 @@ cd /Users/fourli/Desktop/app/aIdea
 bash scripts/release.sh
 ```
 
-直接运行这一条命令。不要手工改版本、写更新日志、`git add`、commit、传版本号，或复制脚本到其他目录。脚本会自动处理这些内容：当前版本高于最近 tag 时发布当前版本；相等时自动递增 patch；低于最近 tag 时停止。
+直接运行这一条命令。不要手工改版本、写更新日志、`git add`、commit、传版本号，或复制脚本到其他目录。脚本会自动处理这些内容：当前版本高于最近 tag 时发布当前版本；相等时按单段不超过 9 的规则递增版本（`0.1.9` 后为 `0.2.0`，`0.9.9` 后为 `1.0.0`）；低于最近 tag 时停止。
 
 脚本会依次执行前端测试与构建、Rust 测试、Tauri 构建和 updater 签名，然后提交 `chore: release vX.Y.Z`、推送 `main` 与 tag、创建 Gitee Release、上传 DMG、`.app.tar.gz`、`.sig` 和 `latest.json`，最后在线核验 Release 和 Raw 更新清单。
 

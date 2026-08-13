@@ -43,6 +43,17 @@ grep -Fq -- 'rm -f "$release_lock_dir/pid"' "$release_script" || {
   echo "错误：发布脚本必须在退出时删除发布锁的 pid 文件。" >&2
   exit 1
 }
+node - <<'NODE'
+const { nextReleaseVersion } = require('./scripts/release-version.js');
+const cases = new Map([
+  ['0.1.8', '0.1.9'],
+  ['0.1.9', '0.2.0'],
+  ['0.9.9', '1.0.0'],
+]);
+for (const [input, expected] of cases) {
+  if (nextReleaseVersion(input) !== expected) process.exit(1);
+}
+NODE
 if grep -Fq -- 'v*|[0-9]*.[0-9]*.[0-9]*' "$release_script"; then
   echo "错误：正常发布不得允许手工指定版本号。" >&2
   exit 1
