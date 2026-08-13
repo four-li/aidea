@@ -1,6 +1,6 @@
 // 顶部横排导航栏：Chrome 风格标签页
 // macOS 圆点（左侧）+ 子应用标签（中间）
-import { LoaderCircle, TriangleAlert } from 'lucide-react';
+import { CircleArrowUp, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { AppIcon, processStatusLabel } from './AppIcon';
 import { AppContextMenu } from './AppContextMenu';
 import { AccountMenu } from './AccountMenu';
@@ -16,6 +16,8 @@ interface Props {
   onRefreshStates: () => void;
   onShowLog: (app: AppManifest) => void;
   onOpenSettings: () => void;
+  updateAvailable?: boolean;
+  onOpenUpdate?: () => void;
 }
 
 function TopBarProcessStatus({ app, state }: { app: AppManifest; state?: AppState }) {
@@ -59,6 +61,8 @@ export function TopBar({
   onRefreshStates,
   onShowLog,
   onOpenSettings,
+  updateAvailable = false,
+  onOpenUpdate = () => undefined,
 }: Props) {
   const sortedApps = appOrder
     .map((id) => apps.find((a) => a.id === id))
@@ -98,6 +102,21 @@ export function TopBar({
         ))}
       </div>
 
+      {updateAvailable && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="flex h-full w-10 shrink-0 items-center justify-center text-emerald-500 transition-colors hover:bg-muted hover:text-emerald-400"
+              aria-label="有新版本可更新"
+              onClick={onOpenUpdate}
+            >
+              <CircleArrowUp size={22} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>有新版本可更新</TooltipContent>
+        </Tooltip>
+      )}
       <AccountMenu onOpenSettings={onOpenSettings} />
       </div>
     </TooltipProvider>

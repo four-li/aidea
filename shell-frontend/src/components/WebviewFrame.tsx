@@ -1,5 +1,5 @@
 // webview 模式渲染：用 iframe 嵌入子应用 web server
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { AppManifest, AppState } from '../types/manifest';
 import type { AppFrameRef } from '../hooks/useAppBridge';
 import type { ThemeMode } from '../hooks/useTheme';
@@ -16,9 +16,11 @@ interface Props {
 
 export function WebviewFrame({ app, state, path, theme, onFrameRef }: Props) {
   const [initialTheme] = useState(() => theme);
+  // Bridge 只在连接身份变化时重新注册，避免普通 manifest 刷新断开连接。
+  const bridgeApp = useMemo(() => app, [app.id, app.version, app.ui.url]); // eslint-disable-line react-hooks/exhaustive-deps
   const frameRef = useCallback(
-    (iframe: HTMLIFrameElement | null) => onFrameRef?.(app, iframe),
-    [app, onFrameRef],
+    (iframe: HTMLIFrameElement | null) => onFrameRef?.(bridgeApp, iframe),
+    [bridgeApp, onFrameRef],
   );
   const url = app.ui.url;
 
@@ -75,7 +77,7 @@ export function WebviewFrame({ app, state, path, theme, onFrameRef }: Props) {
 
   return (
     <iframe
-      key={`${app.id}-${state?.status ?? 'stopped'}`}
+      key={`${app.id}-${app.version}-${app.ui.url ?? ''}-${state?.status ?? 'stopped'}`}
       src={frameUrl}
       title={app.name}
       className="flex-1 w-full h-full border-0 bg-background"

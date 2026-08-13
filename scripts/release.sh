@@ -213,7 +213,8 @@ for (const subject of subjects.split("\n").filter(Boolean)) {
 }
 const notes = Object.entries(groups).filter(([, lines]) => lines.length).map(([title, lines]) => `${title}\n${[...new Set(lines)].map(line => `- ${line}`).join("\n")}`).join("\n\n") || "优化\n- 自动生成的维护性更新。";
 const entries = JSON.parse(fs.readFileSync(changelog, "utf8")).filter(entry => entry.version !== version);
-entries.unshift({ version, notes });
+const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+entries.unshift({ version, date, notes });
 fs.writeFileSync(changelog, JSON.stringify(entries, null, 2) + "\n");
 ' "$tauri_file" "$cargo_file" "$frontend_file" "$lock_file" "$changelog_file" "$target_version" "$subjects"
 

@@ -1,7 +1,7 @@
-import { useCallback } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useAppBridge } from '../src/hooks/useAppBridge';
+import { WebviewFrame } from '../src/components/WebviewFrame';
 import type { AppManifest } from '../src/types/manifest';
 
 const notificationMocks = vi.hoisted(() => ({
@@ -41,13 +41,15 @@ function envelope(
   };
 }
 
-function Harness({ theme = 'light' }: { theme?: 'light' | 'dark' }) {
+function Harness({
+  theme = 'light',
+  app: appProp = app,
+}: {
+  theme?: 'light' | 'dark';
+  app?: AppManifest;
+}) {
   const controller = useAppBridge(theme);
-  const frameRef = useCallback(
-    (iframe: HTMLIFrameElement | null) => controller.registerFrame(app, iframe),
-    [controller.registerFrame],
-  );
-  return <iframe title={app.name} ref={frameRef} />;
+  return <WebviewFrame app={appProp} onFrameRef={controller.registerFrame} />;
 }
 
 function dispatchMessage(
@@ -109,6 +111,26 @@ describe('useAppBridge', () => {
     dispatchMessage(iframe, envelope('ready', { appId: app.id }));
 
     rerender(<Harness theme="dark" />);
+
+    expect(screen.getByTitle('邮件')).toBe(iframe);
+    expect(postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'theme', payload: { mode: 'dark' } }),
+      'http://127.0.0.1:43001',
+    );
+  });
+
+  it('manifest 刷新后同一个 iframe 仍保持 Bridge 连接', () => {
+    const { rerender } = render(<Harness />);
+    const iframe = screen.getByTitle('邮件') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe.contentWindow, 'postMessage', {
+      configurable: true,
+      value: postMessage,
+    });
+    dispatchMessage(iframe, envelope('ready', { appId: app.id }));
+
+    rerender(<Harness app={{ ...app }} />);
+    rerender(<Harness theme="dark" app={{ ...app }} />);
 
     expect(screen.getByTitle('邮件')).toBe(iframe);
     expect(postMessage).toHaveBeenLastCalledWith(

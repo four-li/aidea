@@ -60,4 +60,48 @@ describe('WebviewFrame', () => {
 
     expect(onFrameRef).toHaveBeenCalledWith(app, screen.getByTitle('示例应用'));
   });
+
+  it('应用版本变化时重新加载 iframe', () => {
+    const app = {
+      id: 'sample-app',
+      name: '示例应用',
+      version: '0.1.0',
+      category: 'dev-workflow',
+      status: 'active' as const,
+      ui: { mode: 'webview' as const, url: 'http://127.0.0.1:51130' },
+    };
+    const { rerender } = render(<WebviewFrame app={app} />);
+    const previousFrame = screen.getByTitle('示例应用');
+
+    rerender(<WebviewFrame app={{ ...app, version: '0.1.1' }} />);
+
+    expect(screen.getByTitle('示例应用')).not.toBe(previousFrame);
+  });
+
+  it('iframe 重建时用最新应用信息注册 App Bridge', () => {
+    const onFrameRef = vi.fn();
+    const app = {
+      id: 'sample-app',
+      name: '示例应用',
+      version: '0.1.0',
+      category: 'dev-workflow',
+      status: 'active' as const,
+      ui: { mode: 'webview' as const, url: 'http://127.0.0.1:51130' },
+    };
+
+    const { rerender } = render(<WebviewFrame app={app} onFrameRef={onFrameRef} />);
+    const updatedApp = {
+      ...app,
+      version: '0.1.1',
+      ui: { mode: 'webview' as const, url: 'http://127.0.0.1:51131' },
+    };
+
+    rerender(<WebviewFrame app={updatedApp} onFrameRef={onFrameRef} />);
+
+    const mountedCalls = onFrameRef.mock.calls.filter(([, iframe]) => iframe);
+    expect(mountedCalls.at(-1)?.[0]).toMatchObject({
+      version: '0.1.1',
+      ui: { url: 'http://127.0.0.1:51131' },
+    });
+  });
 });

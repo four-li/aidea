@@ -48,7 +48,7 @@ describe('设置关于页', () => {
     await waitFor(() => expect(screen.getByText('已是最新版本')).toBeInTheDocument());
   });
 
-  it('按版本顺序显示更新日志', async () => {
+  it('关于页默认显示最新 3 条更新日志，并可展开全部版本', async () => {
     render(
       <SettingsPanel
         themeMode="system"
@@ -62,14 +62,23 @@ describe('设置关于页', () => {
 
     await screen.findByText('暂无已安装应用');
 
-    fireEvent.click(screen.getByRole('button', { name: '更新日志' }));
+    fireEvent.click(screen.getByRole('button', { name: '关于' }));
 
-    const latestVersion = screen.getByText('v0.1.9');
-    const previousVersion = screen.getByText('v0.1.8');
-    expect(latestVersion.compareDocumentPosition(previousVersion)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(screen.getByText(/优化 AI 模型测试工具的布局与能力。/)).toBeInTheDocument();
+    expect(screen.getByText('更新日志')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开 v0.1.14 Release' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开 v0.1.13 Release' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开 v0.1.12 Release' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '打开 v0.1.11 Release' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 v0.1.14 Release' }));
+    expect(invoke).toHaveBeenCalledWith('open_external_url', {
+      url: 'https://gitee.com/aidea-org/aidea-app/releases/tag/v0.1.14',
+    });
+    expect(screen.getAllByText('发布日期：2026-08-13')).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '查看更多更新日志' }));
+    expect(screen.getByRole('button', { name: '打开 v0.1.11 Release' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收起更新日志' })).toBeInTheDocument();
   });
 
   it('只保留应用管理入口', async () => {
@@ -88,5 +97,7 @@ describe('设置关于页', () => {
 
     expect(screen.getByRole('button', { name: '应用管理' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '应用市场' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '更新日志' })).not.toBeInTheDocument();
+    expect(screen.queryByText('数据目录')).not.toBeInTheDocument();
   });
 });

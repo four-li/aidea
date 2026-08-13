@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TopBar } from '../../src/components/TopBar';
 
@@ -82,5 +82,27 @@ describe('TopBar', () => {
 
     expect(screen.getByLabelText('邮件中心：运行中')).toHaveClass('ml-auto');
     expect(screen.queryByLabelText('DevTools：已停止')).not.toBeInTheDocument();
+  });
+
+  it('有新版本时显示更新入口并可打开关于页', () => {
+    const onOpenUpdate = vi.fn();
+    render(
+      <TopBar
+        apps={[]}
+        appOrder={[]}
+        activeAppId={null}
+        states={{}}
+        onSelectApp={vi.fn()}
+        onRefreshStates={vi.fn()}
+        onShowLog={vi.fn()}
+        onOpenSettings={vi.fn()}
+        updateAvailable
+        onOpenUpdate={onOpenUpdate}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '有新版本可更新' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '有新版本可更新' }));
+    expect(onOpenUpdate).toHaveBeenCalledTimes(1);
   });
 });

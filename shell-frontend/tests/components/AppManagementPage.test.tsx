@@ -392,7 +392,7 @@ describe('AppManagementPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'DevTools 设置' }));
 
     await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
-    expect(screen.getByRole('checkbox', { name: 'JSON 格式化' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'JSON 格式化' })).toBeChecked();
   });
 
   it('官方应用的进程和卸载操作收进更多菜单', async () => {

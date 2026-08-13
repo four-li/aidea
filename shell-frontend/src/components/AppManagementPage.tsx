@@ -765,7 +765,7 @@ function AppSettingsDetail({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className="min-h-[360px] overflow-hidden border border-border bg-background">
+          <div className="min-h-[360px]">
             {BuiltinSettingsPage ? (
               <BuiltinSettingsPage embedded onClose={onBack} />
             ) : (

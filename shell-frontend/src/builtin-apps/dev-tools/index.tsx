@@ -1,6 +1,6 @@
 // DevTools 内置子应用入口
 // 顶部 Tabs 切换 JSON 格式化 / 时间戳转换 / IP 查询，切 tab 不丢输入（state 提升到顶层）
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
 import { ipc } from '../../lib/ipc';
@@ -8,37 +8,53 @@ import { DataFormatter } from './tabs/data-formatter/DataFormatter';
 import { TimestampConverter } from './tabs/timestamp-converter/TimestampConverter';
 import { IpLookup } from './tabs/ip-lookup/IpLookup';
 import { AiModelTester } from './tabs/ai-model-tester/AiModelTester';
-import { DEV_TOOLS_TABS, type DevToolsTabId } from './tabs';
+import {
+  DEV_TOOLS_SETTINGS_CHANGED,
+  DEV_TOOLS_TABS,
+  normalizeDevToolsTabOrder,
+  type DevToolsTabId,
+} from './tabs';
 
 export function DevToolsPage() {
   // 顶层 state：切 tab 时保留输入
   const [activeTab, setActiveTab] = useState<DevToolsTabId>('data');
   const [hiddenTabs, setHiddenTabs] = useState<string[]>([]);
+  const [tabOrder, setTabOrder] = useState<DevToolsTabId[]>(
+    normalizeDevToolsTabOrder([]).map((tab) => tab.id),
+  );
   const [dataInput, setDataInput] = useState('');
   const [tsInput, setTsInput] = useState('');
   const [dateInput, setDateInput] = useState('');
 
-  useEffect(() => {
-    let disposed = false;
+  const loadSettings = useCallback(() => {
     void ipc
       .getDevToolsSettings()
       .then((settings) => {
-        if (!disposed) setHiddenTabs(settings.hidden_tabs);
+        setHiddenTabs(settings.hidden_tabs);
+        setTabOrder(normalizeDevToolsTabOrder(settings.tab_order ?? []).map((tab) => tab.id));
       })
       .catch((error) => toast.error('读取 DevTools 设置失败', { description: String(error) }));
-    return () => {
-      disposed = true;
-    };
   }, []);
 
-  const visibleTabs = DEV_TOOLS_TABS.filter((tab) => !hiddenTabs.includes(tab.id));
-  const availableTabs = visibleTabs.length > 0 ? visibleTabs : DEV_TOOLS_TABS.slice(0, 1);
+  useEffect(() => {
+    loadSettings();
+    window.addEventListener(DEV_TOOLS_SETTINGS_CHANGED, loadSettings);
+    return () => {
+      window.removeEventListener(DEV_TOOLS_SETTINGS_CHANGED, loadSettings);
+    };
+  }, [loadSettings]);
+
+  const orderedTabs = tabOrder
+    .map((id) => DEV_TOOLS_TABS.find((tab) => tab.id === id))
+    .filter((tab): tab is (typeof DEV_TOOLS_TABS)[number] => tab !== undefined);
+  const visibleTabs = orderedTabs.filter((tab) => !hiddenTabs.includes(tab.id));
+  const availableTabs = visibleTabs.length > 0 ? visibleTabs : orderedTabs.slice(0, 1);
 
   useEffect(() => {
     if (hiddenTabs.includes(activeTab)) {
-      setActiveTab(DEV_TOOLS_TABS.find((tab) => !hiddenTabs.includes(tab.id))?.id ?? 'data');
+      setActiveTab(availableTabs[0]?.id ?? 'data');
     }
-  }, [activeTab, hiddenTabs]);
+  }, [activeTab, availableTabs, hiddenTabs]);
 
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden h-full">

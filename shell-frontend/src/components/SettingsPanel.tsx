@@ -11,7 +11,9 @@ import {
   Code,
   LayoutGrid,
   Lock,
-  History,
+  ExternalLink,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
 import type { ThemeMode } from '../hooks/useTheme';
 import type { AppManifest } from '../types/manifest';
@@ -50,7 +52,6 @@ type SettingsCategory =
   | 'notifications'
   | 'privacy'
   | 'advanced'
-  | 'changelog'
   | 'about';
 
 interface CategoryDef {
@@ -67,7 +68,6 @@ const CATEGORIES: CategoryDef[] = [
   { id: 'notifications', label: '通知', icon: <Bell size={18} /> },
   { id: 'privacy', label: '隐私与安全', icon: <Shield size={18} /> },
   { id: 'advanced', label: '高级', icon: <Code size={18} /> },
-  { id: 'changelog', label: '更新日志', icon: <History size={18} /> },
   { id: 'about', label: '关于', icon: <Info size={18} /> },
 ];
 
@@ -100,7 +100,7 @@ export function SettingsPanel({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[85vw] max-w-[1400px] h-[85vh] max-h-[900px] p-0 gap-0 overflow-hidden">
-        <div className="flex h-full">
+        <div className="flex h-full min-h-0">
           {/* 左侧分类菜单 */}
           <div className="w-64 flex-shrink-0 bg-card flex flex-col border-r border-border">
             {/* 用户信息区 */}
@@ -139,12 +139,12 @@ export function SettingsPanel({
           </div>
 
           {/* 右侧内容区 */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
             <DialogHeader className="px-8 py-6 border-b border-border">
               <DialogTitle className="text-xl font-semibold">{activeLabel}</DialogTitle>
             </DialogHeader>
 
-            <div className="flex-1 overflow-auto px-8 py-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
               {activeCategory === 'apps' && (
                 <AppManagementPage
                   onAppsChanged={onAppsChanged}
@@ -163,7 +163,6 @@ export function SettingsPanel({
               {activeCategory === 'notifications' && <NotificationsSettings />}
               {activeCategory === 'privacy' && <PrivacySettings />}
               {activeCategory === 'advanced' && <AdvancedSettings />}
-              {activeCategory === 'changelog' && <ChangelogSettings />}
               {activeCategory === 'about' && <AboutSettings checkUpdate={checkUpdate} />}
             </div>
           </div>
@@ -383,20 +382,53 @@ function AdvancedSettings() {
 }
 
 function ChangelogSettings() {
+  const [showAll, setShowAll] = useState(false);
+
   if (changelog.length === 0) {
     return <p className="text-sm text-muted-foreground">暂无更新日志</p>;
   }
 
+  const openRelease = (version: string) => {
+    void ipc
+      .openExternalUrl(`https://gitee.com/aidea-org/aidea-app/releases/tag/v${version}`)
+      .catch(() => undefined);
+  };
+
+  const entries = showAll ? changelog : changelog.slice(0, 3);
+
   return (
-    <div className="divide-y divide-border">
-      {changelog.map((entry) => (
-        <section key={entry.version} className="py-5 first:pt-0">
-          <h3 className="text-base font-semibold text-foreground">v{entry.version}</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-wrap">
-            {entry.notes}
-          </p>
-        </section>
-      ))}
+    <div>
+      <div className="divide-y divide-border">
+        {entries.map((entry) => (
+          <section key={entry.version} className="py-5 first:pt-0">
+            <Button
+              variant="link"
+              className="h-auto gap-1 p-0 text-base font-semibold"
+              onClick={() => openRelease(entry.version)}
+              aria-label={`打开 v${entry.version} Release`}
+            >
+              v{entry.version}
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+            {entry.date && (
+              <p className="mt-1 text-xs text-muted-foreground">发布日期：{entry.date}</p>
+            )}
+            <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-wrap">
+              {entry.notes}
+            </p>
+          </section>
+        ))}
+      </div>
+      {changelog.length > 3 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => setShowAll((current) => !current)}
+        >
+          {showAll ? '收起更新日志' : '查看更多更新日志'}
+        </Button>
+      )}
     </div>
   );
 }
@@ -454,6 +486,7 @@ function AboutSettings({ checkUpdate }: { checkUpdate?: number }) {
             onClick={() => void checkForUpdate()}
             disabled={status === 'checking' || status === 'installing'}
           >
+            <RefreshCw className={cn(status === 'checking' && 'animate-spin')} />
             {status === 'checking' ? '检查中...' : '检查更新'}
           </Button>
           {status === 'up-to-date' && (
@@ -472,15 +505,14 @@ function AboutSettings({ checkUpdate }: { checkUpdate?: number }) {
               onClick={() => void installUpdate()}
               disabled={status === 'installing'}
             >
+              <Download />
               {status === 'installing' ? '下载并验证中...' : '更新并重启'}
             </Button>
           </div>
         )}
       </Section>
-      <Section title="数据目录">
-        <KV label="配置文件" value="aIdea/apps/*.yaml" />
-        <KV label="全局设置" value="aIdea/shell.config.json" />
-        <KV label="运行时" value="aIdea/.runtime/" />
+      <Section title="更新日志">
+        <ChangelogSettings />
       </Section>
     </div>
   );

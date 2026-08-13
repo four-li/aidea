@@ -53,6 +53,14 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<'about' | undefined>();
   const [checkUpdate, setCheckUpdate] = useState(0);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  useEffect(() => {
+    void ipc
+      .checkAideaUpdate()
+      .then((update) => setUpdateAvailable(update !== null))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -137,6 +145,12 @@ function App() {
         onRefreshStates={refresh}
         onShowLog={setLogApp}
         onOpenSettings={() => setShowSettings(true)}
+        updateAvailable={updateAvailable}
+        onOpenUpdate={() => {
+          setSettingsCategory('about');
+          setShowSettings(true);
+          setCheckUpdate((value) => value + 1);
+        }}
       />
       <div className="flex-1 overflow-hidden">
         <ContentArea

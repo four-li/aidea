@@ -10,6 +10,8 @@ use std::path::Path;
 pub struct DevToolsSettings {
     #[serde(default)]
     pub hidden_tabs: BTreeSet<String>,
+    #[serde(default)]
+    pub tab_order: Vec<String>,
 }
 
 fn open_database(root: &Path) -> AppResult<Connection> {
@@ -30,6 +32,7 @@ fn validate_settings(settings: &DevToolsSettings) -> AppResult<()> {
     if settings
         .hidden_tabs
         .iter()
+        .chain(settings.tab_order.iter())
         .any(|value| value.is_empty() || value.chars().any(char::is_control))
     {
         return Err(AppError::Config("DevTools 工具 ID 无效".into()));
@@ -103,15 +106,49 @@ mod tests {
             &directory,
             DevToolsSettings {
                 hidden_tabs: BTreeSet::from(["unicode".to_string()]),
+                tab_order: vec!["unicode".to_string(), "data".to_string()],
             },
         )
         .unwrap();
 
-        assert!(load_settings_from(&directory)
-            .unwrap()
-            .hidden_tabs
-            .contains("unicode"));
+        let loaded = load_settings_from(&directory).unwrap();
+        assert!(loaded.hidden_tabs.contains("unicode"));
+        assert_eq!(loaded.tab_order, ["unicode", "data"]);
         assert!(directory.join("app.db").exists());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn 旧配置缺少顺序字段时返回空顺序() {
+        let directory = temp_directory();
+        let connection = open_database(&directory).unwrap();
+        connection
+            .execute(
+                "INSERT INTO dev_tools_settings (id, hidden_tabs) VALUES (1, ?1)",
+                [r#"{"hidden_tabs":["ip"]}"#],
+            )
+            .unwrap();
+
+        let settings = load_settings_from(&directory).unwrap();
+        assert_eq!(settings.tab_order, Vec::<String>::new());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn 顺序中的空字符串或控制字符会被拒绝() {
+        let directory = temp_directory();
+
+        for tab_order in [vec![String::new()], vec!["data\n".to_string()]] {
+            assert!(save_settings_to(
+                &directory,
+                DevToolsSettings {
+                    hidden_tabs: BTreeSet::new(),
+                    tab_order,
+                },
+            )
+            .is_err());
+        }
+
         std::fs::remove_dir_all(directory).unwrap();
     }
 
