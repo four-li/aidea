@@ -200,7 +200,7 @@ subjects="$(git log --format=%s "$latest_tag..HEAD")"
 node -e '
 const fs = require("fs");
 const [tauri, cargo, frontend, lock, changelog, version, subjects] = process.argv.slice(1);
-const setJsonVersion = file => { const json = JSON.parse(fs.readFileSync(file, "utf8")); json.version = version; fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n"); };
+const setJsonVersion = file => { const json = JSON.parse(fs.readFileSync(file, "utf8")); json.version = version; if (json.packages?.[""]) json.packages[""].version = version; fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n"); };
 setJsonVersion(tauri); setJsonVersion(frontend); setJsonVersion(lock);
 let cargoText = fs.readFileSync(cargo, "utf8"); cargoText = cargoText.replace(/^version = "[0-9]+\.[0-9]+\.[0-9]+"$/m, `version = "${version}"`); fs.writeFileSync(cargo, cargoText);
 const groups = { "新增": [], "优化": [], "修复": [] };
