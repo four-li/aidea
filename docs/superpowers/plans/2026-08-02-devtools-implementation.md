@@ -1,6 +1,6 @@
 # DevTools 内置子应用实现计划
 
-> **历史实施记录**：本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
+> **历史记录，禁止作为当前实现或发布步骤执行。** 本文件只记录当时实现，不是当前平台契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > **用户规则覆盖**：用户规则要求「在当前会话内按计划执行，不默认执行子代理逐任务执行，除非我明确要求」+「不主动 git add/commit」。故本计划默认走 Inline Execution（executing-plans），且每个 Task 末尾**不写 commit step**，由用户在执行结束后统一指令。

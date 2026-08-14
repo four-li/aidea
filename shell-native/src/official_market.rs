@@ -2,7 +2,6 @@ use crate::config::project_root;
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
 
 /// 随 aIdea 发布的官方应用收录项，不承载应用版本和运行命令。
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -10,7 +9,6 @@ use tokio::process::Command;
 pub struct OfficialCatalogEntry {
     pub schema_version: u32,
     pub repository: String,
-    #[serde(default = "default_enabled")]
     pub enabled: bool,
 }
 
@@ -33,16 +31,8 @@ pub struct OfficialAppDefinition {
     pub category: String,
     pub version: String,
     pub icon: String,
-    pub revision: String,
-    pub min_aidea_version: String,
-    pub runtime: String,
-    #[serde(default)]
-    pub install: Vec<Vec<String>>,
-    #[serde(default)]
-    pub artifact: Option<OfficialArtifact>,
+    pub artifact: OfficialArtifact,
     pub process: OfficialProcess,
-    #[serde(default)]
-    pub update_notes: String,
 }
 
 /// 已由官方目录收录，并从缓存读取到的应用定义。
@@ -54,21 +44,39 @@ pub struct CachedOfficialApp {
 
 impl CachedOfficialApp {
     pub fn into_app(self) -> OfficialApp {
+        self.definition.into_app(self.repository)
+    }
+}
+
+impl OfficialAppDefinition {
+    pub fn into_app(self, repository: String) -> OfficialApp {
         OfficialApp {
-            id: self.definition.id,
-            name: self.definition.name,
-            description: self.definition.description,
-            category: self.definition.category,
-            version: self.definition.version,
-            icon: self.definition.icon,
-            repository: self.repository,
-            revision: self.definition.revision,
-            runtime: self.definition.runtime,
-            install: self.definition.install,
-            artifact: self.definition.artifact,
-            process: self.definition.process,
-            update_notes: self.definition.update_notes,
+            id: self.id,
+            name: self.name,
+            description: self.description,
+            category: self.category,
+            version: self.version,
+            icon: self.icon,
+            repository,
+            artifact: self.artifact,
+            process: self.process,
             update_available: false,
+        }
+    }
+}
+
+impl OfficialApp {
+    pub fn manifest_snapshot(&self) -> OfficialAppDefinition {
+        OfficialAppDefinition {
+            schema_version: 1,
+            id: self.id.clone(),
+            name: self.name.clone(),
+            description: self.description.clone(),
+            category: self.category.clone(),
+            version: self.version.clone(),
+            icon: self.icon.clone(),
+            artifact: self.artifact.clone(),
+            process: self.process.clone(),
         }
     }
 }
@@ -82,15 +90,8 @@ pub struct OfficialApp {
     pub version: String,
     pub icon: String,
     pub repository: String,
-    pub revision: String,
-    pub runtime: String,
-    #[serde(default)]
-    pub install: Vec<Vec<String>>,
-    #[serde(default)]
-    pub artifact: Option<OfficialArtifact>,
+    pub artifact: OfficialArtifact,
     pub process: OfficialProcess,
-    #[serde(default)]
-    pub update_notes: String,
     /// 仅用于市场 IPC 展示，不参与仓库定义和缓存。
     #[serde(default)]
     pub update_available: bool,
@@ -132,19 +133,33 @@ pub fn add_install_status(apps: Vec<OfficialApp>) -> AppResult<Vec<OfficialAppLi
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct OfficialProcess {
     pub command: Vec<String>,
-    #[serde(default = "default_working_directory")]
     pub working_directory: String,
     pub ready_url: String,
 }
 
-fn default_working_directory() -> String {
-    ".".into()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepositoryProvider {
+    Gitee,
+    GitHub,
+    GitLab,
 }
 
-fn default_enabled() -> bool {
-    true
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RepositoryLocation {
+    provider: RepositoryProvider,
+    origin: String,
+    project: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArtifactLocation {
+    provider: RepositoryProvider,
+    origin: String,
+    project: String,
+    tag: String,
 }
 
 fn validate_catalog_entry(entry: &OfficialCatalogEntry) -> AppResult<()> {
@@ -153,9 +168,7 @@ fn validate_catalog_entry(entry: &OfficialCatalogEntry) -> AppResult<()> {
             "官方应用目录 schema_version 必须为 1".into(),
         ));
     }
-    if entry.repository.trim().is_empty() || entry.repository.chars().any(char::is_control) {
-        return Err(AppError::Config("官方应用目录 repository 无效".into()));
-    }
+    parse_repository(&entry.repository)?;
     Ok(())
 }
 
@@ -164,34 +177,23 @@ fn load_market_source(path: &Path) -> AppResult<OfficialMarketSource> {
         .map_err(|error| {
             AppError::Config(format!("解析官方市场来源 {} 失败: {error}", path.display()))
         })?;
-    if source.schema_version != 1 || source.repository.trim().is_empty() {
+    if source.schema_version != 1 {
         return Err(AppError::Config("官方市场来源配置无效".into()));
     }
+    parse_repository(&source.repository)?;
     Ok(source)
 }
 
-fn validate_definition(app: &OfficialAppDefinition) -> AppResult<()> {
+pub(crate) fn validate_definition(app: &OfficialAppDefinition) -> AppResult<()> {
     if app.schema_version != 1 {
         return Err(AppError::Config(
             "官方应用定义 schema_version 必须为 1".into(),
         ));
     }
-    if app.id.is_empty()
-        || !app
-            .id
-            .chars()
-            .all(|value| value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-')
-    {
+    if !is_kebab_case(&app.id) {
         return Err(AppError::Config("官方应用 ID 必须是 kebab-case".into()));
     }
-    for value in [
-        &app.name,
-        &app.description,
-        &app.category,
-        &app.version,
-        &app.min_aidea_version,
-        &app.runtime,
-    ] {
+    for value in [&app.name, &app.description, &app.category, &app.version] {
         if value.trim().is_empty() || value.chars().any(char::is_control) {
             return Err(AppError::Config(format!(
                 "官方应用 {} 包含无效字段",
@@ -199,66 +201,29 @@ fn validate_definition(app: &OfficialAppDefinition) -> AppResult<()> {
             )));
         }
     }
-    if !is_semantic_version(&app.version) || !is_semantic_version(&app.min_aidea_version) {
+    if !is_semantic_version(&app.version) {
         return Err(AppError::Config(format!(
             "官方应用 {} 版本格式无效",
             app.id
         )));
     }
-    if app.revision.len() != 40 || !app.revision.chars().all(|value| value.is_ascii_hexdigit()) {
-        return Err(AppError::Config(format!(
-            "官方应用 {} revision 必须是完整 40 位 commit SHA",
-            app.id
-        )));
-    }
-    validate_runtime(app)?;
+    validate_binary_artifact(&app.artifact, &app.id, &app.version)?;
     validate_process(&app.process, &app.id)?;
-    for command in &app.install {
-        validate_command(command, &app.id)?;
-    }
     Ok(())
 }
 
-fn validate_runtime(app: &OfficialAppDefinition) -> AppResult<()> {
-    let has_install = !app.install.is_empty();
-    let has_artifact = app.artifact.is_some();
-    if has_install && has_artifact {
+fn validate_binary_artifact(artifact: &OfficialArtifact, id: &str, version: &str) -> AppResult<()> {
+    let location = parse_artifact(&artifact.url)?;
+    if location.tag != format!("v{version}") {
         return Err(AppError::Config(format!(
-            "官方应用 {} 不能同时声明 install 和 artifact",
-            app.id
-        )));
-    }
-    if app.runtime == "binary" {
-        let artifact = app.artifact.as_ref().ok_or_else(|| {
-            AppError::Config(format!("官方应用 {} 的 binary 缺少 artifact", app.id))
-        })?;
-        validate_binary_artifact(artifact, &app.id)?;
-    } else if has_artifact {
-        return Err(AppError::Config(format!(
-            "官方应用 {} 只有 runtime: binary 可以声明 artifact",
-            app.id
-        )));
-    }
-    Ok(())
-}
-
-fn validate_binary_artifact(artifact: &OfficialArtifact, id: &str) -> AppResult<()> {
-    let url = reqwest::Url::parse(&artifact.url)
-        .map_err(|error| AppError::Config(format!("官方应用 {id} binary 下载地址无效: {error}")))?;
-    if url.scheme() != "https"
-        || url.host_str() != Some("gitee.com")
-        || !url.path().contains("/releases/download/")
-        || !url.path().ends_with(".tar.gz")
-    {
-        return Err(AppError::Config(format!(
-            "官方应用 {id} binary 必须使用 Gitee Release HTTPS tar.gz 地址"
+            "官方应用 {id} binary Release tag 必须是 v{version}"
         )));
     }
     if artifact.sha256.len() != 64
         || !artifact
             .sha256
             .chars()
-            .all(|value| value.is_ascii_hexdigit())
+            .all(|value| value.is_ascii_digit() || ('a'..='f').contains(&value))
     {
         return Err(AppError::Config(format!(
             "官方应用 {id} binary sha256 必须是 64 位十六进制字符串"
@@ -267,21 +232,176 @@ fn validate_binary_artifact(artifact: &OfficialArtifact, id: &str) -> AppResult<
     Ok(())
 }
 
+fn validate_artifact_repository(
+    repository: &str,
+    definition: &OfficialAppDefinition,
+) -> AppResult<()> {
+    let repository = parse_repository(repository)?;
+    let artifact = parse_artifact(&definition.artifact.url)?;
+    if repository.provider != artifact.provider
+        || repository.origin != artifact.origin
+        || repository.project != artifact.project
+    {
+        return Err(AppError::Config(format!(
+            "官方应用 {} 的 binary 附件必须来自收录的同一仓库",
+            definition.id
+        )));
+    }
+    Ok(())
+}
+
+fn validate_catalog_definition_id(
+    cache_key: &str,
+    definition: &OfficialAppDefinition,
+) -> AppResult<()> {
+    if cache_key != definition.id {
+        return Err(AppError::Config(format!(
+            "官方市场收录文件名 {cache_key} 与应用 ID {} 不一致",
+            definition.id
+        )));
+    }
+    Ok(())
+}
+
+fn parse_repository(value: &str) -> AppResult<RepositoryLocation> {
+    let url = reqwest::Url::parse(value)
+        .map_err(|error| AppError::Config(format!("官方应用仓库地址无效: {error}")))?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(AppError::Config(
+            "官方应用仓库必须是无凭据的 HTTP 或 HTTPS 地址".into(),
+        ));
+    }
+    let host = url
+        .host_str()
+        .ok_or_else(|| AppError::Config("官方应用仓库地址缺少域名".into()))?;
+    let project = url.path().trim_matches('/').trim_end_matches(".git");
+    let segments = project
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let valid_segments = match host {
+        "gitee.com" | "github.com" => segments.len() == 2,
+        _ => segments.len() >= 2,
+    };
+    if !valid_segments
+        || segments
+            .iter()
+            .any(|segment| *segment == "." || *segment == "..")
+    {
+        return Err(AppError::Config("官方应用仓库路径无效".into()));
+    }
+    let provider = match host {
+        "gitee.com" => RepositoryProvider::Gitee,
+        "github.com" => RepositoryProvider::GitHub,
+        _ => RepositoryProvider::GitLab,
+    };
+    Ok(RepositoryLocation {
+        provider,
+        origin: url.origin().ascii_serialization(),
+        project: segments.join("/"),
+    })
+}
+
+fn parse_artifact(value: &str) -> AppResult<ArtifactLocation> {
+    let url = reqwest::Url::parse(value)
+        .map_err(|error| AppError::Config(format!("官方应用 binary 下载地址无效: {error}")))?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(AppError::Config(
+            "官方应用 binary 必须是 HTTP 或 HTTPS Release tar.gz 地址".into(),
+        ));
+    }
+    let host = url
+        .host_str()
+        .ok_or_else(|| AppError::Config("官方应用 binary 下载地址缺少域名".into()))?;
+    let path = url.path().trim_matches('/');
+    let (provider, project, tag) = match host {
+        "gitee.com" | "github.com" => {
+            let parts = path.split('/').collect::<Vec<_>>();
+            if parts.len() < 6 || parts[2] != "releases" || parts[3] != "download" {
+                return Err(AppError::Config(
+                    "官方应用 binary 必须使用 Gitee 或 GitHub Release 附件地址".into(),
+                ));
+            }
+            (
+                if host == "gitee.com" {
+                    RepositoryProvider::Gitee
+                } else {
+                    RepositoryProvider::GitHub
+                },
+                format!("{}/{}", parts[0], parts[1]),
+                parts[4].to_owned(),
+            )
+        }
+        _ => {
+            let Some((project, release_path)) = path.split_once("/-/releases/") else {
+                return Err(AppError::Config(
+                    "官方应用 binary 必须使用 GitLab Release 附件地址".into(),
+                ));
+            };
+            let parts = release_path.split('/').collect::<Vec<_>>();
+            if project.split('/').filter(|part| !part.is_empty()).count() < 2
+                || parts.len() < 3
+                || parts[1] != "downloads"
+            {
+                return Err(AppError::Config(
+                    "官方应用 binary 必须使用 GitLab Release 附件地址".into(),
+                ));
+            }
+            (
+                RepositoryProvider::GitLab,
+                project.to_owned(),
+                parts[0].to_owned(),
+            )
+        }
+    };
+    if !path.ends_with(".tar.gz") {
+        return Err(AppError::Config(
+            "官方应用 binary 必须是 Release .tar.gz 附件".into(),
+        ));
+    }
+    Ok(ArtifactLocation {
+        provider,
+        origin: url.origin().ascii_serialization(),
+        project,
+        tag,
+    })
+}
+
+pub(crate) fn is_kebab_case(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
+}
+
 fn is_semantic_version(value: &str) -> bool {
-    let core = value.split_once('-').map_or(value, |(core, _)| core);
-    let mut parts = core.split('.');
+    let mut parts = value.split('.');
     matches!(
         (parts.next(), parts.next(), parts.next(), parts.next()),
         (Some(major), Some(minor), Some(patch), None)
             if [major, minor, patch]
                 .iter()
-                .all(|part| !part.is_empty() && part.chars().all(|value| value.is_ascii_digit()))
+                .all(|part| part.len() == 1 && part.chars().all(|value| value.is_ascii_digit()))
     )
 }
 
 fn validate_process(process: &OfficialProcess, id: &str) -> AppResult<()> {
     validate_command(&process.command, id)?;
-    if process.working_directory.starts_with('/')
+    if process.working_directory.trim().is_empty()
+        || process.working_directory.starts_with('/')
         || process
             .working_directory
             .split('/')
@@ -352,22 +472,147 @@ fn market_catalog_cache_dir() -> AppResult<PathBuf> {
     Ok(market_cache_dir()?.join("catalog"))
 }
 
-async fn clone_market_catalog(repository: &str) -> AppResult<PathBuf> {
-    let staging = std::env::temp_dir().join(format!("aidea-catalog-{}", uuid::Uuid::new_v4()));
-    let output = Command::new("git")
-        .args(["clone", "--depth", "1", repository])
-        .arg(&staging)
-        .output()
-        .await
-        .map_err(|error| AppError::Process(format!("执行市场 git clone 失败: {error}")))?;
-    if !output.status.success() {
-        let _ = std::fs::remove_dir_all(&staging);
-        return Err(AppError::Network(format!(
-            "读取官方市场仓库 {repository} 失败: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
+fn percent_encode(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                vec![byte as char]
+            } else {
+                format!("%{byte:02X}").chars().collect()
+            }
+        })
+        .collect()
+}
+
+fn repository_api_url(repository: &RepositoryLocation, path: &str) -> String {
+    match repository.provider {
+        RepositoryProvider::Gitee => {
+            format!(
+                "https://gitee.com/api/v5/repos/{}/contents/{path}",
+                repository.project
+            )
+        }
+        RepositoryProvider::GitHub => {
+            format!(
+                "https://api.github.com/repos/{}/contents/{path}",
+                repository.project
+            )
+        }
+        RepositoryProvider::GitLab => format!(
+            "{}/api/v4/projects/{}/repository/files/{}/raw?ref=HEAD",
+            repository.origin,
+            percent_encode(&repository.project),
+            percent_encode(path),
+        ),
     }
-    if let Err(error) = load_catalog_entries(&staging.join("official")) {
+}
+
+fn repository_catalog_api_url(repository: &RepositoryLocation) -> String {
+    match repository.provider {
+        RepositoryProvider::Gitee => format!(
+            "https://gitee.com/api/v5/repos/{}/contents/official",
+            repository.project
+        ),
+        RepositoryProvider::GitHub => format!(
+            "https://api.github.com/repos/{}/contents/official",
+            repository.project
+        ),
+        RepositoryProvider::GitLab => format!(
+            "{}/api/v4/projects/{}/repository/tree?path=official&ref=HEAD&per_page=100",
+            repository.origin,
+            percent_encode(&repository.project),
+        ),
+    }
+}
+
+fn http_client() -> AppResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .user_agent("aIdea")
+        .build()
+        .map_err(|error| AppError::Network(format!("初始化市场请求失败: {error}")))
+}
+
+async fn fetch_text(client: &reqwest::Client, url: &str) -> AppResult<String> {
+    client
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| AppError::Network(format!("读取官方市场失败: {error}")))?
+        .error_for_status()
+        .map_err(|error| AppError::Network(format!("读取官方市场失败: {error}")))?
+        .text()
+        .await
+        .map_err(|error| AppError::Network(format!("读取官方市场失败: {error}")))
+}
+
+async fn fetch_manifest(client: &reqwest::Client, repository: &str) -> AppResult<String> {
+    let repository = parse_repository(repository)?;
+    if repository.provider == RepositoryProvider::GitLab {
+        return fetch_text(client, &repository_api_url(&repository, "aidea.yaml")).await;
+    }
+    let endpoint = repository_api_url(&repository, "aidea.yaml");
+    let payload: serde_json::Value = client
+        .get(&endpoint)
+        .send()
+        .await
+        .map_err(|error| AppError::Network(format!("读取应用 manifest 失败: {error}")))?
+        .error_for_status()
+        .map_err(|error| AppError::Network(format!("读取应用 manifest 失败: {error}")))?
+        .json()
+        .await
+        .map_err(|error| AppError::Network(format!("解析应用 manifest 地址失败: {error}")))?;
+    let url = payload
+        .get("download_url")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| value.starts_with("https://"))
+        .ok_or_else(|| AppError::Network("应用 manifest 响应缺少 HTTPS download_url".into()))?;
+    fetch_text(client, url).await
+}
+
+async fn fetch_market_catalog(repository: &str) -> AppResult<PathBuf> {
+    let repository = parse_repository(repository)?;
+    let client = http_client()?;
+    let payload: Vec<serde_json::Value> = client
+        .get(repository_catalog_api_url(&repository))
+        .send()
+        .await
+        .map_err(|error| AppError::Network(format!("读取官方市场目录失败: {error}")))?
+        .error_for_status()
+        .map_err(|error| AppError::Network(format!("读取官方市场目录失败: {error}")))?
+        .json()
+        .await
+        .map_err(|error| AppError::Network(format!("解析官方市场目录失败: {error}")))?;
+    let staging = std::env::temp_dir().join(format!("aidea-catalog-{}", uuid::Uuid::new_v4()));
+    let official = staging.join("official");
+    std::fs::create_dir_all(&official)?;
+    let result = async {
+        for entry in payload {
+            let name = entry
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .filter(|name| name.ends_with(".yaml") && !name.contains('/'))
+                .ok_or_else(|| AppError::Network("官方市场目录包含无效文件名".into()))?;
+            let url = if repository.provider == RepositoryProvider::GitLab {
+                repository_api_url(&repository, &format!("official/{name}"))
+            } else {
+                entry
+                    .get("download_url")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| value.starts_with("https://"))
+                    .ok_or_else(|| {
+                        AppError::Network("官方市场目录响应缺少 HTTPS download_url".into())
+                    })?
+                    .to_owned()
+            };
+            std::fs::write(official.join(name), fetch_text(&client, &url).await?)?;
+        }
+        load_catalog_entries(&official)?;
+        Ok(())
+    }
+    .await;
+    if let Err(error) = result {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }
@@ -424,13 +669,16 @@ fn load_cached_definitions_from_dir(
         if !entry.enabled {
             continue;
         }
-        let definition_path = cache_dir.join(cache_key).join("aidea.yaml");
+        let definition_path = cache_dir.join(&cache_key).join("aidea.yaml");
         if !definition_path.exists() {
             continue;
         }
+        let definition = load_definition(&definition_path)?;
+        validate_catalog_definition_id(&cache_key, &definition)?;
+        validate_artifact_repository(&entry.repository, &definition)?;
         definitions.push(CachedOfficialApp {
             repository: entry.repository,
-            definition: load_definition(&definition_path)?,
+            definition,
         });
     }
     validate_unique_definition_ids(&definitions)?;
@@ -450,41 +698,35 @@ pub fn load_cached_official_apps() -> AppResult<Vec<OfficialApp>> {
         .collect())
 }
 
-/// 刷新官方应用定义。clone 仅用于读取仓库默认分支的 `aidea.yaml`，不会修改用户 Git 配置。
+/// 通过 HTTPS API/Raw 读取每个已收录仓库默认分支的 `aidea.yaml`。
 pub async fn refresh_official_definitions_from_dir(
     catalog_dir: &Path,
     cache_dir: &Path,
 ) -> AppResult<Vec<CachedOfficialApp>> {
     let mut definitions = Vec::new();
     std::fs::create_dir_all(cache_dir)?;
+    let client = http_client()?;
     for (cache_key, entry) in load_catalog_entries(catalog_dir)? {
         if !entry.enabled {
             continue;
         }
-        let staging = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
-        let output = Command::new("git")
-            .args(["clone", "--depth", "1", &entry.repository])
-            .arg(&staging)
-            .output()
-            .await
-            .map_err(|error| AppError::Process(format!("执行 git clone 失败: {error}")))?;
-        if !output.status.success() {
-            let _ = std::fs::remove_dir_all(&staging);
-            return Err(AppError::Network(format!(
-                "读取官方应用仓库 {} 失败: {}",
-                entry.repository,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-
-        let source_definition = staging.join("aidea.yaml");
-        let definition = load_definition(&source_definition)?;
+        let content = fetch_manifest(&client, &entry.repository).await?;
+        let definition: OfficialAppDefinition =
+            serde_yaml::from_str(&content).map_err(|error| {
+                AppError::Config(format!(
+                    "解析官方应用定义 {} 失败: {error}",
+                    entry.repository
+                ))
+            })?;
+        validate_definition(&definition)?;
+        validate_catalog_definition_id(&cache_key, &definition)?;
+        validate_artifact_repository(&entry.repository, &definition)?;
         let app_cache_dir = cache_dir.join(&cache_key);
         std::fs::create_dir_all(&app_cache_dir)?;
         let cache_definition = app_cache_dir.join("aidea.yaml");
         let temporary_definition =
             app_cache_dir.join(format!("aidea-{}.yaml", uuid::Uuid::new_v4()));
-        std::fs::copy(&source_definition, &temporary_definition)?;
+        std::fs::write(&temporary_definition, content)?;
         std::fs::rename(&temporary_definition, &cache_definition)?;
         std::fs::write(
             app_cache_dir.join("metadata.json"),
@@ -493,7 +735,6 @@ pub async fn refresh_official_definitions_from_dir(
                 "refreshed_at": chrono::Utc::now().timestamp(),
             }))?,
         )?;
-        let _ = std::fs::remove_dir_all(&staging);
         definitions.push(CachedOfficialApp {
             repository: entry.repository,
             definition,
@@ -506,7 +747,7 @@ pub async fn refresh_official_definitions_from_dir(
 /// 刷新远程市场目录及其收录的官方应用定义，并更新本地缓存。
 pub async fn refresh_official_definitions() -> AppResult<Vec<CachedOfficialApp>> {
     let source = load_market_source(&market_source_path_or_development()?)?;
-    let catalog_staging = clone_market_catalog(&source.repository).await?;
+    let catalog_staging = fetch_market_catalog(&source.repository).await?;
     let cache_dir = market_cache_dir()?;
     let cache_staging = cache_dir
         .parent()
@@ -594,12 +835,7 @@ fn load_from_dir(directory: &Path) -> AppResult<Vec<OfficialApp>> {
 
 #[cfg(test)]
 fn validate(app: &OfficialApp) -> AppResult<()> {
-    if app.id.is_empty()
-        || !app
-            .id
-            .chars()
-            .all(|value| value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-')
-    {
+    if !is_kebab_case(&app.id) {
         return Err(AppError::Config("官方应用 ID 必须是 kebab-case".into()));
     }
     for value in [
@@ -608,8 +844,6 @@ fn validate(app: &OfficialApp) -> AppResult<()> {
         &app.category,
         &app.version,
         &app.repository,
-        &app.revision,
-        &app.runtime,
     ] {
         if value.trim().is_empty() || value.chars().any(char::is_control) {
             return Err(AppError::Config(format!(
@@ -619,21 +853,9 @@ fn validate(app: &OfficialApp) -> AppResult<()> {
         }
     }
     validate_command(&app.process.command, &app.id)?;
-    if app.runtime == "binary" {
-        let artifact = app.artifact.as_ref().ok_or_else(|| {
-            AppError::Config(format!("官方应用 {} 的 binary 缺少 artifact", app.id))
-        })?;
-        validate_binary_artifact(artifact, &app.id)?;
-    } else if app.artifact.is_some() {
-        return Err(AppError::Config(format!(
-            "官方应用 {} 只有 runtime: binary 可以声明 artifact",
-            app.id
-        )));
-    }
-    for command in &app.install {
-        validate_command(command, &app.id)?;
-    }
-    if app.process.working_directory.starts_with('/')
+    validate_binary_artifact(&app.artifact, &app.id, &app.version)?;
+    if app.process.working_directory.trim().is_empty()
+        || app.process.working_directory.starts_with('/')
         || app
             .process
             .working_directory
@@ -668,19 +890,19 @@ fn validate_ready_url(ready_url: &str, id: &str) -> AppResult<()> {
 
 fn validate_command(command: &[String], id: &str) -> AppResult<()> {
     if command.is_empty()
-        || command
-            .iter()
-            .any(|value| value.is_empty() || value.contains('\0'))
+        || command.iter().any(|value| {
+            value.is_empty() || value.contains('\0') || value.chars().any(char::is_whitespace)
+        })
     {
         return Err(AppError::Config(format!("官方应用 {id} 命令不能为空")));
     }
-    if command.first().is_some_and(|value| {
-        let name = std::path::Path::new(value)
-            .file_name()
-            .and_then(|item| item.to_str())
-            .unwrap_or(value);
-        name == "sh" || name == "bash"
-    }) {
+    let program = &command[0];
+    if program.contains('/') || program.contains('\\') || program == "." || program == ".." {
+        return Err(AppError::Config(format!(
+            "官方应用 {id} 启动程序必须是包根目录的裸文件名"
+        )));
+    }
+    if matches!(program.as_str(), "sh" | "bash" | "zsh") {
         return Err(AppError::Config(format!("官方应用 {id} 不允许 shell 命令")));
     }
     Ok(())
@@ -689,13 +911,13 @@ fn validate_command(command: &[String], id: &str) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_market_source, load_cached_definitions_from_dir, load_cached_official_apps,
-        load_from_dir, refresh_official_definitions_from_dir, validate_catalog_entry,
-        validate_definition, CachedOfficialApp, OfficialAppDefinition, OfficialCatalogEntry,
+        bundled_market_source, load_cached_definitions_from_dir, load_from_dir,
+        validate_catalog_entry, validate_definition, CachedOfficialApp, OfficialAppDefinition,
+        OfficialCatalogEntry,
     };
     use std::fs;
 
-    fn valid_definition(revision: &str) -> OfficialAppDefinition {
+    fn valid_definition() -> OfficialAppDefinition {
         OfficialAppDefinition {
             schema_version: 1,
             id: "demo-app".into(),
@@ -704,23 +926,28 @@ mod tests {
             category: "test".into(),
             version: "0.1.0".into(),
             icon: "Box".into(),
-            revision: revision.into(),
-            min_aidea_version: "0.1.0".into(),
-            runtime: "system".into(),
-            install: Vec::new(),
-            artifact: None,
+            artifact: super::OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
             process: super::OfficialProcess {
-                command: vec!["python".into(), "-m".into(), "app".into()],
+                command: vec!["demo".into()],
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            update_notes: String::new(),
         }
     }
 
     #[test]
+    fn 官方应用定义只接受最小_binary_manifest() {
+        let definition = "schema_version: 1\nid: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Box\nartifact:\n  url: https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz\n  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nprocess:\n  command: [demo]\n  ready_url: http://127.0.0.1:43120/health\n";
+
+        assert!(serde_yaml::from_str::<OfficialAppDefinition>(definition).is_err());
+    }
+
+    #[test]
     fn 官方应用定义不允许声明设置重置命令() {
-        let definition = "schema_version: 1\nid: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Box\nrevision: d351c25ac9a970abb1e13016dcf26128fa8e200b\nmin_aidea_version: 0.1.0\nruntime: system\nprocess:\n  command: [python, -m, app]\n  ready_url: http://127.0.0.1:43120/health\nsettings:\n  reset_command: [builtin, dev-tools]\n";
+        let definition = "schema_version: 1\nid: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Box\nartifact:\n  url: https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz\n  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nprocess:\n  command: [demo]\n  ready_url: http://127.0.0.1:43120/health\nsettings:\n  reset_command: [builtin, dev-tools]\n";
 
         assert!(serde_yaml::from_str::<OfficialAppDefinition>(definition).is_err());
     }
@@ -728,11 +955,15 @@ mod tests {
     #[test]
     fn 收录项只允许仓库地址和启用状态() {
         let entry: OfficialCatalogEntry = serde_yaml::from_str(
-            "schema_version: 1\nrepository: https://example.com/demo.git\nenabled: true\n",
+            "schema_version: 1\nrepository: https://gitee.com/aidea-org/demo.git\nenabled: true\n",
         )
         .unwrap();
 
         assert!(validate_catalog_entry(&entry).is_ok());
+        assert!(serde_yaml::from_str::<OfficialCatalogEntry>(
+            "schema_version: 1\nrepository: https://gitee.com/aidea-org/demo.git\n"
+        )
+        .is_err());
     }
 
     #[test]
@@ -756,18 +987,26 @@ mod tests {
     }
 
     #[test]
-    fn 应用定义必须使用完整_sha与本地健康检查() {
-        assert!(validate_definition(&valid_definition(
-            "d351c25ac9a970abb1e13016dcf26128fa8e200b"
-        ))
-        .is_ok());
-        assert!(validate_definition(&valid_definition("main")).is_err());
+    fn 应用定义必须使用有效产物与本地健康检查() {
+        assert!(validate_definition(&valid_definition()).is_ok());
+        let mut definition = valid_definition();
+        definition.version = "0.1.10".into();
+        assert!(validate_definition(&definition).is_err());
+        definition.version = "0.1.0".into();
+        definition.process.ready_url = "http://localhost:43120/health".into();
+        assert!(validate_definition(&definition).is_err());
+        definition.process.ready_url = "http://127.0.0.1:43120/health".into();
+        definition.id = "-demo".into();
+        assert!(validate_definition(&definition).is_err());
+        definition.id = "demo".into();
+        definition.process.working_directory.clear();
+        assert!(validate_definition(&definition).is_err());
     }
 
     #[test]
     fn binary定义可以声明单个_arm64_预编译产物和裸命令() {
         let definition: OfficialAppDefinition = serde_yaml::from_str(
-            "schema_version: 1\nid: mail-center\nname: 邮件中心\ndescription: test\ncategory: productivity\nversion: 0.1.6\nicon: Mail\nrevision: d351c25ac9a970abb1e13016dcf26128fa8e200b\nmin_aidea_version: 0.1.0\nruntime: binary\nartifact:\n  url: https://gitee.com/aidea-org/mail-center/releases/download/v0.1.5/mail-center-0.1.5-darwin-arm64.tar.gz\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nprocess:\n  command: [mail-center]\n  working_directory: .\n  ready_url: http://127.0.0.1:43130/health\n",
+            "schema_version: 1\nid: mail-center\nname: 邮件中心\ndescription: test\ncategory: productivity\nversion: 0.1.6\nicon: Mail\nartifact:\n  url: https://gitee.com/aidea-org/mail-center/releases/download/v0.1.6/mail-center-0.1.6-darwin-arm64.tar.gz\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nprocess:\n  command: [mail-center]\n  working_directory: .\n  ready_url: http://127.0.0.1:43130/health\n",
         )
         .unwrap();
 
@@ -775,49 +1014,54 @@ mod tests {
     }
 
     #[test]
-    fn binary定义缺少产物或使用无效产物时拒绝() {
-        let mut definition = valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b");
-        definition.runtime = "binary".into();
+    fn 旧字段会被拒绝() {
+        let definition = "schema_version: 1\nid: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Box\nrevision: obsolete\nartifact:\n  url: https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz\n  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nprocess:\n  command: [demo]\n  ready_url: http://127.0.0.1:43120/health\n";
 
-        assert!(validate_definition(&definition).is_err());
+        assert!(serde_yaml::from_str::<OfficialAppDefinition>(definition).is_err());
     }
 
     #[test]
-    fn binary产物必须是_gitee_release_和有效哈希() {
+    fn binary产物必须来自同仓库的受支持_release_并使用有效哈希() {
         let mut definition: OfficialAppDefinition = serde_yaml::from_str(
-            "schema_version: 1\nid: mail-center\nname: 邮件中心\ndescription: test\ncategory: productivity\nversion: 0.1.6\nicon: Mail\nrevision: d351c25ac9a970abb1e13016dcf26128fa8e200b\nmin_aidea_version: 0.1.0\nruntime: binary\nartifact:\n  url: https://gitee.com/aidea-org/mail-center/releases/download/v0.1.5/mail-center-0.1.5-darwin-arm64.tar.gz\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nprocess:\n  command: [mail-center]\n  ready_url: http://127.0.0.1:43130/health\n",
+            "schema_version: 1\nid: mail-center\nname: 邮件中心\ndescription: test\ncategory: productivity\nversion: 0.1.6\nicon: Mail\nartifact:\n  url: https://gitee.com/aidea-org/mail-center/releases/download/v0.1.6/mail-center-0.1.6-darwin-arm64.tar.gz\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nprocess:\n  command: [mail-center]\n  working_directory: .\n  ready_url: http://127.0.0.1:43130/health\n",
         )
         .unwrap();
 
         assert!(validate_definition(&definition).is_ok());
-        definition.artifact.as_mut().unwrap().url = "https://example.com/mail-center.tar.gz".into();
-        assert!(validate_definition(&definition).is_err());
-        definition.artifact.as_mut().unwrap().url =
-            "https://gitee.com/aidea-org/mail-center/releases/download/v0.1.5/mail-center.tar.gz"
+        definition.artifact.url =
+            "https://github.com/aidea-org/mail-center/releases/download/v0.1.6/mail-center.tar.gz"
                 .into();
-        definition.artifact.as_mut().unwrap().sha256 = "not-a-hash".into();
+        assert!(validate_definition(&definition).is_ok());
+        definition.artifact.url =
+            "https://gitlab.com/aidea-org/mail-center/-/releases/v0.1.6/downloads/mail-center.tar.gz"
+                .into();
+        assert!(validate_definition(&definition).is_ok());
+        definition.artifact.url = "https://example.com/mail-center.tar.gz".into();
+        assert!(validate_definition(&definition).is_err());
+        definition.artifact.url =
+            "https://gitee.com/aidea-org/mail-center/releases/download/v0.1.6/mail-center.tar.gz"
+                .into();
+        definition.artifact.sha256 = "not-a-hash".into();
+        assert!(validate_definition(&definition).is_err());
+        definition.artifact.sha256 = "A".repeat(64);
         assert!(validate_definition(&definition).is_err());
     }
 
     #[test]
-    fn artifact只能用于没有_install_的_binary应用() {
-        let mut definition = valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b");
-        definition.artifact = Some(super::OfficialArtifact {
-            url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
-            sha256: "a".repeat(64),
-        });
+    fn process_不允许未声明字段或非裸二进制名() {
+        let text = "schema_version: 1\nid: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Box\nartifact:\n  url: https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz\n  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nprocess:\n  command: [./demo]\n  working_directory: .\n  ready_url: http://127.0.0.1:43120/health\n";
+        let definition: OfficialAppDefinition = serde_yaml::from_str(text).unwrap();
         assert!(validate_definition(&definition).is_err());
 
-        definition.runtime = "binary".into();
-        definition.install = vec![vec!["npm".into(), "ci".into()]];
-        assert!(validate_definition(&definition).is_err());
+        let definition = text.replace("command: [./demo]", "command: [demo]\n  path: ./demo");
+        assert!(serde_yaml::from_str::<OfficialAppDefinition>(&definition).is_err());
     }
 
     #[test]
     fn 缓存定义会合并收录仓库地址() {
         let cached = CachedOfficialApp {
             repository: "https://example.com/demo.git".into(),
-            definition: valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b"),
+            definition: valid_definition(),
         };
 
         let app = cached.into_app();
@@ -831,19 +1075,16 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
         let catalog_dir = directory.join("catalog");
         let cache_dir = directory.join("cache");
-        fs::create_dir_all(cache_dir.join("demo")).unwrap();
+        fs::create_dir_all(cache_dir.join("demo-app")).unwrap();
         fs::create_dir_all(&catalog_dir).unwrap();
         fs::write(
-            catalog_dir.join("demo.yaml"),
-            "schema_version: 1\nrepository: https://example.com/demo.git\nenabled: true\n",
+            catalog_dir.join("demo-app.yaml"),
+            "schema_version: 1\nrepository: https://gitee.com/aidea-org/demo.git\nenabled: true\n",
         )
         .unwrap();
         fs::write(
-            cache_dir.join("demo/aidea.yaml"),
-            serde_yaml::to_string(&valid_definition(
-                "d351c25ac9a970abb1e13016dcf26128fa8e200b",
-            ))
-            .unwrap(),
+            cache_dir.join("demo-app/aidea.yaml"),
+            serde_yaml::to_string(&valid_definition()).unwrap(),
         )
         .unwrap();
 
@@ -851,114 +1092,119 @@ mod tests {
 
         assert_eq!(definitions.len(), 1);
         assert_eq!(definitions[0].definition.id, "demo-app");
-        assert_eq!(definitions[0].repository, "https://example.com/demo.git");
+        assert_eq!(
+            definitions[0].repository,
+            "https://gitee.com/aidea-org/demo.git"
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 
-    #[tokio::test]
-    async fn 刷新时从应用仓库读取定义并写入缓存() {
+    #[test]
+    fn 市场收录文件名必须与应用_id_一致() {
         let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
-        let repository = directory.join("repository");
         let catalog_dir = directory.join("catalog");
         let cache_dir = directory.join("cache");
-        fs::create_dir_all(&repository).unwrap();
+        fs::create_dir_all(cache_dir.join("other-app")).unwrap();
         fs::create_dir_all(&catalog_dir).unwrap();
         fs::write(
-            repository.join("aidea.yaml"),
-            serde_yaml::to_string(&valid_definition(
-                "d351c25ac9a970abb1e13016dcf26128fa8e200b",
-            ))
-            .unwrap(),
-        )
-        .unwrap();
-        for args in [
-            vec!["init"],
-            vec!["add", "aidea.yaml"],
-            vec![
-                "-c",
-                "user.name=aIdea Test",
-                "-c",
-                "user.email=test@example.com",
-                "commit",
-                "-m",
-                "definition",
-            ],
-        ] {
-            let status = std::process::Command::new("git")
-                .args(args)
-                .current_dir(&repository)
-                .status()
-                .unwrap();
-            assert!(status.success());
-        }
-        fs::write(
-            catalog_dir.join("demo.yaml"),
-            format!(
-                "schema_version: 1\nrepository: {}\nenabled: true\n",
-                repository.display()
-            ),
-        )
-        .unwrap();
-
-        let refreshed = refresh_official_definitions_from_dir(&catalog_dir, &cache_dir)
-            .await
-            .unwrap();
-
-        assert_eq!(refreshed.len(), 1);
-        assert_eq!(refreshed[0].definition.id, "demo-app");
-        assert!(cache_dir.join("demo/aidea.yaml").exists());
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[tokio::test]
-    async fn 刷新市场目录失败时保留已缓存目录() {
-        let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
-        let repository = directory.join("repository");
-        let cache_dir = directory.join("cache");
-        fs::create_dir_all(repository.join("official")).unwrap();
-        fs::write(
-            repository.join("official/demo.yaml"),
+            catalog_dir.join("other-app.yaml"),
             "schema_version: 1\nrepository: https://gitee.com/aidea-org/demo.git\nenabled: true\n",
         )
         .unwrap();
-        for args in [
-            vec!["init"],
-            vec!["add", "official/demo.yaml"],
-            vec![
-                "-c",
-                "user.name=aIdea Test",
-                "-c",
-                "user.email=test@example.com",
-                "commit",
-                "-m",
-                "catalog",
-            ],
-        ] {
-            let status = std::process::Command::new("git")
-                .args(args)
-                .current_dir(&repository)
-                .status()
-                .unwrap();
-            assert!(status.success());
-        }
+        fs::write(
+            cache_dir.join("other-app/aidea.yaml"),
+            serde_yaml::to_string(&valid_definition()).unwrap(),
+        )
+        .unwrap();
 
-        let staging = super::clone_market_catalog(repository.to_str().unwrap())
-            .await
-            .unwrap();
-        super::cache_market_catalog(&staging.join("official"), &cache_dir).unwrap();
-        fs::remove_dir_all(staging).unwrap();
-
-        assert_eq!(
-            super::load_catalog_entries(&cache_dir).unwrap()[0]
-                .1
-                .repository,
-            "https://gitee.com/aidea-org/demo.git"
-        );
-        assert!(super::clone_market_catalog("/missing/aidea-market")
-            .await
-            .is_err());
-        assert_eq!(super::load_catalog_entries(&cache_dir).unwrap().len(), 1);
+        assert!(load_cached_definitions_from_dir(&catalog_dir, &cache_dir).is_err());
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn 三个平台的仓库与_release_url_必须同源同项目() {
+        let definition = valid_definition();
+        assert!(super::validate_artifact_repository(
+            "https://gitee.com/aidea-org/demo.git",
+            &definition
+        )
+        .is_ok());
+        assert!(super::validate_artifact_repository(
+            "https://gitee.com/aidea-org/other.git",
+            &definition
+        )
+        .is_err());
+
+        let mut definition = valid_definition();
+        definition.artifact.url =
+            "https://github.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into();
+        assert!(super::validate_artifact_repository(
+            "https://github.com/aidea-org/demo.git",
+            &definition
+        )
+        .is_ok());
+
+        definition.artifact.url =
+            "https://gitlab.com/aidea-org/demo/-/releases/v0.1.0/downloads/demo.tar.gz".into();
+        assert!(super::validate_artifact_repository(
+            "https://gitlab.com/aidea-org/demo.git",
+            &definition
+        )
+        .is_ok());
+
+        definition.artifact.url =
+            "http://gitlab.intra.example/aidea-org/demo/-/releases/v0.1.0/downloads/demo.tar.gz"
+                .into();
+        assert!(super::validate_artifact_repository(
+            "http://gitlab.intra.example/aidea-org/demo.git",
+            &definition
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn 市场_api_url_不依赖_git_clone() {
+        let gitee =
+            super::parse_repository("https://gitee.com/aidea-org/aidea-market.git").unwrap();
+        assert_eq!(
+            super::repository_catalog_api_url(&gitee),
+            "https://gitee.com/api/v5/repos/aidea-org/aidea-market/contents/official"
+        );
+        let github = super::parse_repository("https://github.com/aidea-org/demo.git").unwrap();
+        assert_eq!(
+            super::repository_api_url(&github, "aidea.yaml"),
+            "https://api.github.com/repos/aidea-org/demo/contents/aidea.yaml"
+        );
+        let gitlab = super::parse_repository("https://gitlab.com/group/demo.git").unwrap();
+        assert_eq!(
+            super::repository_api_url(&gitlab, "aidea.yaml"),
+            "https://gitlab.com/api/v4/projects/group%2Fdemo/repository/files/aidea.yaml/raw?ref=HEAD"
+        );
+        let private_gitlab =
+            super::parse_repository("http://gitlab.intra.example/group/demo.git").unwrap();
+        assert_eq!(
+            super::repository_api_url(&private_gitlab, "aidea.yaml"),
+            "http://gitlab.intra.example/api/v4/projects/group%2Fdemo/repository/files/aidea.yaml/raw?ref=HEAD"
+        );
+    }
+
+    #[test]
+    fn 官方应用拒绝携带凭据或非_gitlab_release_格式的仓库地址() {
+        let mut definition = valid_definition();
+        definition.artifact.url =
+            "https://token@example.com/group/demo/-/releases/v0.1.0/downloads/demo.tar.gz".into();
+
+        assert!(validate_definition(&definition).is_err());
+        assert!(super::parse_repository("https://token@example.com/group/demo.git").is_err());
+    }
+
+    #[test]
+    fn binary附件拒绝携带凭据的下载地址() {
+        let mut definition = valid_definition();
+        definition.artifact.url =
+            "https://token@gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into();
+
+        assert!(validate_definition(&definition).is_err());
     }
 
     #[test]
@@ -998,7 +1244,7 @@ mod tests {
 
     #[test]
     fn 健康检查必须是本机health路径() {
-        let mut definition = valid_definition("d351c25ac9a970abb1e13016dcf26128fa8e200b");
+        let mut definition = valid_definition();
 
         definition.process.ready_url = "http://127.0.0.1:43120/status".into();
         assert!(validate_definition(&definition).is_err());
@@ -1014,17 +1260,25 @@ mod tests {
     fn 加载合法官方应用定义() {
         let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
+        let app = (CachedOfficialApp {
+            repository: "https://example.com/demo.git".into(),
+            definition: valid_definition(),
+        })
+        .into_app();
         fs::write(
             directory.join("demo.yaml"),
-            "id: demo-app\nname: Demo\ndescription: test\ncategory: test\nversion: 1\nicon: Box\nrepository: https://example.com/demo.git\nrevision: v1\nruntime: system\nprocess:\n  command: [python, -m, app]\n  ready_url: http://127.0.0.1:43120/health\n",
-        ).unwrap();
+            serde_yaml::to_string(&app).unwrap(),
+        )
+        .unwrap();
         assert_eq!(load_from_dir(&directory).unwrap()[0].id, "demo-app");
         fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn 官方市场收录文件不会当作完整定义解析() {
-        assert!(load_cached_official_apps().is_ok());
+        let catalog =
+            "schema_version: 1\nrepository: https://example.com/demo.git\nenabled: true\n";
+        assert!(serde_yaml::from_str::<OfficialAppDefinition>(catalog).is_err());
     }
 
     #[test]

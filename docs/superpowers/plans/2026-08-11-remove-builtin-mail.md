@@ -1,5 +1,7 @@
 # Remove Built-in Mail Implementation Implementation Plan
 
+> 历史记录，禁止作为当前实现或发布步骤执行。
+
 > **历史实施记录**：本文件只记录删除旧内置邮件的实施过程，不是当前平台或官方应用契约。当前规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准；新邮件功能应按 `mail-center` 官方应用规范实现。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Do not use subagents unless the user explicitly requests them.

@@ -1,5 +1,7 @@
 # 官方应用启动失败重试 Implementation Plan
 
+> **历史记录，禁止作为当前实现或发布步骤执行。** 当前进程恢复只允许使用带有效运行记录且与当前安装定义精确匹配的进程；现行规则以 `docs/guide/aidea-platform.md` 和 `docs/guide/aidea-official-app.md` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让官方应用启动失败后仍可在原菜单重试启动，同时明确不接管开发目录的手动服务。
@@ -12,7 +14,7 @@
 
 - 不新增 IPC、状态类型、依赖、开发模式或进程接管规则。
 - `issue` 在下次启动成功前保留；成功后由既有 Rust `start_app` 清除。
-- 仅接管工作目录属于已安装 `source/` 且 `/health` 成功的进程。
+- 不接管没有 aIdea 运行记录的进程；恢复还必须匹配当前安装定义、启动命令、工作目录、进程组和 `/health`。
 - 不自动 git add、commit、push 或创建 PR。
 
 ---
@@ -121,7 +123,7 @@ Expected: PASS。
 
 - [ ] **Step 1: 更新规范**
 
-在平台异常隔离章节明确：失败不会锁死生命周期操作；已停止应用可重试，异常在成功前保留。官方应用规范明确：仅接管安装 `source/` 内且 `/health` 成功的监听进程，开发目录手动服务不接管。
+在平台异常隔离章节明确：失败不会锁死生命周期操作；已停止应用可重试，异常在成功前保留。官方应用规范明确：只恢复有有效运行记录且与当前安装定义精确匹配的进程，开发目录手动服务不接管。
 
 - [ ] **Step 2: 运行前端验证**
 

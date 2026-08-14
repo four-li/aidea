@@ -16,6 +16,12 @@ bash scripts/release.sh
 
 直接运行这一条命令。不要手工改版本、写更新日志、`git add`、commit、传版本号，或复制脚本到其他目录。脚本会自动处理这些内容：当前版本高于最近 tag 时发布当前版本；相等时按单段不超过 9 的规则递增版本（`0.1.9` 后为 `0.2.0`，`0.9.9` 后为 `1.0.0`）；低于最近 tag 时停止。
 
+## 执行环境
+
+发布脚本会访问 Gitee、读取本机凭据、调用 macOS 工具并推送发布附件。使用 Codex 工具执行发布时，第一次调用就必须请求正常 macOS shell 权限（`sandbox_permissions=require_escalated`）；不要先用默认沙箱执行一次再重试。命令仍然是上面的 `bash` 命令，不要改成 `/bin/zsh -lc`，外层 shell 不是解决网络限制的办法。
+
+如果误在受限环境执行并出现 `curl: (7) Couldn't connect to server`，随后又出现空响应导致的 JSON 解析错误或“Gitee Token 无效”，优先判断为沙箱网络不可用，不要读取、显示或修改 Token；改用 `sandbox_permissions=require_escalated` 原样重跑同一条 `bash` 命令。`resume-release.sh` 也遵循同样规则。
+
 脚本会依次执行前端测试与构建、Rust 测试、Tauri 构建和 updater 签名，然后提交 `chore: release vX.Y.Z`、推送 `main` 与 tag、创建 Gitee Release、上传 DMG、`.app.tar.gz`、`.sig` 和 `latest.json`，最后在线核验 Release 和 Raw 更新清单。
 
 只有明确风险才停止：未解决冲突、疑似密钥文件、缺少签名私钥或 Gitee 凭据、工具缺失、测试/构建失败、或远端发布异常。构建失败前不会留下发布提交，脚本会还原自己写入的版本和更新日志文件。

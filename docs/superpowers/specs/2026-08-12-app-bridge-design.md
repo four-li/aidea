@@ -1,6 +1,6 @@
 # App Bridge 与应用搜索边界设计
 
-> **历史设计记录**：本文件只记录 App Bridge v1 和搜索边界的设计过程，不是当前通信契约。当前规则以 [aidea-app-bridge.md](../../guide/aidea-app-bridge.md) 和 [aidea-search.md](../../guide/aidea-search.md) 为准；搜索不属于 App Bridge，历史 `find`、搜索 SDK、全局搜索和官方应用 `/settings` 契约均不得重新实现。
+> **历史记录，禁止作为当前实现或发布步骤执行。** 本文件只记录 App Bridge v1 和搜索边界的设计过程，不是当前通信契约。当前规则以 [aidea-app-bridge.md](../../guide/aidea-app-bridge.md) 和 [aidea-search.md](../../guide/aidea-search.md) 为准；搜索不属于 App Bridge，历史 `find`、搜索 SDK、全局搜索和官方应用 `/settings` 契约均不得重新实现。
 
 ## 目标
 

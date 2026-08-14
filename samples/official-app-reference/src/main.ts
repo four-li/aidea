@@ -100,7 +100,6 @@ if (shellOrigin) {
         history.pushState({}, '', path);
         render();
       }
-      post('navigate:result', { ok: true }, message.id);
     }
   });
   post('ready', { appId: APP_ID, supported: ['navigate'] });

@@ -46,6 +46,8 @@ pub struct AppState {
 pub struct RuntimeRecord {
     pub app_id: String,
     pub pid: u32,
+    #[serde(default)]
+    pub process_group: Option<u32>,
     pub started_at: i64,
     #[serde(default)]
     pub process_started_at: String,
@@ -67,6 +69,8 @@ struct ProcessTable {
 struct ProcessEntry {
     /// 子进程的 PID（启动后填充）
     pid: u32,
+    /// 子进程独立进程组的 ID；没有该字段的旧记录不允许恢复接管。
+    process_group: Option<u32>,
     /// 停止任务时通过这个 channel 通知监控协程退出
     kill_tx: Option<oneshot::Sender<()>>,
 }
@@ -125,9 +129,25 @@ impl ProcessManager {
                     continue;
                 }
             };
+            // 旧运行记录不能绕过当前 binary-only 安装快照。
+            let app = match official_app_installer::installed_definition(&record.app_id) {
+                Ok(app) => app,
+                Err(_) => {
+                    let _ = std::fs::remove_file(&path);
+                    continue;
+                }
+            };
+            let source = match official_app_installer::source_dir(&app.id) {
+                Ok(source) => source,
+                Err(_) => {
+                    let _ = std::fs::remove_file(&path);
+                    continue;
+                }
+            };
             if record.app_id != app_id
                 || !self.pid_alive(record.pid as i32)
                 || !process_matches_record(&record)
+                || !runtime_record_matches_app(&record, &app, &source)
                 || !is_ready(&record.ready_url).await
             {
                 let _ = std::fs::remove_file(&path);
@@ -137,6 +157,7 @@ impl ProcessManager {
                 record.app_id.clone(),
                 ProcessEntry {
                     pid: record.pid,
+                    process_group: record.process_group,
                     kill_tx: None,
                 },
             );
@@ -166,19 +187,8 @@ impl ProcessManager {
 
     async fn start_official_after_transition(&self, app: &OfficialApp) -> AppResult<u32> {
         let source = crate::official_app_installer::source_dir(&app.id)?;
-        let working_dir = source.join(&app.process.working_directory);
-        if !working_dir.starts_with(&source) || !working_dir.is_dir() {
-            return Err(AppError::Process(format!("{} 工作目录无效", app.id)));
-        }
-        if let Some(pid) = adoptable_process(&source, &app.process.ready_url).await {
-            self.table
-                .lock()
-                .unwrap()
-                .entries
-                .insert(app.id.clone(), ProcessEntry { pid, kill_tx: None });
-            self.clear_issue(&app.id);
-            return Ok(pid);
-        }
+        let working_dir = canonical_working_directory(&source, &app.process.working_directory)?;
+        let (program, path) = command_for_official_app(app, &source)?;
         ensure_ready_port_available(&app.process.ready_url)?;
         let log_dir = crate::config::data_root()?.join("logs").join(&app.id);
         std::fs::create_dir_all(&log_dir)?;
@@ -190,9 +200,9 @@ impl ProcessManager {
         let app_data_dir = crate::config::data_root()?.join("app-data").join(&app.id);
         std::fs::create_dir_all(&app_data_dir)?;
 
-        let (program, path) = command_for_official_app(app, &source)?;
         let mut command = Command::new(&program);
         command
+            .env_clear()
             .args(&app.process.command[1..])
             .current_dir(&working_dir)
             .env("AIDEA_APP_ID", &app.id)
@@ -203,6 +213,8 @@ impl ProcessManager {
         if let Some(path) = path {
             command.env("PATH", path);
         }
+        #[cfg(unix)]
+        command.process_group(0);
         let mut child = command.spawn().map_err(|error| {
             AppError::Process(format!(
                 "启动 {} 失败（{}）: {}",
@@ -214,18 +226,23 @@ impl ProcessManager {
         let pid = child
             .id()
             .ok_or_else(|| AppError::Process(format!("获取 {} PID 失败", app.id)))?;
-        write_runtime_record(&RuntimeRecord {
+        let runtime_record = RuntimeRecord {
             app_id: app.id.clone(),
             pid,
+            process_group: Some(pid),
             started_at: chrono::Utc::now().timestamp(),
             process_started_at: process_started_at(pid).unwrap_or_default(),
-            command: app.process.command.clone(),
+            command: runtime_command(&program, &app.process.command),
             working_directory: working_dir.to_string_lossy().into_owned(),
             ready_url: app.process.ready_url.clone(),
             log_path: log_path.to_string_lossy().into_owned(),
             version: app.version.clone(),
             instance_id: uuid::Uuid::new_v4().to_string(),
-        })?;
+        };
+        if let Err(error) = write_runtime_record(&runtime_record) {
+            terminate_child_process_group(&mut child, pid).await;
+            return Err(error);
+        }
         let (kill_tx, kill_rx) = oneshot::channel::<()>();
         let id = app.id.clone();
         let manager = self.clone();
@@ -242,6 +259,7 @@ impl ProcessManager {
             app.id.clone(),
             ProcessEntry {
                 pid,
+                process_group: Some(pid),
                 kill_tx: Some(kill_tx),
             },
         );
@@ -273,25 +291,11 @@ impl ProcessManager {
             let _ = tx.send(());
         }
 
-        // 直接发 SIGTERM，5 秒未退出则 SIGKILL
-        let pid = entry.pid as i32;
-        unsafe {
-            libc::kill(pid, libc::SIGTERM);
-        }
-
-        // 等待最多 5 秒
-        for _ in 0..50 {
-            if !self.pid_alive(pid) {
-                let _ = remove_runtime_record(id);
-                self.clear_transition(id);
-                return Ok(());
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-
-        // 5 秒未退出，SIGKILL
-        unsafe {
-            libc::kill(pid, libc::SIGKILL);
+        // 每个官方应用在独立进程组中运行，停止时必须一并清理派生服务。
+        if let Some(process_group) = entry.process_group {
+            terminate_process_group(process_group as i32).await;
+        } else {
+            terminate_process(entry.pid as i32).await;
         }
         let _ = remove_runtime_record(id);
         self.clear_transition(id);
@@ -393,10 +397,7 @@ impl ProcessManager {
 
 /// 在替换安装目录前启动 staging 版本，只验证健康检查，不写入运行记录。
 pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResult<()> {
-    let working_dir = source.join(&app.process.working_directory);
-    if !working_dir.starts_with(source) || !working_dir.is_dir() {
-        return Err(AppError::Process(format!("{} 工作目录无效", app.id)));
-    }
+    let working_dir = canonical_working_directory(source, &app.process.working_directory)?;
     ensure_ready_port_available(&app.process.ready_url)?;
 
     let check_root = std::env::temp_dir().join(format!("aidea-health-{}", uuid::Uuid::new_v4()));
@@ -405,9 +406,10 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&log_dir)?;
 
-    let (program, path) = command_for_official_app(app, source)?;
+    let (program, path) = staging_command_for_official_app(app, source)?;
     let mut command = Command::new(&program);
     command
+        .env_clear()
         .args(&app.process.command[1..])
         .current_dir(&working_dir)
         .env("AIDEA_APP_ID", &app.id)
@@ -418,6 +420,8 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
     if let Some(path) = path {
         command.env("PATH", path);
     }
+    #[cfg(unix)]
+    command.process_group(0);
     let child = command
         .spawn()
         .map_err(|error| AppError::Process(format!("启动 {} staging 版本失败: {error}", app.id)));
@@ -430,7 +434,12 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
     };
 
     let result = wait_until_ready(&app.process.ready_url).await;
-    let _ = child.kill().await;
+    let pid = child.id().map(|pid| pid as i32);
+    if let Some(pid) = pid {
+        terminate_process_group(pid).await;
+    } else {
+        let _ = child.kill().await;
+    }
     let _ = child.wait().await;
     let _ = std::fs::remove_dir_all(check_root);
     result.map_err(|error| AppError::Process(format!("{} staging 版本未就绪: {error}", app.id)))
@@ -440,16 +449,37 @@ fn command_for_official_app(
     app: &OfficialApp,
     source: &Path,
 ) -> AppResult<(PathBuf, Option<OsString>)> {
-    if app.runtime != "binary" {
-        return Ok((resolve_program(&app.process.command[0]), None));
-    }
+    let (program, path) = staging_command_for_official_app(app, source)?;
+    crate::official_app_installer::validate_arm64_binary(&program, &app.id)?;
+    Ok((program, path))
+}
 
-    let inherited_path = std::env::var_os("PATH").unwrap_or_default();
-    let path = std::env::join_paths(
-        std::iter::once(source.to_path_buf()).chain(std::env::split_paths(&inherited_path)),
-    )
-    .map_err(|error| AppError::Process(format!("{} PATH 无效: {error}", app.id)))?;
-    Ok((PathBuf::from(&app.process.command[0]), Some(path)))
+fn staging_command_for_official_app(
+    app: &OfficialApp,
+    source: &Path,
+) -> AppResult<(PathBuf, Option<OsString>)> {
+    let program = source.join(&app.process.command[0]);
+    if !program.is_file() {
+        return Err(AppError::Process(format!(
+            "{} 安装包缺少启动二进制 {}",
+            app.id, app.process.command[0]
+        )));
+    }
+    Ok((program, Some(source.as_os_str().to_owned())))
+}
+
+fn canonical_working_directory(source: &Path, value: &str) -> AppResult<PathBuf> {
+    let source = source
+        .canonicalize()
+        .map_err(|error| AppError::Process(format!("无法定位官方应用安装目录: {error}")))?;
+    let working_directory = source
+        .join(value)
+        .canonicalize()
+        .map_err(|error| AppError::Process(format!("官方应用工作目录无效: {error}")))?;
+    if !working_directory.starts_with(&source) || !working_directory.is_dir() {
+        return Err(AppError::Process("官方应用工作目录无效".into()));
+    }
+    Ok(working_directory)
 }
 
 fn runtime_records_dir() -> AppResult<PathBuf> {
@@ -489,21 +519,30 @@ fn remove_runtime_record(app_id: &str) -> AppResult<()> {
     Ok(())
 }
 
+fn runtime_command(program: &Path, command: &[String]) -> Vec<String> {
+    std::iter::once(program.to_string_lossy().into_owned())
+        .chain(command[1..].iter().cloned())
+        .collect()
+}
+
 fn command_matches(expected: &[String], actual: &str) -> bool {
-    let mut actual_parts = actual.split_whitespace();
-    let Some(actual_program) = actual_parts.next() else {
+    let Some(program) = expected.first() else {
         return false;
     };
-    let Some(expected_program) = expected.first() else {
-        return false;
-    };
-    if Path::new(actual_program).file_name() != Path::new(expected_program).file_name() {
-        return false;
+    let actual = actual.trim();
+    if actual == program {
+        return expected.len() == 1;
     }
-    let actual_arguments: Vec<&str> = actual_parts.collect();
+    let Some(arguments) = actual
+        .strip_prefix(program)
+        .and_then(|value| value.strip_prefix(' '))
+    else {
+        return false;
+    };
     expected[1..]
         .iter()
-        .all(|argument| actual_arguments.iter().any(|value| value == argument))
+        .map(String::as_str)
+        .eq(arguments.split_whitespace())
 }
 
 fn process_started_at(pid: u32) -> Option<String> {
@@ -528,8 +567,41 @@ fn process_matches_record(record: &RuntimeRecord) -> bool {
     };
     let command = String::from_utf8_lossy(&output.stdout);
     process_started_at(record.pid).as_deref() == Some(record.process_started_at.as_str())
+        && process_group_matches_record(record)
         && command_matches(&record.command, command.trim())
         && process_working_directory_matches(record.pid, &record.working_directory)
+}
+
+fn process_group_matches_record(record: &RuntimeRecord) -> bool {
+    let Some(expected) = record.process_group else {
+        return false;
+    };
+    #[cfg(unix)]
+    {
+        let actual = unsafe { libc::getpgid(record.pid as i32) };
+        return actual >= 0 && actual as u32 == expected;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = expected;
+        false
+    }
+}
+
+fn runtime_record_matches_app(record: &RuntimeRecord, app: &OfficialApp, source: &Path) -> bool {
+    let Ok((program, _)) = command_for_official_app(app, source) else {
+        return false;
+    };
+    let Ok(working_directory) = canonical_working_directory(source, &app.process.working_directory)
+    else {
+        return false;
+    };
+    record.app_id == app.id
+        && record.process_group == Some(record.pid)
+        && record.version == app.version
+        && record.command == runtime_command(&program, &app.process.command)
+        && record.ready_url == app.process.ready_url
+        && record.working_directory == working_directory.to_string_lossy()
 }
 
 fn process_working_directory_matches(pid: u32, expected: &str) -> bool {
@@ -544,39 +616,6 @@ fn process_working_directory_matches(pid: u32, expected: &str) -> bool {
         .lines()
         .filter_map(|line| line.strip_prefix('n'))
         .any(|working_directory| working_directory == expected)
-}
-
-/// GUI 启动时通常不会加载 shell 配置，补查用户本地 bin 目录。
-pub(crate) fn resolve_program(program: &str) -> PathBuf {
-    if program.contains('/') {
-        return PathBuf::from(program);
-    }
-
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(program);
-        if candidate.is_file() {
-            return candidate;
-        }
-    }
-
-    if let Some(home) = dirs::home_dir() {
-        for directory in [".local/bin", ".npm-global/bin", ".bun/bin"] {
-            let candidate = home.join(directory).join(program);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-    }
-
-    for directory in ["/opt/homebrew/bin", "/usr/local/bin"] {
-        let candidate = Path::new(directory).join(program);
-        if candidate.is_file() {
-            return candidate;
-        }
-    }
-
-    PathBuf::from(program)
 }
 
 async fn wait_until_ready(url: &str) -> AppResult<()> {
@@ -612,28 +651,59 @@ async fn is_ready(url: &str) -> bool {
     matches!(client.get(url).send().await, Ok(response) if response.status().is_success())
 }
 
-/// 仅接管工作目录属于当前官方应用且健康检查已通过的遗留监听进程。
-async fn adoptable_process(source: &Path, ready_url: &str) -> Option<u32> {
-    let port = reqwest::Url::parse(ready_url).ok()?.port()?;
-    let output = Command::new("lsof")
-        .args(["-nP", "-t", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
-        .output()
-        .await
-        .ok()?;
-    let pid = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .find_map(|line| line.trim().parse::<u32>().ok())?;
-    let cwd = Command::new("lsof")
-        .args(["-nP", "-p", &pid.to_string(), "-a", "-d", "cwd", "-Fn"])
-        .output()
-        .await
-        .ok()?;
-    let cwd_output = String::from_utf8_lossy(&cwd.stdout);
-    let cwd = cwd_output.lines().find_map(|line| line.strip_prefix('n'))?;
-    if !Path::new(cwd).starts_with(source) || !is_ready(ready_url).await {
-        return None;
+async fn terminate_child_process_group(child: &mut tokio::process::Child, pid: u32) {
+    terminate_process_group(pid as i32).await;
+    let _ = child.wait().await;
+}
+
+async fn terminate_process(pid: i32) {
+    if pid <= 0 {
+        return;
     }
-    Some(pid)
+    unsafe {
+        libc::kill(pid, libc::SIGTERM);
+    }
+    for _ in 0..50 {
+        if !process_alive(pid) {
+            return;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    unsafe {
+        libc::kill(pid, libc::SIGKILL);
+    }
+}
+
+fn process_alive(pid: i32) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+async fn terminate_process_group(process_group: i32) {
+    if process_group <= 0 {
+        return;
+    }
+    unsafe {
+        libc::kill(-process_group, libc::SIGTERM);
+    }
+    for _ in 0..50 {
+        if !process_group_alive(process_group) {
+            return;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    unsafe {
+        libc::kill(-process_group, libc::SIGKILL);
+    }
+    for _ in 0..50 {
+        if !process_group_alive(process_group) {
+            return;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+}
+
+fn process_group_alive(process_group: i32) -> bool {
+    unsafe { libc::kill(-process_group, 0) == 0 }
 }
 
 fn ensure_ready_port_available(url: &str) -> AppResult<()> {
@@ -687,19 +757,15 @@ pub async fn start_configured_official_apps(manager: &ProcessManager) {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_official_source, command_for_official_app, command_matches,
-        ensure_ready_port_available, read_runtime_record_at, resolve_program,
-        write_runtime_record_at, ProcessManager, ProcessStatus, RuntimeRecord,
+        canonical_working_directory, check_official_source, command_for_official_app,
+        command_matches, ensure_ready_port_available, read_runtime_record_at,
+        runtime_record_matches_app, write_runtime_record_at, ProcessManager, ProcessStatus,
+        RuntimeRecord,
     };
     use crate::official_market::{OfficialApp, OfficialArtifact, OfficialProcess};
     use std::sync::Mutex;
 
     static NETWORK_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    #[test]
-    fn 解析系统程序路径() {
-        assert!(resolve_program("git").is_file());
-    }
 
     #[tokio::test]
     async fn 没有子进程时停止全部不会失败() {
@@ -717,17 +783,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn staging_版本通过健康检查后会退出() {
+    async fn staging_版本通过健康检查后会清理整个进程组() {
         let _guard = NETWORK_TEST_LOCK.lock().unwrap();
         let directory =
             std::env::temp_dir().join(format!("aidea-staging-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
-        let script = directory.join("server.py");
+        let script = directory.join("demo-server");
         std::fs::write(
             &script,
-            "from http.server import BaseHTTPRequestHandler, HTTPServer\nimport sys\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200 if self.path == '/health' else 404)\n        self.end_headers()\n    def log_message(self, *_): pass\nHTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()\n",
+            "#!/usr/bin/python3\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nimport os, sys, time\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200 if self.path == '/health' else 404)\n        self.end_headers()\n    def log_message(self, *_): pass\nif os.fork() == 0:\n    HTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()\nwhile True:\n    time.sleep(1)\n",
         )
         .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
@@ -739,30 +810,26 @@ mod tests {
             version: "0.1.0".into(),
             icon: "Package".into(),
             repository: "https://example.com/demo.git".into(),
-            revision: "a".repeat(40),
-            runtime: "python".into(),
-            install: vec![],
-            artifact: None,
+            artifact: OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
             process: OfficialProcess {
-                command: vec![
-                    "python3".into(),
-                    script.to_string_lossy().into_owned(),
-                    port.to_string(),
-                ],
+                command: vec!["demo-server".into(), port.to_string()],
                 working_directory: ".".into(),
                 ready_url: format!("http://127.0.0.1:{port}/health"),
             },
-            update_notes: String::new(),
             update_available: false,
         };
 
         check_official_source(&app, &directory).await.unwrap();
-        assert!(ensure_ready_port_available(&app.process.ready_url).is_ok());
+        let port_released = ensure_ready_port_available(&app.process.ready_url).is_ok();
         std::fs::remove_dir_all(&directory).unwrap();
+        assert!(port_released);
     }
 
     #[test]
-    fn binary_命令使用包根目录前置的_path() {
+    fn 官方应用只执行包根目录中的裸二进制() {
         let directory = std::env::temp_dir().join(format!("aidea-binary-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let command = format!("test-server-{}", uuid::Uuid::new_v4());
@@ -774,30 +841,130 @@ mod tests {
             version: "0.1.0".into(),
             icon: "Package".into(),
             repository: "https://example.com/demo.git".into(),
-            revision: "a".repeat(40),
-            runtime: "binary".into(),
-            install: vec![],
-            artifact: Some(OfficialArtifact {
+            artifact: OfficialArtifact {
                 url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
                 sha256: "a".repeat(64),
-            }),
+            },
             process: OfficialProcess {
                 command: vec![command.clone()],
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            update_notes: String::new(),
             update_available: false,
         };
 
+        assert!(command_for_official_app(&app, &directory).is_err());
+        std::fs::write(directory.join(&command), b"not a Mach-O binary").unwrap();
+        assert!(command_for_official_app(&app, &directory).is_err());
+        let mut arm64 = Vec::new();
+        arm64.extend_from_slice(&0xfeed_facfu32.to_le_bytes());
+        arm64.extend_from_slice(&0x0100_000cu32.to_le_bytes());
+        arm64.extend_from_slice(&0u32.to_le_bytes());
+        std::fs::write(directory.join(&command), arm64).unwrap();
         let (program, path) = command_for_official_app(&app, &directory).unwrap();
 
         std::fs::remove_dir_all(&directory).unwrap();
-        assert_eq!(program, std::path::PathBuf::from(command));
+        assert_eq!(program, directory.join(command));
         assert_eq!(
             std::env::split_paths(&path.unwrap()).next(),
             Some(directory)
         );
+    }
+
+    #[test]
+    fn 遗留进程必须匹配当前_arm64应用定义() {
+        let directory = std::env::temp_dir().join(format!("aidea-binary-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let app = OfficialApp {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "0.1.0".into(),
+            icon: "Package".into(),
+            repository: "https://example.com/demo.git".into(),
+            artifact: OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
+            process: OfficialProcess {
+                command: vec!["demo".into()],
+                working_directory: ".".into(),
+                ready_url: "http://127.0.0.1:43120/health".into(),
+            },
+            update_available: false,
+        };
+        let record = RuntimeRecord {
+            app_id: app.id.clone(),
+            pid: 1234,
+            process_group: None,
+            started_at: 1,
+            process_started_at: String::new(),
+            command: app.process.command.clone(),
+            working_directory: directory
+                .join(&app.process.working_directory)
+                .to_string_lossy()
+                .into_owned(),
+            ready_url: app.process.ready_url.clone(),
+            log_path: String::new(),
+            version: app.version.clone(),
+            instance_id: String::new(),
+        };
+
+        std::fs::write(directory.join("demo"), b"#!/bin/sh\n").unwrap();
+        assert!(!runtime_record_matches_app(&record, &app, &directory));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn 点号工作目录的运行记录使用规范路径匹配() {
+        let directory =
+            std::env::temp_dir().join(format!("aidea-runtime-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let program = directory.join("demo");
+        let mut arm64 = Vec::new();
+        arm64.extend_from_slice(&0xfeed_facfu32.to_le_bytes());
+        arm64.extend_from_slice(&0x0100_000cu32.to_le_bytes());
+        arm64.extend_from_slice(&0u32.to_le_bytes());
+        std::fs::write(&program, arm64).unwrap();
+        let app = OfficialApp {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "0.1.0".into(),
+            icon: "Package".into(),
+            repository: "https://example.com/demo.git".into(),
+            artifact: OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v0.1.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
+            process: OfficialProcess {
+                command: vec!["demo".into()],
+                working_directory: ".".into(),
+                ready_url: "http://127.0.0.1:43120/health".into(),
+            },
+            update_available: false,
+        };
+        let record = RuntimeRecord {
+            app_id: app.id.clone(),
+            pid: 1234,
+            process_group: Some(1234),
+            started_at: 1,
+            process_started_at: String::new(),
+            command: super::runtime_command(&program, &app.process.command),
+            working_directory: canonical_working_directory(&directory, ".")
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            ready_url: app.process.ready_url.clone(),
+            log_path: String::new(),
+            version: app.version.clone(),
+            instance_id: String::new(),
+        };
+
+        assert!(runtime_record_matches_app(&record, &app, &directory));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -819,6 +986,7 @@ mod tests {
         let record = RuntimeRecord {
             app_id: "demo".into(),
             pid: 1234,
+            process_group: None,
             started_at: 1,
             process_started_at: String::new(),
             command: vec!["node".into(), "server.js".into()],
@@ -838,14 +1006,42 @@ mod tests {
     }
 
     #[test]
-    fn 命令校验要求程序和参数都匹配() {
+    fn 命令校验要求完整路径与有序参数完全匹配() {
         assert!(command_matches(
-            &["node".into(), "server.js".into()],
-            "/usr/local/bin/node server.js --host 127.0.0.1"
+            &[
+                "/apps/demo/source/demo".into(),
+                "--port".into(),
+                "43120".into(),
+            ],
+            "/apps/demo/source/demo --port 43120"
         ));
         assert!(!command_matches(
-            &["node".into(), "server.js".into()],
-            "/usr/local/bin/node other.js"
+            &[
+                "/apps/demo/source/demo".into(),
+                "--port".into(),
+                "43120".into(),
+            ],
+            "/other/demo --port 43120"
+        ));
+        assert!(!command_matches(
+            &[
+                "/apps/demo/source/demo".into(),
+                "--port".into(),
+                "43120".into(),
+            ],
+            "/apps/demo/source/demo --port 43120 --debug"
+        ));
+        assert!(!command_matches(
+            &[
+                "/apps/demo/source/demo".into(),
+                "--port".into(),
+                "43120".into(),
+            ],
+            "/apps/demo/source/demo 43120 --port"
+        ));
+        assert!(command_matches(
+            &["/Applications/Application Support/demo".into()],
+            "/Applications/Application Support/demo"
         ));
     }
 
@@ -858,6 +1054,7 @@ mod tests {
             &RuntimeRecord {
                 app_id: "demo".into(),
                 pid: u32::MAX,
+                process_group: None,
                 started_at: 1,
                 process_started_at: String::new(),
                 command: vec!["node".into(), "server.js".into()],
@@ -889,6 +1086,7 @@ mod tests {
             &RuntimeRecord {
                 app_id: "demo".into(),
                 pid: std::process::id(),
+                process_group: None,
                 started_at: 1,
                 process_started_at: String::new(),
                 command: vec!["test".into()],

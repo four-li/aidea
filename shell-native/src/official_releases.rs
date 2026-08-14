@@ -22,6 +22,16 @@ pub struct OfficialRelease {
 pub fn api_url_for(repository: &str) -> AppResult<(ReleaseProvider, String)> {
     let parsed = reqwest::Url::parse(repository)
         .map_err(|error| AppError::Config(format!("官方应用仓库地址无效: {error}")))?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(AppError::Config(
+            "官方应用仓库必须是无凭据的 HTTP 或 HTTPS 地址".into(),
+        ));
+    }
     let host = parsed
         .host_str()
         .ok_or_else(|| AppError::Config("官方应用仓库地址缺少域名".into()))?;
@@ -30,7 +40,15 @@ pub fn api_url_for(repository: &str) -> AppResult<(ReleaseProvider, String)> {
         .split('/')
         .filter(|segment| !segment.is_empty())
         .collect();
-    if segments.len() < 2 {
+    let valid_segments = match host {
+        "gitee.com" | "github.com" => segments.len() == 2,
+        _ => segments.len() >= 2,
+    };
+    if !valid_segments
+        || segments
+            .iter()
+            .any(|segment| *segment == "." || *segment == "..")
+    {
         return Err(AppError::Config("官方应用仓库路径无效".into()));
     }
 
@@ -208,16 +226,29 @@ mod tests {
             )
         );
         assert_eq!(
-            api_url_for("http://dev03.ushopal.com:10083/ChenChuanFeng/atlas").unwrap(),
-            (ReleaseProvider::GitLab, "http://dev03.ushopal.com:10083/api/v4/projects/ChenChuanFeng%2Fatlas/releases?per_page=20&page=1".into())
+            api_url_for("https://gitlab.com/ChenChuanFeng/atlas").unwrap(),
+            (ReleaseProvider::GitLab, "https://gitlab.com/api/v4/projects/ChenChuanFeng%2Fatlas/releases?per_page=20&page=1".into())
         );
+        assert_eq!(
+            api_url_for("http://gitlab.intra.example/ChenChuanFeng/atlas.git").unwrap(),
+            (
+                ReleaseProvider::GitLab,
+                "http://gitlab.intra.example/api/v4/projects/ChenChuanFeng%2Fatlas/releases?per_page=20&page=1".into()
+            )
+        );
+    }
+
+    #[test]
+    fn release_api拒绝携带凭据或无效项目路径的仓库地址() {
+        assert!(api_url_for("https://token@example.com/group/demo.git").is_err());
+        assert!(api_url_for("https://gitlab.intra.example/demo.git").is_err());
     }
 
     #[test]
     fn 统一三个平台的_release字段() {
         let release = map_release(
             ReleaseProvider::GitLab,
-            "http://gitlab.example/ChenChuanFeng/atlas",
+            "https://gitlab.com/ChenChuanFeng/atlas",
             json!({
                 "tag_name": "v1.2.0",
                 "name": "版本 1.2.0",
@@ -234,7 +265,7 @@ mod tests {
         assert!(!release.prerelease);
         assert_eq!(
             release.url,
-            "http://gitlab.example/ChenChuanFeng/atlas/-/releases/v1.2.0"
+            "https://gitlab.com/ChenChuanFeng/atlas/-/releases/v1.2.0"
         );
     }
 }

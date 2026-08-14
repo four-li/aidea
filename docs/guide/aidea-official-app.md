@@ -1,10 +1,11 @@
 # aIdea 官方应用规范
 
-本文档定义官方应用的市场收录、`aidea.yaml`、安装更新和运行契约。它只适用于独立维护的官方应用，不适用于内置应用。
+本文定义独立维护的 aIdea 官方应用的市场、安装和运行契约；内置应用不适用。
 
-## 定义与市场收录
+## 市场
 
-官方应用进入市场时，完整定义固定在应用仓库根目录 `aidea.yaml`。开搞内置的 `market-source.yaml` 指向官方市场 Git 仓库；该仓库中的 `official/<app-id>.yaml` 只收录仓库地址和启用状态：
+完整定义位于应用仓库根目录 `aidea.yaml`。官方市场仓库的
+`official/<app-id>.yaml` 只决定应用是否可见及其仓库地址：
 
 ```yaml
 schema_version: 1
@@ -12,139 +13,113 @@ repository: https://gitee.com/aidea-org/example.git
 enabled: true
 ```
 
-当前官方仓库位置如下。本机路径是开发约定，不是运行时契约；开搞运行时只依赖远程地址和刷新后的缓存。
+市场链路固定为 `market-source.yaml` -> 市场收录文件 -> 应用仓库
+`aidea.yaml`。刷新市场时，aIdea 通过 Gitee、GitHub 或 GitLab（包括自建实例）的 API/Raw 地址读取
+市场目录与每个已启用应用默认分支的 manifest，绝不 clone 应用仓库；自建 GitLab 使用其仓库的 HTTP 或 HTTPS 地址。
+全部成功后才整体替换本地缓存。
+失败时继续使用最近一次成功缓存。
 
-| 内容 | 远程地址 | 本机开发路径 |
-| --- | --- | --- |
-| 官方市场收录 | `https://gitee.com/aidea-org/aidea-market.git` | `/Users/fourli/Desktop/app/aidea-plugins/aidea-market/` |
-| 官方应用 | `https://gitee.com/aidea-org/<app-id>.git` | `/Users/fourli/Desktop/app/aidea-plugins/<app-id>/` |
+新增应用、变更仓库地址或启用状态时才修改市场仓库。日常版本发布不修改市场收录。
 
-市场链路固定为：开搞的 `market-source.yaml` -> 市场仓库 `official/<app-id>.yaml` -> 应用仓库 `aidea.yaml`。市场收录只决定哪些官方应用可见及其仓库地址；应用定义决定展示信息、固定源码版本或预编译包、架构和运行命令。
+## Manifest
 
-市场刷新时，开搞先拉取市场仓库的 `official/` 目录，再用当前用户的 Git 凭据和 SSH 配置读取应用仓库默认分支的 `aidea.yaml`。开搞不保存 Git 密码、Token 或 SSH 私钥。只有市场目录和全部已启用应用定义都读取成功时，才整体替换 `runtime/market-cache/`；刷新失败继续展示最近一次成功缓存和错误，不影响壳或其他应用。
-
-新增官方应用时，先发布应用仓库，再新增或修改市场仓库中的收录文件并发布市场仓库。用户刷新市场即可获取这些变化，无需发布新版开搞。只有 `market-source.yaml` 的市场入口或协议变更时才需要发布开搞。
-
-## `aidea.yaml`
-
-以下是**仅供本地开发验证**的源码安装格式，不能作为新的正式市场应用定义。当前 Node、Python 等系统运行时没有安装前环境检查，正式发布请使用后面的 `runtime: binary` 示例：
+官方应用只支持 macOS Apple Silicon（arm64）的自包含 binary 包。用户不需要安装
+Rust、Cargo、Node、npm、Python 或 SQLite；应用需要的运行时和依赖必须包含在包中。
+源码调试直接在应用仓库进行，不是市场安装方式。
 
 ```yaml
 schema_version: 1
-id: stock-assistant
-name: 股票助手
-description: 本地股票自选列表
-category: 金融
-version: 0.1.0
-icon: TrendingUp
-revision: d351c25ac9a970abb1e13016dcf26128fa8e200b
-min_aidea_version: 0.1.4
-runtime: node
-install:
-  - [npm, ci]
-process:
-  command: [node, node_modules/vite/bin/vite.js, --host, 127.0.0.1, --port, '43120']
-  working_directory: .
-  ready_url: http://127.0.0.1:43120/health
-update_notes: 首期版本。
-```
-
-预编译 `binary` v1 已支持 macOS Apple Silicon（arm64），不支持 Intel 包、架构选择或回退。它固定使用单个 Gitee Release `.tar.gz` 附件和 SHA-256：
-
-```yaml
-runtime: binary
+id: mail-center
+name: 邮件中心
+description: 本地多账户 IMAP 邮件管理
+category: 效率
+version: 0.2.0
+icon: Mail
 artifact:
-  url: https://gitee.com/aidea-org/mail-center/releases/download/v0.1.6/mail-center-0.1.6-darwin-arm64.tar.gz
-  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  url: https://gitee.com/aidea-org/mail-manager/releases/download/v0.2.0/mail-center-0.2.0-darwin-arm64.tar.gz
+  sha256: 359e4b637e76b4b21b9fd5c112911e4c21918a9818913f8dbec2beda487570b9
 process:
   command: [mail-center]
   working_directory: .
   ready_url: http://127.0.0.1:43130/health
 ```
 
-`artifact` 只能含 `url` 和 `sha256`，不能与 `install` 同时声明。URL 必须是 `https://gitee.com/.../releases/download/...` 下的 `.tar.gz`；`sha256` 必须是 64 位十六进制。包顶层必须只有一个目录，包内必须包含启动二进制和所需资源；aIdea 拒绝绝对路径、`..`、符号链接和硬链接。解压后的包根内容装入既有 `source/`，不会新建 `app/` 或 `payload/` 目录。
+- 字段只能是上述定义中的字段；`revision`、`runtime`、`install`、`update_notes`、
+  `min_aidea_version` 和 `settings` 都会被拒绝。
+- `id` 是全局唯一 kebab-case，安装后不能更名。
+- `version` 必须是三段单数字 `X.Y.Z`。补丁位到 `9` 后进位，例如
+  `0.1.9 -> 0.2.0`；不使用 `0.1.10`。用户可见功能、界面、交互、设置、数据格式或
+  业务行为变化时必须升版本。
+- `artifact.url` 必须是 Gitee、GitHub 或 GitLab（包括自建实例）同仓库 Release 的 HTTP 或 HTTPS `.tar.gz` 附件地址，且与市场收录的
+  `repository` 是同一协议、同一 host/port、同一仓库，Release tag 必须为 `v<version>`；`artifact.sha256` 必须是 64 位小写十六进制值。
+- `process.command` 是参数数组，`command[0]` 必须是包根目录中实际存在的单架构 arm64 Mach-O 裸二进制文件名，禁止 shell、脚本、universal binary 和路径；
+  aIdea 不会从用户本机 `PATH` 解析 Node、Python 或其他运行时。
+  `working_directory` 必须在安装目录内，`ready_url` 必须是
+  `http://127.0.0.1:<port>/health`。
+- aIdea 直接执行解压后包根中的 `command[0]`，并将包根作为子进程唯一的 `PATH`；不支持 `process.path`、
+  多架构选择或 Intel 回退。
 
-- `schema_version` 当前固定为 `1`。
-- `id` 使用全局唯一的 kebab-case，安装后不可更名。
-- `name`、`description`、`category`、`icon` 是市场展示信息。
-- `version` 与 `min_aidea_version` 都使用三段式语义版本；`aidea.yaml` 建立后，只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。默认使用 patch 版本递增，只有兼容性范围变化时才升 minor 或 major。定义建立前，应用自己的发布版本仍必须与实际行为一致。
-- `revision` 是本次源码的完整 40 位十六进制 commit SHA；不得使用分支名、tag 或短 SHA。
-- 正式市场应用的 `runtime` 必须是 `binary`。`node`、`python`、`system` 等源码安装仍依赖用户系统运行时；虽然安装器保留相关实现，但 Python、Node 的环境检查尚未实现，只能用于本地开发验证，不能作为新的正式发布路径。`binary` 使用上述单个 arm64 预编译包，包内必须带齐运行时和依赖。
-- `install` 和 `process.command` 都是程序及参数数组，不得使用 shell 字符串、`sh -c` 或 `bash -c`。
-- `process.working_directory` 默认 `.`，且必须位于安装目录内；`ready_url` 必须是 `http://127.0.0.1:<port>`。
-- binary 的 `process.command[0]` 可以是裸命令，例如 `mail-center`。aIdea 会将解压后包根目录置于该子进程 `PATH` 的最前面，供正式启动和 staging 健康检查共同使用；不支持 `process.path` 或多目录配置。
-- 官方应用不得在 `aidea.yaml` 声明 `settings` 或 `settings.reset_command`。账户、同步周期和其他业务配置由应用自己的主页面提供入口、校验和保存；不要把业务字段塞进 manifest，也不要期待 aIdea 提供统一表单。
-
-## 发布链路
-
-正式 binary 发布固定为 `C1 源码 -> Release 附件 -> C2 manifest -> C3 市场收录`：
-
-| 阶段 | 内容 | 必须成立的关系 |
-| --- | --- | --- |
-| C1 | 应用源码提交 | 已推送；不含本次 `aidea.yaml`；完整 SHA 保存为 C1。 |
-| Release | `vX.Y.Z` tag 和唯一 arm64 附件 | tag 解引用、Release target 和附件构建来源均为 C1。 |
-| C2 | 应用仓库根目录 `aidea.yaml` | 已推送默认分支；`revision` 等于 C1，不指向 C2。 |
-| C3 | 市场仓库 `official/<app-id>.yaml` | 只含 `schema_version`、`repository`、`enabled`；已有内容正确时只验证，不创建空提交。 |
-
-不要让配置文件指向包含自身的同一提交，这会形成无法验证的自引用。应用仓库的 tag、Release、附件上传和市场收录使用 `$aidea-app-release`；用户一次明确授权发布覆盖该次链路内的必要提交、推送和远端发布操作。
-
-## 安装、更新与网络
+包内所有条目必须共享同一个顶层路径分量，且不得有顶层直接文件、绝对路径、`..`、符号链接或硬链接。
+不要求 tar 文件额外包含该目录的显式条目。例如：
 
 ```text
-~/Library/Application Support/aIdea/apps/installed/<app-id>/
-├── install-state.yaml
-├── source/
-└── staging/
+mail-center-0.2.0-darwin-arm64/
+├── mail-center
+└── public/
 ```
 
-安装和更新都先在临时 staging 目录获取固定 revision 或预编译包、执行安装/解压步骤，并通过 `/health` 健康检查后再替换当前版本。binary 下载完成后必须先校验 SHA-256；包校验、解压或 staging 检查失败时清理 staging 并保留旧版本。staging 检查使用临时数据和日志目录，不触碰正式业务数据。运行中的应用更新后若新版本不能启动，aIdea 恢复旧 `source/`、旧安装记录和原运行状态。`install-state.yaml` 记录安装版本、来源、固定 revision 或产物校验信息及定义快照，只用于离线恢复已安装应用，不能替代市场刷新。
+## 安装与运行
 
-安装日志中的 `git checkout <完整 SHA>` 会进入 detached HEAD，这是按固定源码版本安装的正常状态，不需要 `git switch`。打包版 aIdea 不继承 Finder 启动时的终端 `PATH`；安装器会自动查找系统目录和用户级 `~/.local/bin`、`~/.npm-global/bin`、`~/.bun/bin` 中的运行时命令。
+aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临时数据和日志目录执行
+`/health` 检查。检查成功才替换已安装的 `source/`。下载、校验、解压或健康检查失败时
+清理 staging 并保留旧版本；运行中的应用更新失败时恢复旧 `source/`、安装记录和运行状态。
 
-官方应用服务只监听 `127.0.0.1`，WebView 只打开本地地址，健康检查成功前不展示 WebView。工作目录不得借相对路径逃出安装目录。aIdea 只接管工作目录位于该应用安装 `source/` 内、且 `ready_url` 健康检查成功的遗留监听进程；开发目录手动启动的服务不接管。开发时若端口被占用，关闭手动服务后在 aIdea 中重试启动已安装版本，避免停止操作误杀调试进程。
+安装记录只保存 `id`、`version`、`status` 与严格的 manifest 快照，用于离线启动、卸载和排查；它不是市场缓存。
+官方应用服务只监听 `127.0.0.1`，且必须提供快速的 `GET /health` 响应。aIdea 对单次请求最多等待
+1 秒，并在启动后的 15 秒内每 100ms 重试；任意 HTTP 2xx 响应即代表服务可用，不校验响应体或
+`Content-Type`。健康检查不检查邮件服务器等外部依赖。
 
-应用主页面会收到 aIdea 追加的 `aidea_theme=light|dark` 查询参数。页面优先使用该参数适配主题；独立运行时没有该参数，则使用系统的 `prefers-color-scheme`。
-
-应用主页面加载后按 [App Bridge 契约](aidea-app-bridge.md) 发送 `ready`，运行时主题通过 `theme` 消息同步。跨源 iframe 中不能读取 `window.parent.origin`；应用必须从 `document.referrer` 获取并精确校验壳 origin，只允许 `tauri://localhost` 和 `http://localhost:5173`，拿不到合法来源时作为独立页面运行、不握手。官方应用需要的通知和应用内跳转也通过 App Bridge 完成，不得依赖 Tauri IPC。搜索属于应用页面自身能力，遵守 [应用内搜索规范](aidea-search.md)。
-
-官方应用必须提供 `GET /health`：快速返回 `200` JSON，例如 `{"status":"ok"}`；只表示服务可用，不检查外部依赖。
-
-## 应用设置、数据与凭据
-
-aIdea 的应用管理只保存通用运行偏好：是否显示在主页，以及是否随 aIdea 启动。官方应用的业务配置（例如邮件账户、同步周期和服务商选项）由应用自己的主页面负责展示、校验和保存；不要把业务字段塞进 aIdea manifest，也不要期待 aIdea 提供统一表单。
-
-启动时 aIdea 注入以下环境变量，官方应用直接使用它们，不需要猜测目录：
+启动时 aIdea 注入：
 
 | 变量 | 用途 |
 | --- | --- |
-| `AIDEA_APP_ID` | 当前应用 ID，只用于标识应用。 |
-| `AIDEA_APP_DATA_DIR` | 当前应用的数据目录；数据库固定为其中的 `app.db`。 |
-| `AIDEA_APP_LOG_DIR` | 当前应用的日志目录。 |
+| `AIDEA_APP_ID` | 当前应用 ID。 |
+| `AIDEA_APP_DATA_DIR` | 应用数据目录；数据库固定为其中的 `app.db`。 |
+| `AIDEA_APP_LOG_DIR` | 应用日志目录。 |
+| `PATH` | 解压包根目录。 |
 
-业务数据和配置统一放在 `AIDEA_APP_DATA_DIR/app.db`，日志写入 `AIDEA_APP_LOG_DIR`，不得写入源码目录。密码、授权码等敏感值也属于应用自己的数据，但不得写入日志。SQLite、迁移和备份遵守 [存储规范](aidea-storage.md)。
+子进程环境会被清空，应用不得依赖上表以外的环境变量，包括 `HOME`、`LANG` 和 `TMPDIR`。临时文件、
+配置和缓存都必须由应用在已注入的数据或日志目录中管理。应用不得读取 aIdea 或其他应用数据库，
+也不得在日志中记录密码、授权码、邮件正文或通知正文。
 
-官方应用不读取 aIdea 壳数据库，也不依赖平台凭据服务。应用直接读写自己的 `app.db`。
+应用及其派生子进程必须处理 `SIGTERM`，在收到信号后及时完成必要持久化并退出。停止时 aIdea 向整个
+应用进程组发送 `SIGTERM`；5 秒内仍未退出时发送 `SIGKILL`，之后不保证继续执行清理逻辑。
 
-## Release 历史
+## 壳通信与设置
 
-aIdea 应用管理支持从官方应用仓库读取最近 20 条公开 Release，当前支持 Gitee、GitHub 和 GitLab（包括自部署实例）。壳根据 `repository` 的域名选择对应 API，并将版本号、标题、说明、发布时间、预发布状态和 Release 页面地址转换为统一结构；前端不直接请求外网。
+官方应用不得使用 Tauri IPC、`@tauri-apps/api`、`window.__TAURI__`、`AIDEA_COMMAND`、
+aIdea Rust 命令或壳前端封装。壳与官方应用的运行期通信只使用
+[App Bridge](aidea-app-bridge.md) 的 `postMessage` 契约。
 
-GitLab 使用实例自身的 `/api/v4/projects/<url-encoded-project>/releases` 接口，因此 `http://dev03.ushopal.com:10083/ChenChuanFeng/atlas` 这类地址可以直接工作。首期只发送匿名请求，不保存或发送 Token；私有项目若未对匿名用户开放 Release，会显示请求失败并保留打开远程仓库的入口。HTTP 实例不用于传输认证 Token，后续需要认证时应先提供 HTTPS。
+aIdea 首次加载时追加 `aidea_theme=light|dark`，页面 `ready` 后由 Bridge 的 `theme` 保持同步。
+搜索是应用自身能力，不经 Bridge。账户、同步和其他业务设置由应用主页面进入、校验并保存；
+aIdea 应用管理只管理显示与启动偏好，不提供官方应用业务设置页。
 
-## 邮件官方应用
+## 发布
 
-邮件官方应用固定使用应用 ID `mail-center` 和自己的 `AIDEA_APP_DATA_DIR/app.db`。它是独立应用，不迁移、不读取、不兼容旧内置邮件的账户、索引、凭据或数据库；aIdea 壳也不提供旧内置邮件的兼容层。
+调用 `$aidea-app-release` 即授权一次完整发布：预检版本四件套和远端冲突、自动递增版本、测试、构建包、
+校验 arm64 包结构并计算 SHA-256、写入 manifest、创建并 push 唯一发布提交、创建 tag 与对应平台 Release、
+上传附件、下载附件复验 SHA-256。流程正常时不重复请求授权；沙箱、网络或 Git 写入受限时应直接申请提升权限。
 
-UI 遵守 [UI 规范](aidea-ui.md)，并同时验证浅色和深色主题。邮件正文、Markdown、富文本和第三方 HTML 必须独立验证可读性。
+更新日志唯一来自应用仓库 Release 正文。Skill 根据本次改动生成简短更新摘要，不在 manifest
+维护第二份更新说明。tag 或 Release 冲突、远端结果不明、测试失败、疑似密钥或无法确认改动归属
+时停止并报告，绝不覆盖已有远端资源。
 
-## 发布前检查
+首次发布、仓库地址变化或启用状态变化时，Skill 才读取市场收录参考并更新市场仓库；正常发布不
+触碰市场仓库。
 
-```bash
-npm test
-npm run build
-git diff --check
-git rev-parse --verify <C1>^{commit}
-git show origin/<default-branch>:aidea.yaml
-```
+## 邮件中心
 
-同时确认：默认分支 `aidea.yaml` 的 `revision` 等于 C1、版本符合语义版本、命令不越出安装目录、健康检查是本地地址、日志不含敏感值。应用自身提交、推送和发布由用户明确授权；aIdea 的发布只使用 `$aidea-release`。
+邮件中心应用 ID 固定为 `mail-center`，数据库固定为
+`AIDEA_APP_DATA_DIR/app.db`。它不迁移、不读取、不兼容旧内置邮件的账户、索引、凭据或数据库；
+aIdea 也不提供旧邮件兼容层。邮件正文、富文本和第三方 HTML 必须在浅色与深色主题中独立验收。

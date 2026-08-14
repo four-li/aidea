@@ -168,6 +168,7 @@ function App() {
         open={showSettings}
         onOpenChange={setShowSettings}
         onAppsChanged={refreshApps}
+        onSelectApp={selectApp}
         states={states}
         onRefreshStates={refresh}
         appOrder={appOrder}

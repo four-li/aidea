@@ -5,14 +5,11 @@ description: aIdea 官方应用接入 App Bridge 的最小可运行范本
 category: 效率
 version: 0.1.0
 icon: Mail
-revision: 0000000000000000000000000000000000000000
-min_aidea_version: 0.1.9
-# 本文件只供本地调试 App Bridge；正式市场应用必须改用 runtime: binary。
-runtime: node
-install:
-  - [npm, install]
+artifact:
+  # 结构范例；真实发布时替换为同仓库 Gitee、GitHub 或 GitLab Release 附件和 SHA-256。
+  url: https://gitee.com/aidea-org/reference-app/releases/download/v0.1.0/reference-app-0.1.0-darwin-arm64.tar.gz
+  sha256: 0000000000000000000000000000000000000000000000000000000000000000
 process:
-  command: [node, node_modules/vite/bin/vite.js, --host, 127.0.0.1, --port, '43120']
+  command: [reference-app]
   working_directory: .
   ready_url: http://127.0.0.1:43120/health
-update_notes: 范本版本，仅用于演示 App Bridge 接入（theme / notify / navigate）。

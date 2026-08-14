@@ -38,6 +38,7 @@ describe('设置关于页', () => {
         open
         onOpenChange={vi.fn()}
         onAppsChanged={vi.fn()}
+        onSelectApp={vi.fn()}
         onShowLog={vi.fn()}
       />,
     );
@@ -57,6 +58,7 @@ describe('设置关于页', () => {
         open
         onOpenChange={vi.fn()}
         onAppsChanged={vi.fn()}
+        onSelectApp={vi.fn()}
         onShowLog={vi.fn()}
       />,
     );
@@ -96,6 +98,7 @@ describe('设置关于页', () => {
         open
         onOpenChange={vi.fn()}
         onAppsChanged={vi.fn()}
+        onSelectApp={vi.fn()}
         onShowLog={vi.fn()}
       />,
     );

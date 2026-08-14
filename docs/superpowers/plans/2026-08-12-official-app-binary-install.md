@@ -1,20 +1,22 @@
 # 官方应用 Binary 安装 v1 实施计划
 
-> **历史实施记录，已完成。** 本计划保留 binary 安装 v1 的实施过程，不应再次执行。当前运行契约以 `docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-platform.md` 为准。
+> **历史记录，禁止作为当前实现或发布步骤执行。** 本计划保留 binary 安装 v1 的实施过程。当前官方应用只接受自包含 arm64 包，manifest 只包含展示字段、版本、`artifact` 和 `process`；发布使用 `$aidea-app-release` 单入口。具体契约以 `docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-platform.md` 为准。
 
-**Goal:** 让 aIdea 能安装、更新并运行 Gitee Release 提供的 macOS Apple Silicon 官方应用 binary 包。
+**Goal:** 让 aIdea 能安装、更新并运行 Gitee、GitHub 或 GitLab Release 提供的 macOS Apple Silicon 官方应用 binary 包。
 
-**Architecture:** 保留现有官方应用的市场缓存、source 目录、staging 健康检查和安装记录。将当前工作区中未完成的 artifacts.darwin-arm64 半成品收敛为已确认的单 artifact 字段；安装器按 runtime 分支准备 staging，随后复用现有替换和记录逻辑。binary 启动时只把包根目录置于子进程 PATH 最前，不增加路径配置系统。
+**Architecture:** 保留现有官方应用的市场缓存、source 目录、staging 健康检查和安装记录。将当前工作区中未完成的 artifacts.darwin-arm64 半成品收敛为已确认的单 artifact 字段；安装器直接按 binary 包准备 staging，随后复用现有替换和记录逻辑。binary 启动时只把包根目录置于子进程 PATH 最前，不增加路径配置系统。
 
 **Tech Stack:** Rust、Tokio、Reqwest、SHA-256（sha2）、flate2、tar、serde_yaml、现有 Tauri 命令与 ProcessManager。
 
 > **历史状态（2026-08-12）：** Task 1-6 的实现、测试和正式契约文档已完成。步骤中的 RED/FAIL 文字保留为实施过程记录。aIdea 0.1.11 已发布；mail-center 的真实 Gitee 下载链路仍需在其首个正式包发布后验收。
 
-## 全局约束
+## 历史约束
 
-- 只支持 macOS Apple Silicon（arm64）的 runtime: binary；不做 Intel、多架构选择、arch 字段或回退。
+> 以下字段、分支和步骤只记录当时的过渡方案，现已删除；不得据此实现或发布。
+
+- 只支持 macOS Apple Silicon（arm64）的单 binary 包；不做 Intel、多架构选择、arch 字段或回退。
 - binary manifest 固定使用单个 artifact: { url, sha256 }；不使用 artifacts 数组或映射。
-- artifact URL 只接受 HTTPS Gitee Release 固定附件，且必须以 .tar.gz 结尾。
+- artifact URL 只接受 HTTPS Gitee、GitHub 或 GitLab 同仓库 Release 固定附件，且必须以 .tar.gz 结尾。
 - tar.gz 顶层只能有一个目录；拒绝绝对路径、..、符号链接和硬链接。
 - binary 的 command[0] 允许裸命令；包根目录加入子进程 PATH 最前，不增加 process.path。
 - SHA-256 不匹配、包不合法、staging 健康检查失败时清理 staging 并保留旧版本。
@@ -304,7 +306,7 @@ Expected: PASS；安装失败和新版本启动失败都不丢旧版本，成功
 
 - [ ] **Step 2: 同步安装与发布顺序。**
 
-写明下载校验、受限解压、staging /health、替换 source、失败保留旧版本；更新时恢复原运行状态。保留“先发布源码 commit C1 与 Gitee Release 包，再在 C2 的 aidea.yaml 引用 C1”的规则。
+写明下载校验、受限解压、staging /health、替换 source、失败保留旧版本；更新时恢复原运行状态。发布由单入口 Skill 完成，正常流程只创建一个包含应用代码、版本和 manifest 的发布提交。
 
 - [ ] **Step 3: 全量验证。**
 

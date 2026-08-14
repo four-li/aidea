@@ -21,24 +21,21 @@ App Bridge v1 只解决平台级的四件事：
 
 ```yaml
 process:
-  command: [node, server.js, --host, 127.0.0.1, --port, '43120']
+  command: [mail-center, --host, 127.0.0.1, --port, '43120']
   working_directory: .
   ready_url: http://127.0.0.1:43120/health
 ```
 
-- `process.command` 是程序和参数数组，不使用 `sh -c` 或 `bash -c`。
+- `process.command` 是程序和参数数组，首项是包根目录的自包含 binary；不使用 shell 或用户本机运行时。
 - `process.working_directory` 必须位于应用安装目录内。
-- `process.ready_url` 必须是快速的 `GET /health` JSON 检查地址。
+- `process.ready_url` 必须是快速的 `GET /health` 检查地址；aIdea 在启动后的 15 秒内以 1 秒单次超时、100ms 间隔重试，任意 HTTP 2xx 即通过。
 - 主页面固定使用同一服务的根路径 `/`；aIdea 从 `process.ready_url` 的 origin 派生主页面地址，不再要求应用定义额外的 `ui.url`。
-- 官方应用服务只监听 `127.0.0.1`，端口从 `43000-43999` 中稳定分配。
+- 官方应用服务只监听 `127.0.0.1`；`43000-43999` 是稳定端口分配规范，安装器不拒绝范围外端口。
 
 `/health` 只表示应用服务可以接收请求，不检查邮件服务器或其他外部依赖：
 
 ```http
 HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"status":"ok"}
 ```
 
 业务配置由应用自己的主页面导航组织、校验并写入自己的 `app-data/<app-id>/app.db`；aIdea 不提供业务设置页或统一表单。
@@ -158,7 +155,7 @@ message.appId == 自己的 appId
 | `ready` | 应用 -> 壳 | `{ appId, supported? }` | 壳发送 `theme` |
 | `theme` | 壳 -> 应用 | `{ mode: 'light' | 'dark' }` | 无 |
 | `notify` | 应用 -> 壳 | `{ title, body, action? }` | `notify:result` |
-| `navigate` | 壳 -> 应用 | `{ path }` | `navigate:result` |
+| `navigate` | 壳 -> 应用 | `{ path }` | 无 |
 
 ### notify 请求
 
@@ -208,7 +205,7 @@ message.appId == 自己的 appId
 }
 ```
 
-应用收到后自行完成路由和业务数据加载，再返回 `navigate:result`。aIdea 不解析应用路由、不直接修改 iframe URL、不执行外部跳转。
+应用收到后自行完成路由和业务数据加载。aIdea 不解析应用路由、不直接修改 iframe URL、不执行外部跳转，也不等待或处理导航完成回执。
 
 没有 action 的通知只需要显示 aIdea 并切换到来源应用。
 

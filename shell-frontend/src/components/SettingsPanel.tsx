@@ -35,6 +35,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAppsChanged: () => void;
+  onSelectApp: (id: string) => void;
   states?: Record<string, AppState>;
   onRefreshStates?: () => void;
   appOrder?: string[];
@@ -83,6 +84,7 @@ export function SettingsPanel({
   open,
   onOpenChange,
   onAppsChanged,
+  onSelectApp,
   states = {},
   onRefreshStates = () => undefined,
   appOrder,
@@ -148,6 +150,10 @@ export function SettingsPanel({
               {activeCategory === 'apps' && (
                 <AppManagementPage
                   onAppsChanged={onAppsChanged}
+                  onSelectApp={(id) => {
+                    onSelectApp(id);
+                    onOpenChange(false);
+                  }}
                   states={states}
                   onRefreshStates={onRefreshStates}
                   appOrder={appOrder}

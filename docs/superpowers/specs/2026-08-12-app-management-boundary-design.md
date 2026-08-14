@@ -1,6 +1,6 @@
 # 应用管理边界设计
 
-> **历史设计记录，已完成。** 本文记录本次边界调整的决策与验收依据，不是后续实现入口。现行规则以 `docs/guide/aidea-platform.md`、`docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-app-bridge.md` 为准。
+> **历史记录，禁止作为当前实现或发布步骤执行。** 本文记录本次边界调整的决策与验收依据，不是后续实现入口。现行规则以 `docs/guide/aidea-platform.md`、`docs/guide/aidea-official-app.md` 和 `docs/guide/aidea-app-bridge.md` 为准。
 
 ## 背景
 

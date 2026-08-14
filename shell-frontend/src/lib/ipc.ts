@@ -13,7 +13,12 @@ import type {
   AiHttpResponse,
   AiTestConfig,
 } from '../types/ai-test';
-import type { InstalledApp, OfficialApp, OfficialRelease } from '../types/official-app';
+import type {
+  InstalledApp,
+  OfficialApp,
+  OfficialAppInstallResult,
+  OfficialRelease,
+} from '../types/official-app';
 import type { DevToolsSettings } from '../types/dev-tools';
 import type { AideaUpdate } from '../types/update';
 
@@ -31,7 +36,7 @@ export const ipc = {
   refreshOfficialApps: (): Promise<OfficialApp[]> => invoke('refresh_official_apps'),
   listInstalledOfficialApps: (): Promise<InstalledApp[]> =>
     invoke('list_installed_official_apps'),
-  installOfficialApp: (id: string): Promise<InstalledApp> =>
+  installOfficialApp: (id: string): Promise<OfficialAppInstallResult> =>
     invoke('install_official_app', { id }),
   updateOfficialApp: (id: string): Promise<InstalledApp> =>
     invoke('update_official_app', { id }),

@@ -1,6 +1,7 @@
 # 官方应用 Release 历史 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
+> **历史记录，禁止作为当前实现或发布步骤执行。** 本文件只记录三平台 Release 历史查询的实现过程。当前平台、安装和发布契约以 `docs/guide/` 与对应 active Skill 为准。
+
 
 **Goal:** 为官方应用管理增加 Gitee、GitHub 和自部署 GitLab 的匿名 Release 历史查询，并将更新操作调整到应用卡片底部。
 

@@ -11,16 +11,12 @@ export interface OfficialApp {
   version: string;
   icon: string;
   repository: string;
-  revision: string;
-  runtime: string;
-  install: string[][];
-  artifact?: OfficialArtifact;
+  artifact: OfficialArtifact;
   process: {
     command: string[];
     working_directory: string;
     ready_url: string;
   };
-  update_notes: string;
   /** 由后端按已安装记录计算，市场版本更高时为 true。 */
   update_available: boolean;
   installed_version?: string;
@@ -38,6 +34,10 @@ export interface OfficialRelease {
 export interface InstalledApp {
   id: string;
   version: string;
-  revision: string;
   status: string;
+}
+
+export interface OfficialAppInstallResult {
+  installed: InstalledApp;
+  start_error: string | null;
 }

@@ -1,8 +1,8 @@
 use crate::config::data_root;
 use crate::error::{AppError, AppResult};
 use crate::manifest::{AppIssue, AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode};
-use crate::official_market::{load_cached_official_apps, OfficialApp};
-use crate::process::{check_official_source, resolve_program};
+use crate::official_market::{load_cached_official_apps, OfficialApp, OfficialAppDefinition};
+use crate::process::check_official_source;
 use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -11,20 +11,21 @@ use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use tar::{Archive, EntryType};
-use tokio::process::Command;
+use tokio::time::Duration;
 use uuid::Uuid;
 
+const ARTIFACT_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InstalledApp {
     pub id: String,
     pub version: String,
-    pub revision: String,
     pub status: String,
     /// 安装时保存的定义快照，市场离线时仍可启动和卸载。
     #[serde(default)]
-    pub definition: Option<OfficialApp>,
+    pub definition: Option<OfficialAppDefinition>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -56,15 +57,19 @@ pub fn app_update_status(installed_version: &str, market_version: &str) -> AppUp
 }
 
 fn parse_version(value: &str) -> Option<[u64; 3]> {
-    let core = value.split_once('-').map_or(value, |(core, _)| core);
-    let mut parts = core.split('.').map(str::parse::<u64>);
+    let mut parts = value.split('.').map(str::parse::<u64>);
     match (parts.next()?, parts.next()?, parts.next()?, parts.next()) {
-        (Ok(major), Ok(minor), Ok(patch), None) => Some([major, minor, patch]),
+        (Ok(major), Ok(minor), Ok(patch), None) if major < 10 && minor < 10 && patch < 10 => {
+            Some([major, minor, patch])
+        }
         _ => None,
     }
 }
 
 fn install_root(id: &str) -> AppResult<PathBuf> {
+    if !crate::official_market::is_kebab_case(id) {
+        return Err(AppError::AppNotFound(id.to_string()));
+    }
     Ok(data_root()?.join("apps/installed").join(id))
 }
 
@@ -82,24 +87,6 @@ fn app(id: &str) -> AppResult<OfficialApp> {
         .into_iter()
         .find(|item| item.id == id)
         .ok_or_else(|| AppError::AppNotFound(id.to_string()))
-}
-
-fn clone_args(def: &OfficialApp, staging: &Path, use_http_1_1: bool) -> Vec<String> {
-    let mut args = Vec::new();
-    if use_http_1_1 {
-        args.extend(["-c".into(), "http.version=HTTP/1.1".into()]);
-    }
-    args.extend([
-        "clone".into(),
-        "--no-checkout".into(),
-        def.repository.clone(),
-        staging.to_string_lossy().into_owned(),
-    ]);
-    args
-}
-
-fn is_http2_transport_error(error: &AppError) -> bool {
-    matches!(error, AppError::Process(message) if message.contains("HTTP2 framing") || message.contains("HTTP/2 framing"))
 }
 
 fn read_log_tail(path: &Path) -> AppResult<String> {
@@ -126,41 +113,6 @@ fn report_progress(
         phase: phase.into(),
         message: message.into(),
     });
-}
-
-async fn run(program: &str, args: &[String], cwd: &Path, log: &mut File) -> AppResult<()> {
-    let resolved_program = resolve_program(program);
-    writeln!(log, "$ {program} {}", args.join(" "))?;
-    let output = Command::new(&resolved_program)
-        .args(args)
-        .current_dir(cwd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .map_err(|error| AppError::Process(format!("执行 {program} 失败: {error}")))?;
-    if !output.stdout.is_empty() {
-        writeln!(
-            log,
-            "{}",
-            String::from_utf8_lossy(&output.stdout).trim_end()
-        )?;
-    }
-    if !output.stderr.is_empty() {
-        writeln!(
-            log,
-            "{}",
-            String::from_utf8_lossy(&output.stderr).trim_end()
-        )?;
-    }
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Process(format!(
-            "{program} 执行失败: {}",
-            stderr.trim()
-        )));
-    }
-    Ok(())
 }
 
 fn sha256_file(path: &Path) -> AppResult<String> {
@@ -262,9 +214,29 @@ fn extract_artifact(archive_path: &Path, destination: &Path) -> AppResult<()> {
     Ok(())
 }
 
+/// 只接受单架构 arm64 Mach-O，避免 Rosetta 或 universal 包绕过官方应用平台契约。
+pub(crate) fn validate_arm64_binary(path: &Path, id: &str) -> AppResult<()> {
+    let mut header = [0u8; 12];
+    File::open(path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .map_err(|error| AppError::Config(format!("官方应用 {id} 启动文件无效: {error}")))?;
+    let magic = u32::from_le_bytes(header[..4].try_into().unwrap());
+    let cpu_type = u32::from_le_bytes(header[4..8].try_into().unwrap());
+    let cpu_subtype = u32::from_le_bytes(header[8..].try_into().unwrap());
+    if magic != 0xfeed_facf || cpu_type != 0x0100_000c || cpu_subtype != 0 {
+        return Err(AppError::Config(format!(
+            "官方应用 {id} 启动文件必须是单架构 arm64 Mach-O"
+        )));
+    }
+    Ok(())
+}
+
 async fn download_artifact(url: &str, destination: &Path, log: &mut File) -> AppResult<()> {
     writeln!(log, "下载预编译包 {url}")?;
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        .timeout(ARTIFACT_DOWNLOAD_TIMEOUT)
+        .build()
+        .map_err(|error| AppError::Network(format!("初始化预编译包下载失败: {error}")))?
         .get(url)
         .send()
         .await
@@ -299,55 +271,17 @@ async fn install_inner(
     let staging = root.join(format!("staging-{}", Uuid::new_v4()));
     let old_source = root.join("source");
     let result = async {
-        let staged_source = if def.runtime == "binary" {
-            let artifact = def
-                .artifact
-                .as_ref()
-                .ok_or_else(|| AppError::Config("binary 应用缺少 artifact".into()))?;
-            report_progress(def, on_progress, "downloading", "正在下载预编译包…");
-            fs::create_dir_all(&staging)?;
-            let archive_path = staging.join("artifact.tar.gz");
-            download_artifact(&artifact.url, &archive_path, &mut log).await?;
-            report_progress(def, on_progress, "checking", "正在校验预编译包…");
-            verify_sha256(&archive_path, &artifact.sha256)?;
-            let source = staging.join("source");
-            report_progress(def, on_progress, "extracting", "正在解压预编译包…");
-            extract_artifact(&archive_path, &source)?;
-            source
-        } else {
-            report_progress(def, on_progress, "cloning", "正在拉取源码…");
-            let clone_result = run("git", &clone_args(def, &staging, false), &root, &mut log).await;
-            if let Err(error) = clone_result {
-                if !is_http2_transport_error(&error) {
-                    return Err(error);
-                }
-                writeln!(log, "检测到 HTTP/2 传输错误，使用 HTTP/1.1 重试一次")?;
-                if staging.exists() {
-                    fs::remove_dir_all(&staging)?;
-                }
-                report_progress(
-                    def,
-                    on_progress,
-                    "cloning",
-                    "HTTP/2 连接异常，正在兼容重试…",
-                );
-                run("git", &clone_args(def, &staging, true), &root, &mut log).await?;
-            }
-            report_progress(def, on_progress, "checkout", "正在切换固定版本…");
-            run(
-                "git",
-                &["checkout".into(), def.revision.clone()],
-                &staging,
-                &mut log,
-            )
-            .await?;
-            for command in &def.install {
-                report_progress(def, on_progress, "installing", "正在安装依赖…");
-                run(&command[0], &command[1..], &staging, &mut log).await?;
-            }
-            staging.clone()
-        };
+        report_progress(def, on_progress, "downloading", "正在下载预编译包…");
+        fs::create_dir_all(&staging)?;
+        let archive_path = staging.join("artifact.tar.gz");
+        download_artifact(&def.artifact.url, &archive_path, &mut log).await?;
+        report_progress(def, on_progress, "checking", "正在校验预编译包…");
+        verify_sha256(&archive_path, &def.artifact.sha256)?;
+        let staged_source = staging.join("source");
+        report_progress(def, on_progress, "extracting", "正在解压预编译包…");
+        extract_artifact(&archive_path, &staged_source)?;
         report_progress(def, on_progress, "checking", "正在检查新版本健康状态…");
+        validate_arm64_binary(&staged_source.join(&def.process.command[0]), &def.id)?;
         check_official_source(def, &staged_source).await?;
         let backup = old_source
             .exists()
@@ -364,9 +298,8 @@ async fn install_inner(
         let installed = InstalledApp {
             id: def.id.clone(),
             version: def.version.clone(),
-            revision: def.revision.clone(),
             status: "installed".into(),
-            definition: Some(def.clone()),
+            definition: Some(def.manifest_snapshot()),
         };
         // 安装记录写入失败时回滚源码，避免新源码与旧记录不一致。
         let previous_record = {
@@ -434,7 +367,12 @@ pub async fn install_update_with_progress(
 
 pub fn commit_update(rollback: UpdateRollback) -> AppResult<()> {
     if let Some(backup) = rollback.backup_source {
-        fs::remove_dir_all(backup)?;
+        if let Err(error) = fs::remove_dir_all(&backup) {
+            eprintln!(
+                "清理旧官方应用安装包备份 {} 失败: {error}",
+                backup.display()
+            );
+        }
     }
     Ok(())
 }
@@ -471,7 +409,7 @@ fn write_install_record(id: &str, content: &[u8]) -> AppResult<()> {
 }
 
 pub fn read_install_log(id: &str) -> AppResult<String> {
-    if !list_installed()?.iter().any(|record| record.id == id) {
+    if !record_path(id)?.exists() {
         return Err(AppError::AppNotFound(id.to_string()));
     }
     read_log_tail(&install_log_path(id)?)
@@ -484,10 +422,19 @@ pub fn list_installed() -> AppResult<Vec<InstalledApp>> {
     }
     let mut result = Vec::new();
     for entry in fs::read_dir(root)? {
-        let id = entry?.file_name().to_string_lossy().into_owned();
-        let path = record_path(&id)?;
+        let entry = entry?;
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if !crate::official_market::is_kebab_case(&id) {
+            eprintln!("忽略无效官方应用安装目录: {}", entry.path().display());
+            continue;
+        }
+        let path = entry.path().join("install-state.yaml");
         if path.exists() {
-            result.push(serde_yaml::from_str(&fs::read_to_string(path)?)?);
+            match serde_yaml::from_str::<InstalledApp>(&fs::read_to_string(&path)?) {
+                Ok(record) if record.id == id => result.push(record),
+                Ok(_) => eprintln!("忽略安装记录 ID 与目录不一致: {}", path.display()),
+                Err(error) => eprintln!("忽略无效官方应用安装记录 {}: {error}", path.display()),
+            }
         }
     }
     result.sort_by(|a: &InstalledApp, b: &InstalledApp| a.id.cmp(&b.id));
@@ -502,19 +449,23 @@ pub fn list_installed_app_manifests() -> AppResult<Vec<AppManifest>> {
         return Ok(manifests);
     }
     for entry in fs::read_dir(root)? {
-        let id = entry?.file_name().to_string_lossy().into_owned();
-        let path = record_path(&id)?;
+        let entry = entry?;
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if !crate::official_market::is_kebab_case(&id) {
+            eprintln!("忽略无效官方应用安装目录: {}", entry.path().display());
+            continue;
+        }
+        let path = entry.path().join("install-state.yaml");
         if !path.exists() {
             continue;
         }
-        let record = match serde_yaml::from_str(&fs::read_to_string(&path)?) {
+        let record = match serde_yaml::from_str::<InstalledApp>(&fs::read_to_string(&path)?) {
             Ok(record) => record,
             Err(error) => {
                 manifests.push(unavailable_app_manifest(
                     &InstalledApp {
                         id,
                         version: "未知".into(),
-                        revision: String::new(),
                         status: "invalid".into(),
                         definition: None,
                     },
@@ -523,6 +474,18 @@ pub fn list_installed_app_manifests() -> AppResult<Vec<AppManifest>> {
                 continue;
             }
         };
+        if record.id != id {
+            manifests.push(unavailable_app_manifest(
+                &InstalledApp {
+                    id,
+                    version: "未知".into(),
+                    status: "invalid".into(),
+                    definition: None,
+                },
+                AppError::Config("安装记录 ID 与目录不一致".into()),
+            ));
+            continue;
+        }
         match installed_definition_from_record(&record) {
             Ok(definition) => {
                 manifests.push(installed_app_manifest(&definition)?);
@@ -567,16 +530,26 @@ pub fn installed_definition(id: &str) -> AppResult<OfficialApp> {
         .ok_or_else(|| AppError::AppNotFound(id.to_string()))?;
     let definition = installed_definition_from_record(&record)?;
     if !source_dir(id)?.is_dir() {
-        return Err(AppError::Process(format!("官方应用 {id} 源码目录不存在")));
+        return Err(AppError::Process(format!("官方应用 {id} 安装包目录不存在")));
     }
     Ok(definition)
 }
 
 fn installed_definition_from_record(record: &InstalledApp) -> AppResult<OfficialApp> {
-    if let Some(definition) = &record.definition {
-        return Ok(definition.clone());
+    let definition = record.definition.as_ref().ok_or_else(|| {
+        AppError::Config(format!(
+            "官方应用 {} 的安装记录缺少 manifest 快照",
+            record.id
+        ))
+    })?;
+    crate::official_market::validate_definition(definition)?;
+    if definition.id != record.id || definition.version != record.version {
+        return Err(AppError::Config(format!(
+            "官方应用 {} 的安装记录与 manifest 快照不一致",
+            record.id
+        )));
     }
-    app(&record.id)
+    Ok(definition.clone().into_app(String::new()))
 }
 
 fn installed_app_manifest(definition: &OfficialApp) -> AppResult<AppManifest> {
@@ -614,17 +587,12 @@ fn installed_app_manifest(definition: &OfficialApp) -> AppResult<AppManifest> {
 
 pub async fn uninstall(id: &str) -> AppResult<()> {
     // 只允许卸载已有安装记录，市场离线时仍可清理已安装应用。
-    if !list_installed()?.iter().any(|record| record.id == id) {
+    if !record_path(id)?.exists() {
         return Err(AppError::AppNotFound(id.to_string()));
     }
     let root = install_root(id)?;
     if root.exists() {
-        if root.join("source").exists() {
-            fs::remove_dir_all(root.join("source"))?;
-        }
-        if root.join("install-state.yaml").exists() {
-            fs::remove_file(root.join("install-state.yaml"))?;
-        }
+        fs::remove_dir_all(root)?;
     }
     Ok(())
 }
@@ -632,14 +600,15 @@ pub async fn uninstall(id: &str) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_update_status, clone_args, download_artifact, extract_artifact, installed_app_manifest,
-        is_http2_transport_error, list_installed_app_manifests, read_log_tail, rollback_update,
-        sha256_file, verify_sha256, AppUpdateStatus, InstalledApp, UpdateRollback,
+        app_update_status, commit_update, download_artifact, extract_artifact,
+        installed_app_manifest, installed_definition_from_record, list_installed_app_manifests,
+        read_log_tail, rollback_update, sha256_file, validate_arm64_binary, verify_sha256,
+        AppUpdateStatus, InstalledApp, UpdateRollback,
     };
-    use crate::error::AppError;
-    use crate::official_market::{OfficialApp, OfficialProcess};
+    use crate::official_market::{
+        OfficialApp, OfficialAppDefinition, OfficialArtifact, OfficialProcess,
+    };
     use std::fs;
-    use std::path::Path;
     use std::sync::Mutex;
     use uuid::Uuid;
 
@@ -650,7 +619,6 @@ mod tests {
         let value = InstalledApp {
             id: "demo".into(),
             version: "1".into(),
-            revision: "abc".into(),
             status: "installed".into(),
             definition: None,
         };
@@ -659,31 +627,35 @@ mod tests {
     }
 
     #[test]
+    fn 安装记录拒绝已删除的_revision字段() {
+        let record = "id: demo\nversion: 1.0.0\nrevision: obsolete\nstatus: installed\n";
+
+        assert!(serde_yaml::from_str::<InstalledApp>(record).is_err());
+    }
+
+    #[test]
     fn 安装记录保留应用定义快照() {
-        let definition = OfficialApp {
+        let definition = OfficialAppDefinition {
             id: "demo".into(),
             name: "Demo".into(),
             description: "demo".into(),
             category: "test".into(),
             version: "1.0.0".into(),
             icon: "Package".into(),
-            repository: "https://example.com/demo.git".into(),
-            revision: "a".repeat(40),
-            runtime: "node".into(),
-            install: vec![],
-            artifact: None,
+            schema_version: 1,
+            artifact: OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v1.0.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
             process: OfficialProcess {
-                command: vec!["node".into(), "server.js".into()],
+                command: vec!["demo".into()],
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            update_notes: String::new(),
-            update_available: false,
         };
         let value = InstalledApp {
             id: definition.id.clone(),
             version: definition.version.clone(),
-            revision: definition.revision.clone(),
             status: "installed".into(),
             definition: Some(definition),
         };
@@ -692,6 +664,51 @@ mod tests {
             serde_yaml::from_str(&serde_yaml::to_string(&value).unwrap()).unwrap();
 
         assert_eq!(restored.definition.unwrap().name, "Demo");
+    }
+
+    #[test]
+    fn 安装快照必须与安装记录一致且符合_manifest契约() {
+        let definition = OfficialAppDefinition {
+            schema_version: 1,
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "demo".into(),
+            category: "test".into(),
+            version: "1.0.0".into(),
+            icon: "Package".into(),
+            artifact: OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v1.0.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
+            process: OfficialProcess {
+                command: vec!["../unsafe".into()],
+                working_directory: ".".into(),
+                ready_url: "http://127.0.0.1:43120/health".into(),
+            },
+        };
+        let record = InstalledApp {
+            id: "demo".into(),
+            version: "1.0.0".into(),
+            status: "installed".into(),
+            definition: Some(definition),
+        };
+
+        assert!(installed_definition_from_record(&record).is_err());
+    }
+
+    #[test]
+    fn 清理旧备份失败不否定已经成功的更新() {
+        let backup = std::env::temp_dir().join(format!("aidea-backup-{}", Uuid::new_v4()));
+        fs::write(&backup, "not a directory").unwrap();
+
+        assert!(commit_update(UpdateRollback {
+            backup_source: Some(backup.clone()),
+            previous_record: None,
+        })
+        .is_ok());
+        assert!(backup.exists());
+
+        fs::remove_file(backup).unwrap();
     }
 
     #[test]
@@ -723,6 +740,71 @@ mod tests {
     }
 
     #[test]
+    fn 安装记录_id_与目录不一致时显示异常项() {
+        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let directory = std::env::temp_dir().join(format!("aidea-app-{}", Uuid::new_v4()));
+        let app_dir = directory.join("apps/installed/legacy-app");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(
+            app_dir.join("install-state.yaml"),
+            "id: another-app\nversion: 0.1.0\nstatus: installed\n",
+        )
+        .unwrap();
+
+        let previous = std::env::var_os("AIDEA_DATA_DIR");
+        std::env::set_var("AIDEA_DATA_DIR", &directory);
+        let result = list_installed_app_manifests();
+        if let Some(value) = previous {
+            std::env::set_var("AIDEA_DATA_DIR", value);
+        } else {
+            std::env::remove_var("AIDEA_DATA_DIR");
+        }
+        fs::remove_dir_all(directory).unwrap();
+
+        let manifests = result.unwrap();
+        assert_eq!(manifests[0].id, "legacy-app");
+        assert!(manifests[0].issue.is_some());
+    }
+
+    #[tokio::test]
+    async fn 旧安装记录不阻断其他应用并且卸载清理整个安装目录() {
+        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let directory = std::env::temp_dir().join(format!("aidea-app-{}", Uuid::new_v4()));
+        let legacy = directory.join("apps/installed/legacy-app");
+        let valid = directory.join("apps/installed/valid-app");
+        fs::create_dir_all(legacy.join("source")).unwrap();
+        fs::create_dir_all(legacy.join("staging-orphan")).unwrap();
+        fs::create_dir_all(legacy.join("source-backup-orphan")).unwrap();
+        fs::create_dir_all(&valid).unwrap();
+        fs::write(
+            legacy.join("install-state.yaml"),
+            "id: legacy-app\nversion: 0.1.0\nrevision: obsolete\nstatus: installed\n",
+        )
+        .unwrap();
+        fs::write(
+            valid.join("install-state.yaml"),
+            "id: valid-app\nversion: 0.1.0\nstatus: installed\n",
+        )
+        .unwrap();
+
+        let previous = std::env::var_os("AIDEA_DATA_DIR");
+        std::env::set_var("AIDEA_DATA_DIR", &directory);
+        let installed = super::list_installed();
+        let uninstall = super::uninstall("legacy-app").await;
+        let legacy_removed = !legacy.exists();
+        if let Some(value) = previous {
+            std::env::set_var("AIDEA_DATA_DIR", value);
+        } else {
+            std::env::remove_var("AIDEA_DATA_DIR");
+        }
+        fs::remove_dir_all(directory).unwrap();
+
+        assert_eq!(installed.unwrap().len(), 1);
+        assert!(uninstall.is_ok());
+        assert!(legacy_removed);
+    }
+
+    #[test]
     fn 只有市场版本更高才显示更新() {
         assert_eq!(
             app_update_status("0.1.0", "0.1.0"),
@@ -745,61 +827,24 @@ mod tests {
             name: "Demo".into(),
             description: "demo".into(),
             category: "test".into(),
-            version: "1".into(),
+            version: "1.0.0".into(),
             icon: "Package".into(),
             repository: "https://example.com/demo.git".into(),
-            revision: "abc".into(),
-            runtime: "node".into(),
-            install: vec![],
-            artifact: None,
+            artifact: OfficialArtifact {
+                url: "https://gitee.com/aidea-org/demo/releases/download/v1.0.0/demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+            },
             process: OfficialProcess {
-                command: vec!["node".into(), "server.js".into()],
+                command: vec!["demo".into()],
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
-            update_notes: String::new(),
             update_available: false,
         };
         let manifest = installed_app_manifest(&definition).unwrap();
         assert_eq!(manifest.id, "demo");
         assert_eq!(manifest.ui.mode, crate::manifest::UiMode::Webview);
         assert!(manifest.process.is_some());
-    }
-
-    #[test]
-    fn http_2_错误时才使用_http_1_1_重试() {
-        let definition = OfficialApp {
-            id: "demo".into(),
-            name: "Demo".into(),
-            description: "demo".into(),
-            category: "test".into(),
-            version: "1".into(),
-            icon: "Package".into(),
-            repository: "https://example.com/demo.git".into(),
-            revision: "abc".into(),
-            runtime: "node".into(),
-            install: vec![],
-            artifact: None,
-            process: OfficialProcess {
-                command: vec!["node".into(), "server.js".into()],
-                working_directory: ".".into(),
-                ready_url: "http://127.0.0.1:43120/health".into(),
-            },
-            update_notes: String::new(),
-            update_available: false,
-        };
-
-        let default_args = clone_args(&definition, Path::new("/tmp/demo"), false);
-        let retry_args = clone_args(&definition, Path::new("/tmp/demo"), true);
-
-        assert_eq!(default_args[0], "clone");
-        assert_eq!(retry_args[..3], ["-c", "http.version=HTTP/1.1", "clone"]);
-        assert!(is_http2_transport_error(&AppError::Process(
-            "git 执行失败: curl 16 Error in the HTTP2 framing layer".into()
-        )));
-        assert!(!is_http2_transport_error(&AppError::Process(
-            "git 执行失败: repository not found".into()
-        )));
     }
 
     #[test]
@@ -830,6 +875,28 @@ mod tests {
         )
         .is_err());
         assert!(verify_sha256(&path, &sha256_file(&path).unwrap()).is_ok());
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn 启动文件必须是单架构_arm64_mach_o() {
+        let path = std::env::temp_dir().join(format!("aidea-arm64-{}", Uuid::new_v4()));
+        let mut arm64 = Vec::new();
+        arm64.extend_from_slice(&0xfeed_facfu32.to_le_bytes());
+        arm64.extend_from_slice(&0x0100_000cu32.to_le_bytes());
+        arm64.extend_from_slice(&0u32.to_le_bytes());
+        fs::write(&path, arm64).unwrap();
+
+        assert!(validate_arm64_binary(&path, "demo").is_ok());
+        let mut arm64e = Vec::new();
+        arm64e.extend_from_slice(&0xfeed_facfu32.to_le_bytes());
+        arm64e.extend_from_slice(&0x0100_000cu32.to_le_bytes());
+        arm64e.extend_from_slice(&2u32.to_le_bytes());
+        fs::write(&path, arm64e).unwrap();
+        assert!(validate_arm64_binary(&path, "demo").is_err());
+        fs::write(&path, b"#!/bin/sh\n").unwrap();
+        assert!(validate_arm64_binary(&path, "demo").is_err());
 
         fs::remove_file(path).unwrap();
     }
@@ -949,7 +1016,7 @@ mod tests {
         fs::write(backup.join("old-marker"), "old").unwrap();
         fs::write(
             root.join("install-state.yaml"),
-            "id: demo\nversion: 0.1.1\nrevision: new\nstatus: installed\n",
+            "id: demo\nversion: 0.1.1\nstatus: installed\n",
         )
         .unwrap();
         let previous = std::env::var_os("AIDEA_DATA_DIR");
@@ -959,9 +1026,7 @@ mod tests {
             "demo",
             UpdateRollback {
                 backup_source: Some(backup),
-                previous_record: Some(
-                    b"id: demo\nversion: 0.1.0\nrevision: old\nstatus: installed\n".to_vec(),
-                ),
+                previous_record: Some(b"id: demo\nversion: 0.1.0\nstatus: installed\n".to_vec()),
             },
         )
         .unwrap();
@@ -975,7 +1040,7 @@ mod tests {
         assert!(!source.join("new-marker").exists());
         assert_eq!(
             fs::read_to_string(root.join("install-state.yaml")).unwrap(),
-            "id: demo\nversion: 0.1.0\nrevision: old\nstatus: installed\n"
+            "id: demo\nversion: 0.1.0\nstatus: installed\n"
         );
         fs::remove_dir_all(directory).unwrap();
     }
@@ -988,7 +1053,7 @@ mod tests {
         fs::create_dir_all(&app_dir).unwrap();
         fs::write(
             app_dir.join("install-state.yaml"),
-            "id: demo\nversion: 0.1.0\nrevision: abc\nstatus: installed\n",
+            "id: demo\nversion: 0.1.0\nstatus: installed\n",
         )
         .unwrap();
         let log_dir = directory.join("logs/demo");

@@ -61,6 +61,7 @@ import {
 
 interface Props {
   onAppsChanged: () => void;
+  onSelectApp?: (id: string) => void;
   onShowLog: (app: AppManifest) => void;
   states?: Record<string, AppState>;
   onRefreshStates?: () => void;
@@ -88,6 +89,7 @@ function actionLabel(action: 'start' | 'stop' | 'restart' | 'hide' | 'show' | 'u
 
 export function AppManagementPage({
   onAppsChanged,
+  onSelectApp,
   onShowLog,
   states = {},
   onRefreshStates,
@@ -231,7 +233,14 @@ export function AppManagementPage({
     setInstallStage(update ? '准备更新...' : '准备安装...');
     try {
       if (update) await ipc.updateOfficialApp(app.id);
-      else await ipc.installOfficialApp(app.id);
+      else {
+        const result = await ipc.installOfficialApp(app.id);
+        if (result.start_error) {
+          toast.error('安装完成，但启动失败', { description: result.start_error });
+        } else {
+          onSelectApp?.(app.id);
+        }
+      }
       await Promise.all([load(), loadMarket()]);
       onAppsChanged();
     } catch (error) {
@@ -276,9 +285,13 @@ export function AppManagementPage({
 
   const releaseListUrl = (repository: string) => {
     const normalized = repository.replace(/\/$/, '').replace(/\.git$/, '');
-    return /\/gitlab(?:\.|\/|:)/i.test(normalized) || /:\d+\//.test(normalized)
-      ? `${normalized}/-/releases`
-      : `${normalized}/releases`;
+    try {
+      return new URL(normalized).hostname === 'gitlab.com'
+        ? `${normalized}/-/releases`
+        : `${normalized}/releases`;
+    } catch {
+      return `${normalized}/releases`;
+    }
   };
 
   const resetSettings = async (app: AppManifest) => {
@@ -303,7 +316,9 @@ export function AppManagementPage({
     .map((id) => apps.find((app) => app.id === id))
     .filter((app): app is AppManifest => app !== undefined);
   const availableOfficialApps = officialApps.filter(
-    (app) => !installedOfficialApps.some((record) => record.id === app.id),
+    (app) =>
+      !installedOfficialApps.some((record) => record.id === app.id) &&
+      !apps.some((installed) => installed.ui.mode !== 'builtin' && installed.id === app.id),
   );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

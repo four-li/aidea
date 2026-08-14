@@ -64,7 +64,10 @@ describe('AppManagementPage', () => {
     mockListOfficialApps.mockResolvedValue([]);
     mockRefreshOfficialApps.mockResolvedValue([]);
     mockListInstalledOfficialApps.mockResolvedValue([]);
-    mockInstallOfficialApp.mockResolvedValue(undefined);
+    mockInstallOfficialApp.mockResolvedValue({
+      installed: { id: 'demo', version: '0.1.0', status: 'installed' },
+      start_error: null,
+    });
     mockUpdateOfficialApp.mockResolvedValue(undefined);
     mockReadOfficialAppInstallLog.mockResolvedValue('');
     mockListOfficialAppReleases.mockResolvedValue([]);
@@ -107,12 +110,12 @@ describe('AppManagementPage', () => {
         category: '效率',
         version: '0.1.7',
         icon: 'Mail',
-        repository: 'http://dev03.ushopal.com:10083/ChenChuanFeng/atlas',
-        revision: 'a'.repeat(40),
-        runtime: 'binary',
-        install: [],
+        repository: 'https://gitlab.com/ChenChuanFeng/atlas',
+        artifact: {
+          url: 'https://gitlab.com/ChenChuanFeng/atlas/-/releases/v0.1.7/downloads/official-mail.tar.gz',
+          sha256: 'a'.repeat(64),
+        },
         process: { command: ['mail-center'], working_directory: '.', ready_url: 'http://127.0.0.1:43130/health' },
-        update_notes: '',
         update_available: true,
       },
     ]);
@@ -123,7 +126,7 @@ describe('AppManagementPage', () => {
         body: '修复同步问题',
         published_at: '2026-08-13T01:00:00Z',
         prerelease: false,
-        url: 'http://dev03.ushopal.com:10083/ChenChuanFeng/atlas/-/releases/v0.1.7',
+        url: 'https://gitlab.com/ChenChuanFeng/atlas/-/releases/v0.1.7',
       },
     ]);
 
@@ -134,6 +137,42 @@ describe('AppManagementPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '更新日志' }));
     expect(await screen.findByText('修复同步问题')).toBeInTheDocument();
     expect(mockListOfficialAppReleases).toHaveBeenCalledWith('official-mail');
+  });
+
+  it('无效安装记录对应的应用不会重复显示为可安装', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        version: '0.1.0',
+        category: '效率',
+        status: 'active',
+        ui: { mode: 'none' },
+        issue: { level: 'warning', message: '安装记录已过期', updated_at: 0 },
+      },
+    ]);
+    mockListOfficialApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        description: '本地邮件管理',
+        category: '效率',
+        version: '0.1.1',
+        icon: 'Mail',
+        repository: 'https://gitee.com/aidea-org/official-mail.git',
+        artifact: {
+          url: 'https://gitee.com/aidea-org/official-mail/releases/download/v0.1.1/official-mail.tar.gz',
+          sha256: 'a'.repeat(64),
+        },
+        process: { command: ['official-mail'], working_directory: '.', ready_url: 'http://127.0.0.1:43130/health' },
+        update_available: false,
+      },
+    ]);
+
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
+
+    await screen.findByText('安装记录已过期');
+    expect(screen.queryByRole('button', { name: '安装 邮件管理' })).not.toBeInTheDocument();
   });
 
   it('内置应用在卡片底部显示图标设置入口，列表不直接显示重置按钮', async () => {
@@ -438,9 +477,6 @@ describe('AppManagementPage', () => {
         version: '0.1.1',
         icon: 'Mail',
         repository: 'https://gitee.com/aidea-org/mail-manager.git',
-        revision: 'a'.repeat(40),
-        runtime: 'binary',
-        install: [],
         artifact: {
           url: 'https://gitee.com/aidea-org/mail-manager/releases/download/v0.1.1/mail-center.tar.gz',
           sha256: 'b'.repeat(64),
@@ -450,7 +486,6 @@ describe('AppManagementPage', () => {
           working_directory: '.',
           ready_url: 'http://127.0.0.1:43130/health',
         },
-        update_notes: '修复同步',
         update_available: true,
         installed_version: '0.1.0',
       },
@@ -462,9 +497,6 @@ describe('AppManagementPage', () => {
         version: '0.1.0',
         icon: 'Package',
         repository: 'https://gitee.com/aidea-org/available-app.git',
-        revision: 'c'.repeat(40),
-        runtime: 'binary',
-        install: [],
         artifact: {
           url: 'https://gitee.com/aidea-org/available-app/releases/download/v0.1.0/available-app.tar.gz',
           sha256: 'd'.repeat(64),
@@ -474,12 +506,11 @@ describe('AppManagementPage', () => {
           working_directory: '.',
           ready_url: 'http://127.0.0.1:43131/health',
         },
-        update_notes: '',
         update_available: false,
       },
     ]);
     mockListInstalledOfficialApps.mockResolvedValue([
-      { id: 'official-mail', version: '0.1.0', revision: 'a'.repeat(40), status: 'installed' },
+      { id: 'official-mail', version: '0.1.0', status: 'installed' },
     ]);
 
     render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
@@ -522,6 +553,50 @@ describe('AppManagementPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '安装 待安装应用' }));
     await waitFor(() => expect(mockInstallOfficialApp).toHaveBeenCalledWith('available-app'));
+  });
+
+  it('首次安装成功后选中官方应用以展示 WebView', async () => {
+    mockListOfficialApps.mockResolvedValue([
+      {
+        id: 'available-app',
+        name: '待安装应用',
+        description: '等待安装',
+        category: '效率',
+        version: '0.1.0',
+        icon: 'Package',
+        repository: 'https://github.com/aidea-org/available-app.git',
+        artifact: {
+          url: 'https://github.com/aidea-org/available-app/releases/download/v0.1.0/available-app.tar.gz',
+          sha256: 'd'.repeat(64),
+        },
+        process: {
+          command: ['available-app'],
+          working_directory: '.',
+          ready_url: 'http://127.0.0.1:43131/health',
+        },
+        update_available: false,
+      },
+    ]);
+    mockInstallOfficialApp.mockResolvedValue({
+      installed: { id: 'available-app', version: '0.1.0', status: 'installed' },
+      start_error: null,
+    });
+    const onAppsChanged = vi.fn();
+    const onSelectApp = vi.fn();
+
+    render(
+      <AppManagementPage
+        onAppsChanged={onAppsChanged}
+        onSelectApp={onSelectApp}
+        onShowLog={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '安装 待安装应用' }));
+
+    await waitFor(() => expect(mockInstallOfficialApp).toHaveBeenCalledWith('available-app'));
+    await waitFor(() => expect(onAppsChanged).toHaveBeenCalled());
+    expect(onSelectApp).toHaveBeenCalledWith('available-app');
   });
 
   it('按外部顺序显示应用并提供拖拽手柄', async () => {

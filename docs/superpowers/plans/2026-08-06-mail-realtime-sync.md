@@ -1,5 +1,7 @@
 # 邮件管理实时同步 Implementation Plan
 
+> 历史记录，禁止作为当前实现或发布步骤执行。
+
 > **历史实施记录**：本文件描述旧内置邮件实现，不是当前平台或邮件应用契约。新邮件应用以 `mail-center` 官方应用规范为准；规则以仓库根目录 `AGENTS.md` 和 `docs/guide/` 为准。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

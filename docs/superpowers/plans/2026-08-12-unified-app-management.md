@@ -1,6 +1,6 @@
 # 应用管理边界实施计划
 
-> **历史实施记录，已完成。** 本计划保留实施过程和测试意图，不应再次执行。当前行为以 `docs/guide/aidea-platform.md`、`docs/guide/aidea-official-app.md` 和 `docs/superpowers/specs/2026-08-12-app-management-boundary-design.md` 为准。
+> **历史记录，禁止作为当前实现或发布步骤执行。** 本计划保留已完成的实施过程和测试意图；其中 `runtime`、`revision`、C1/C2 和源码安装描述均已废弃。当前行为以 `docs/guide/aidea-platform.md`、`docs/guide/aidea-official-app.md` 和 `docs/superpowers/specs/2026-08-12-app-management-boundary-design.md` 为准。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

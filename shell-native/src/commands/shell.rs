@@ -7,6 +7,12 @@ use tauri_plugin_updater::UpdaterExt;
 use tokio::process::Command;
 
 #[derive(serde::Serialize)]
+pub struct OfficialAppInstallResult {
+    pub installed: crate::official_app_installer::InstalledApp,
+    pub start_error: Option<String>,
+}
+
+#[derive(serde::Serialize)]
 pub struct AideaUpdate {
     version: String,
     body: Option<String>,
@@ -150,12 +156,28 @@ pub async fn list_installed_official_apps(
 #[tauri::command]
 pub async fn install_official_app(
     id: String,
+    manager: State<'_, ProcessManager>,
     app: tauri::AppHandle,
-) -> AppResult<crate::official_app_installer::InstalledApp> {
-    crate::official_app_installer::install_with_progress(&id, move |progress| {
+) -> AppResult<OfficialAppInstallResult> {
+    let installed = crate::official_app_installer::install_with_progress(&id, move |progress| {
         let _ = app.emit("official-app-install-progress", progress);
     })
-    .await
+    .await?;
+    let definition = crate::official_app_installer::installed_definition(&id)?;
+    let start_error = match manager.start_official(&definition).await {
+        Ok(_) => {
+            manager.clear_issue(&id);
+            None
+        }
+        Err(error) => {
+            manager.record_issue(&id, &error);
+            Some(error.to_string())
+        }
+    };
+    Ok(OfficialAppInstallResult {
+        installed,
+        start_error,
+    })
 }
 
 #[tauri::command]
@@ -270,7 +292,10 @@ pub async fn reset_app_settings(id: String) -> AppResult<()> {
     builtin_reset_command_for(&manifest)?;
     match id.as_str() {
         "dev-tools" => crate::commands::dev_tools::reset_dev_tools_settings(),
-        _ => Err(AppError::Config(format!("{} 未注册重置处理器", manifest.name))),
+        _ => Err(AppError::Config(format!(
+            "{} 未注册重置处理器",
+            manifest.name
+        ))),
     }
 }
 
@@ -312,9 +337,12 @@ mod tests {
 
     #[test]
     fn 空的重置程序会被拒绝() {
-        assert!(reset_command_for(&manifest(UiMode::Builtin, Some(SettingsConfig {
-            reset_command: Some(vec![String::new()]),
-        })))
+        assert!(reset_command_for(&manifest(
+            UiMode::Builtin,
+            Some(SettingsConfig {
+                reset_command: Some(vec![String::new()]),
+            })
+        ))
         .is_err());
     }
 
@@ -337,7 +365,6 @@ mod tests {
     fn 当前版本来自构建包版本() {
         assert_eq!(current_aidea_version(), env!("CARGO_PKG_VERSION"));
     }
-
 }
 
 #[tauri::command]

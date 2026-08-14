@@ -33,7 +33,7 @@ aIdea/
 开搞的 market-source.yaml
   -> https://gitee.com/aidea-org/aidea-market.git
   -> official/<app-id>.yaml
-  -> https://gitee.com/aidea-org/<app-id>.git 的 aidea.yaml
+  -> 市场收录项指定的 Gitee、GitHub 或 GitLab（含自建实例）应用仓库的 aidea.yaml
 ```
 
 当前本机开发目录约定为：

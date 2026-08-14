@@ -16,7 +16,7 @@
 ```
 
 - `shell.config.json` 只保存应用显示/启动偏好，不保存应用业务字段；主题由壳前端自己的主题设置管理。
-- `apps/installed/<app-id>/` 只保存官方应用安装状态、源码或预编译包和 staging 环境。业务数据放在 `app-data/<app-id>/`，更新和默认卸载不得删除。
+- `apps/installed/<app-id>/` 只保存官方应用安装状态、解压后的 binary 包和 staging 环境。业务数据放在 `app-data/<app-id>/`，更新和默认卸载不得删除。
 - 每个内置应用和官方应用都拥有自己的 `app-data/<app-id>/app.db`。应用自己创建数据库、执行迁移和读写业务表，不读 aIdea 或其他应用的数据库。
 - `databases/mail-manager.db`、`app-data/mail-manager/`、`logs/mail-manager/`、独立凭据存储和 DevTools `settings.json` 是已废弃的历史路径。aIdea 新代码不得读取或写入，也不自动删除这些路径。邮件官方应用固定使用 `mail-center`，直接创建自己的 `app-data/mail-center/app.db`，不读取旧数据。
 - `runtime/` 只保存市场定义缓存、进程状态等短期信息，不保存业务数据库或 Git 凭据。

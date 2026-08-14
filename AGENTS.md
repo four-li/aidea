@@ -11,8 +11,8 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 - 两类应用统一使用自己的 `app-data/<app-id>/app.db`，包括普通配置、业务数据和凭据；应用不读 aIdea 或其他应用的数据库，凭据不写日志。
 - aIdea 只管理应用生命周期、显示/启动偏好、安装运行环境和日志；内置应用可使用壳内设置入口，官方应用的业务设置由自己的主页面组织。aIdea 不解析应用业务配置，也不提供共享凭据服务。
 - 内置应用和官方应用的 `version` 都是发布契约的一部分：只要改动会影响用户可见功能、界面、交互、设置页、数据格式或业务行为，就必须同步升版本；纯重构、测试和文档不要求升版本。
-- 官方应用的发布运行时与实现语言无关。当前正式发布只使用 `runtime: binary` 加单个 arm64 预编译包：包内必须带齐启动所需的运行时和应用依赖，用户无需安装 Rust、Cargo、Node、npm、Python 或 SQLite。aIdea 不自动安装、升级用户的 Python、Node 或其他系统运行时，也不修改用户 `PATH`。
-- 官方应用仅支持 macOS Apple Silicon（arm64）；不发布或维护 Intel Mac、Windows、iOS、Android 等其他平台的安装包。Python、Node 等系统运行时的环境检查尚未实现；源码安装实现仅供现有开发验证，新的正式市场应用不得依赖。
+- 官方应用只发布单个 macOS Apple Silicon（arm64）自包含 binary 包：包内必须带齐启动所需运行时和应用依赖，用户无需安装 Rust、Cargo、Node、npm、Python 或 SQLite。aIdea 不自动安装、升级用户运行时；启动程序只从解压包根目录执行，子进程不继承用户 `PATH`。
+- 官方应用不发布或维护 Intel Mac、Windows、iOS、Android 等其他平台安装包。源码调试直接在应用仓库进行，不属于市场安装契约。
 - 内置邮件管理已经从 aIdea 移除；新邮件管理必须在独立官方应用仓库中实现，固定应用 ID 为 `mail-center`，不得依赖旧内置邮件的 IPC、Rust 模块、前端组件或数据结构。
 - 旧邮件不做数据迁移、不做双写、不保留兼容读取。历史 `mail-manager` 数据路径不是兼容目标，aIdea 新代码不得读取或写入，也不自动删除这些路径。
 
@@ -54,11 +54,11 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 
 ## 发布边界
 
-- aIdea 的代码、tag、Release 附件和应用内更新清单全部使用 Gitee；GitHub 只保留偶尔手动同步的代码镜像，不作为下载源、更新源、Release、CI 或 Secrets 平台。
+- aIdea 自身的代码、tag、Release 附件和应用内更新清单全部使用 Gitee；GitHub 只保留偶尔手动同步的代码镜像，不作为 aIdea 自身下载源、更新源、Release、CI 或 Secrets 平台。官方子应用可使用 Gitee、GitHub 或 GitLab（包括自建 HTTP/HTTPS 实例）的同仓库 Release 附件。
 - 固定更新清单为 `https://gitee.com/aidea-org/aidea-app/raw/main/updater/latest.json`。不得恢复 GitHub 风格的 `releases/latest/download/latest.json`，Gitee 不提供该入口。
 - 不接入 Apple Developer Program、Developer ID 证书、Apple ID 公证、`notarytool` 或 stapling。不要新增 Apple 证书、Apple ID、App Store Connect 密钥或相关 CI 配置；当前 DMG 保持未使用 Apple 代码签名和公证的发布方式。
 - `aidea-updater.key` 只用于 Tauri updater 安装包签名；它不是 Apple 证书。macOS 首次安装按 README 的手动放行流程处理。
-- 不要为了消除 Chrome 对 Gitee `foruda.gitee.com` 附件 URL 的安全误报而引入新的下载平台；先通过 Gitee 工单处理误报。
+- 不要为了消除 Chrome 对 aIdea 自身 Gitee `foruda.gitee.com` 附件 URL 的安全误报而改变 aIdea 发布平台；官方子应用选择 Gitee、GitHub 或 GitLab 时仍须遵守官方应用规范。
 
 ## 工程配置
 
@@ -96,4 +96,6 @@ cd shell-frontend && npm run lint && npm test && npm run build
 cd ../shell-native && cargo test
 ```
 
-文档修改至少运行 `git diff --check`，并检查规范链接和关键路由。不要自动 `git add`、commit、push 或创建 PR；发布 Skill 的明确授权只覆盖其发布流程。
+运行 `shell-native` 的全量 `cargo test` 时，必须直接申请允许本机回环端口监听的提升权限。
+
+文档修改至少运行 `git diff --check`，并检查规范链接和关键路由。不要自动 `git add`、commit、push 或创建 PR；调用发布 Skill 时，发布 Skill 自己负责其发布流程内必要的提交、推送和远端发布操作。
