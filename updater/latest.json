@@ -1,11 +1,11 @@
 {
-  "version": "0.2.0",
-  "notes": "新增\n- 版本递增改为每段不超过9并新增测试\n- 设置页支持拖拽排序并持久化工具顺序",
-  "pub_date": "2026-08-13T08:43:00.111Z",
+  "version": "0.2.1",
+  "notes": "新增\n- 支持 Gitee/GitHub/GitLab Release 并改为纯二进制安装",
+  "pub_date": "2026-08-14T07:07:00.597Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.0/开搞.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK2g2WUxheDFPUjNPWldlT1luT09VUEYrNU9ZWTNMQU1jSUtCNmhBZjhmcUlwMm1RSStQMzhpbXhZVjVRREI0SnNSZ2tTazlsVUI5a3dyc3orRkhxQXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NjEwNTc5CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKM3EvYmFGWVdMbzRmR09ob0YyUFlMSlRTVVNMZG9zOFZGUG54MnFCeitkMjJyVmtJa1ByNDZibEpQcU9OYXcrRDF6NDg4YXN3QkVpWWZ4enQwZE9pREE9PQo="
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.1/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3RqMEdHZFVnRTkzakVGaWFBeTZVRTBiU3hSSGcxbTRCdFByYTAzdWtFSEpzZFdySG45VGFFM0c2N3JUVi9TSitVYVJvWktVR3NrMVVLSitFWVhnS3dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NjkxMjIwCWZpbGU65byA5pCeLmFwcC50YXIuZ3oKQ0paVytnVzJnQTVBdlZNWmhjSnNaZU1FL1doM0p1WFhRZUFLZTN2ODgvMmM5dFg0clZnYUpQcU1JRzBmdlNqeEtrUEkrbS9SSEJVYUdWbGlDYmlXQVE9PQo="
     }
   }
 }
