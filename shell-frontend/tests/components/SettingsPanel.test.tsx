@@ -110,4 +110,30 @@ describe('设置关于页', () => {
     expect(screen.queryByRole('button', { name: '更新日志' })).not.toBeInTheDocument();
     expect(screen.queryByText('数据目录')).not.toBeInTheDocument();
   });
+
+  it('设置弹窗的默认焦点控件不显示浏览器边框', async () => {
+    render(
+      <SettingsPanel
+        themeMode="system"
+        onThemeChange={vi.fn()}
+        open
+        onOpenChange={vi.fn()}
+        onAppsChanged={vi.fn()}
+        onSelectApp={vi.fn()}
+        onShowLog={vi.fn()}
+      />,
+    );
+
+    await screen.findByText('暂无已安装应用');
+
+    expect(screen.getByRole('button', { name: '应用管理' })).toHaveClass(
+      'focus-visible:outline-none',
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0',
+    );
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass(
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0',
+    );
+  });
 });

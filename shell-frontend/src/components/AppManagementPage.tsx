@@ -282,7 +282,17 @@ export function AppManagementPage({
     setReleaseLoading(true);
     try {
       const releases = await ipc.listOfficialAppReleases(app.id);
-      setReleaseCache((current) => ({ ...current, [app.id]: releases }));
+      const orderedReleases = [...releases].sort((a, b) => {
+        const aTime = a.published_at ? Date.parse(a.published_at) : Number.NaN;
+        const bTime = b.published_at ? Date.parse(b.published_at) : Number.NaN;
+        if (Number.isFinite(aTime) || Number.isFinite(bTime)) {
+          if (!Number.isFinite(aTime)) return 1;
+          if (!Number.isFinite(bTime)) return -1;
+          if (aTime !== bTime) return bTime - aTime;
+        }
+        return b.version.localeCompare(a.version, undefined, { numeric: true });
+      });
+      setReleaseCache((current) => ({ ...current, [app.id]: orderedReleases }));
     } catch (error) {
       setReleaseError(String(error));
     } finally {

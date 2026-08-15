@@ -26,4 +26,13 @@ describe('LogPanel', () => {
     expect(await screen.findByText(/line-1/)).toBeInTheDocument();
     expect(ipc.readAppLog).toHaveBeenCalledWith('demo');
   });
+
+  it('日志面板关闭按钮不显示常驻焦点边框', async () => {
+    render(<LogPanel app={app} onClose={() => undefined} />);
+
+    expect(await screen.findByRole('button', { name: '关闭' })).toHaveClass(
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0',
+    );
+  });
 });

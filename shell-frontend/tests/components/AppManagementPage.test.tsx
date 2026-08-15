@@ -142,6 +142,59 @@ describe('AppManagementPage', () => {
     expect(mockListOfficialAppReleases).toHaveBeenCalledWith('official-mail');
   });
 
+  it('更新日志按发布时间倒序显示最新版本', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        version: '0.1.6',
+        category: '效率',
+        status: 'active',
+        ui: { mode: 'webview', url: 'http://127.0.0.1:43130' },
+        process: {},
+      },
+    ]);
+    mockListOfficialApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        description: '本地邮件管理',
+        category: '效率',
+        version: '0.1.7',
+        icon: 'Mail',
+        repository: 'https://gitee.com/aidea-org/official-mail',
+        artifact: { url: 'https://example.com/app.tar.gz', sha256: 'a'.repeat(64) },
+        process: { command: ['official-mail'], working_directory: '.', ready_url: 'http://127.0.0.1:43130/health' },
+        update_available: false,
+      },
+    ]);
+    mockListOfficialAppReleases.mockResolvedValue([
+      {
+        version: 'v0.1.6',
+        title: '旧版本',
+        body: '',
+        published_at: '2026-08-12T01:00:00Z',
+        prerelease: false,
+        url: 'https://example.com/old',
+      },
+      {
+        version: 'v0.1.7',
+        title: '新版本',
+        body: '',
+        published_at: '2026-08-13T01:00:00Z',
+        prerelease: false,
+        url: 'https://example.com/new',
+      },
+    ]);
+
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '更新日志' }));
+    const articles = await screen.findAllByRole('article');
+    expect(articles[0]).toHaveTextContent('新版本');
+    expect(articles[1]).toHaveTextContent('旧版本');
+  });
+
   it('无效安装记录对应的应用不会重复显示为可安装', async () => {
     mockListApps.mockResolvedValue([
       {

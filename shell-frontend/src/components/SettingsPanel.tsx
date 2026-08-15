@@ -125,7 +125,7 @@ export function SettingsPanel({
                   key={cat.id}
                   onClick={() => setActiveCategory(cat.id)}
                   className={cn(
-                    'w-full px-3 py-2.5 rounded-lg text-left text-sm flex items-center gap-3 transition-colors',
+                    'w-full px-3 py-2.5 rounded-lg text-left text-sm flex items-center gap-3 transition-colors focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0',
                     activeCategory === cat.id
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted',
