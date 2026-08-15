@@ -49,7 +49,7 @@ process:
 - `id` 是全局唯一 kebab-case，安装后不能更名。
 - `version` 必须是三段单数字 `X.Y.Z`。补丁位到 `9` 后进位，例如
   `0.1.9 -> 0.2.0`；不使用 `0.1.10`。用户可见功能、界面、交互、设置、数据格式或
-  业务行为变化时必须升版本。
+  业务行为变化时，正式发布流程必须升版本；开发阶段不自动改版本号。
 - `artifact.url` 必须是 Gitee、GitHub 或 GitLab（包括自建实例）同仓库 Release 的 HTTP 或 HTTPS `.tar.gz` 附件地址，且与市场收录的
   `repository` 是同一协议、同一 host/port、同一仓库，Release tag 必须为 `v<version>`；`artifact.sha256` 必须是 64 位小写十六进制值。
 - `process.command` 是参数数组，`command[0]` 必须是包根目录中实际存在的单架构 arm64 Mach-O 裸二进制文件名，禁止 shell、脚本、universal binary 和路径；

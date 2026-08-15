@@ -110,6 +110,7 @@ export function AppManagementPage({
   const [installLog, setInstallLog] = useState('');
   const [installLogOpen, setInstallLogOpen] = useState(false);
   const [uninstallApp, setUninstallApp] = useState<AppManifest | null>(null);
+  const [portReleaseApp, setPortReleaseApp] = useState<AppManifest | null>(null);
   const [releaseApp, setReleaseApp] = useState<OfficialApp | null>(null);
   const [releaseCache, setReleaseCache] = useState<Record<string, OfficialRelease[]>>({});
   const [releaseLoading, setReleaseLoading] = useState(false);
@@ -198,6 +199,18 @@ export function AppManagementPage({
       onAppsChanged();
     } catch (error) {
       toast.error('卸载失败', { description: String(error) });
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  const releasePort = async (app: AppManifest) => {
+    setPendingId(app.id);
+    try {
+      await ipc.releaseAppPort(app.id);
+      onRefreshStates?.();
+    } catch (error) {
+      toast.error('释放端口失败', { description: String(error) });
     } finally {
       setPendingId(null);
     }
@@ -376,6 +389,7 @@ export function AppManagementPage({
                   const running = state?.status === 'running';
                   const transitioning = state?.status === 'starting' || state?.status === 'stopping';
                   const issue = app.issue ?? state?.issue;
+                  const portOccupied = issue?.message.includes('端口') ?? false;
                   const pending = pendingId === app.id;
                   return (
                     <SortableAppCard key={app.id} appId={app.id}>
@@ -470,6 +484,17 @@ export function AppManagementPage({
                                   {transitioning && (
                                     <DropdownMenuItem disabled>
                                       {state.status === 'starting' ? '启动中...' : '停止中...'}
+                                    </DropdownMenuItem>
+                                  )}
+                                  {!running && !transitioning && portOccupied && (
+                                    <DropdownMenuItem
+                                      onSelect={(event) => {
+                                        event.preventDefault();
+                                        setPortReleaseApp(app);
+                                      }}
+                                    >
+                                      <Square size={16} />
+                                      释放端口
                                     </DropdownMenuItem>
                                   )}
                                   {app.process && <DropdownMenuSeparator />}
@@ -665,6 +690,41 @@ export function AppManagementPage({
                 }}
               >
                 确认卸载
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={portReleaseApp !== null}
+          onOpenChange={(open) => !open && setPortReleaseApp(null)}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>确认释放端口</DialogTitle>
+              <DialogDescription>
+                {`“${portReleaseApp?.name}”的固定端口被遗留进程占用。确认后 aIdea 会结束该端口的监听进程，以便重新启动应用。`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setPortReleaseApp(null)}
+                disabled={pendingId !== null}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={pendingId !== null}
+                onClick={() => {
+                  if (!portReleaseApp) return;
+                  const app = portReleaseApp;
+                  setPortReleaseApp(null);
+                  void releasePort(app);
+                }}
+              >
+                确认释放
               </Button>
             </DialogFooter>
           </DialogContent>

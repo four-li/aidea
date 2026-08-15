@@ -108,65 +108,69 @@ impl ProcessManager {
         &self,
         directory: &Path,
     ) -> AppResult<Vec<AppState>> {
-        if !directory.exists() {
-            return Ok(Vec::new());
-        }
-
         let mut states = Vec::new();
-        for entry in std::fs::read_dir(directory)? {
-            let path = entry?.path();
-            if path.extension().and_then(|value| value.to_str()) != Some("json") {
-                continue;
+        if directory.exists() {
+            for entry in std::fs::read_dir(directory)? {
+                let path = entry?.path();
+                if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                    continue;
+                }
+                let Some(app_id) = path.file_stem().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                let record = match read_runtime_record_at(directory, app_id) {
+                    Ok(Some(record)) => record,
+                    Ok(None) => continue,
+                    Err(_) => {
+                        let _ = std::fs::remove_file(&path);
+                        continue;
+                    }
+                };
+                // 旧运行记录不能绕过当前 binary-only 安装快照。
+                let app = match official_app_installer::installed_definition(&record.app_id) {
+                    Ok(app) => app,
+                    Err(_) => {
+                        let _ = std::fs::remove_file(&path);
+                        continue;
+                    }
+                };
+                let source = match official_app_installer::source_dir(&app.id) {
+                    Ok(source) => source,
+                    Err(_) => {
+                        let _ = std::fs::remove_file(&path);
+                        continue;
+                    }
+                };
+                if record.app_id != app_id
+                    || !self.pid_alive(record.pid as i32)
+                    || !process_matches_record(&record)
+                    || !runtime_record_matches_app(&record, &app, &source)
+                    || !is_ready(&record.ready_url).await
+                {
+                    let _ = std::fs::remove_file(&path);
+                    continue;
+                }
+                self.table.lock().unwrap().entries.insert(
+                    record.app_id.clone(),
+                    ProcessEntry {
+                        pid: record.pid,
+                        process_group: record.process_group,
+                        kill_tx: None,
+                    },
+                );
+                states.push(AppState {
+                    id: record.app_id,
+                    status: ProcessStatus::Running,
+                    pid: Some(record.pid),
+                    issue: None,
+                });
             }
-            let Some(app_id) = path.file_stem().and_then(|value| value.to_str()) else {
+        }
+        for installed in official_app_installer::list_installed()? {
+            let Ok(app) = official_app_installer::installed_definition(&installed.id) else {
                 continue;
             };
-            let record = match read_runtime_record_at(directory, app_id) {
-                Ok(Some(record)) => record,
-                Ok(None) => continue,
-                Err(_) => {
-                    let _ = std::fs::remove_file(&path);
-                    continue;
-                }
-            };
-            // 旧运行记录不能绕过当前 binary-only 安装快照。
-            let app = match official_app_installer::installed_definition(&record.app_id) {
-                Ok(app) => app,
-                Err(_) => {
-                    let _ = std::fs::remove_file(&path);
-                    continue;
-                }
-            };
-            let source = match official_app_installer::source_dir(&app.id) {
-                Ok(source) => source,
-                Err(_) => {
-                    let _ = std::fs::remove_file(&path);
-                    continue;
-                }
-            };
-            if record.app_id != app_id
-                || !self.pid_alive(record.pid as i32)
-                || !process_matches_record(&record)
-                || !runtime_record_matches_app(&record, &app, &source)
-                || !is_ready(&record.ready_url).await
-            {
-                let _ = std::fs::remove_file(&path);
-                continue;
-            }
-            self.table.lock().unwrap().entries.insert(
-                record.app_id.clone(),
-                ProcessEntry {
-                    pid: record.pid,
-                    process_group: record.process_group,
-                    kill_tx: None,
-                },
-            );
-            states.push(AppState {
-                id: record.app_id,
-                status: ProcessStatus::Running,
-                pid: Some(record.pid),
-                issue: None,
-            });
+            let _ = self.adopt_orphaned_process(&app).await;
         }
         Ok(states)
     }
@@ -189,6 +193,9 @@ impl ProcessManager {
         let source = crate::official_app_installer::source_dir(&app.id)?;
         let working_dir = canonical_working_directory(&source, &app.process.working_directory)?;
         let (program, path) = command_for_official_app(app, &source)?;
+        if let Some(pid) = self.adopt_orphaned_process(app).await? {
+            return Ok(pid);
+        }
         ensure_ready_port_available(&app.process.ready_url)?;
         let log_dir = crate::config::data_root()?.join("logs").join(&app.id);
         std::fs::create_dir_all(&log_dir)?;
@@ -292,13 +299,43 @@ impl ProcessManager {
         }
 
         // 每个官方应用在独立进程组中运行，停止时必须一并清理派生服务。
-        if let Some(process_group) = entry.process_group {
-            terminate_process_group(process_group as i32).await;
+        let terminated = if let Some(process_group) = entry.process_group {
+            terminate_process_group(process_group as i32).await
         } else {
-            terminate_process(entry.pid as i32).await;
+            terminate_process(entry.pid as i32).await
+        };
+        if !terminated {
+            self.table.lock().unwrap().entries.insert(
+                id.into(),
+                ProcessEntry {
+                    pid: entry.pid,
+                    process_group: entry.process_group,
+                    kill_tx: None,
+                },
+            );
+            self.clear_transition(id);
+            return Err(AppError::Process(format!("{} 进程未能退出", id)));
         }
         let _ = remove_runtime_record(id);
         self.clear_transition(id);
+        Ok(())
+    }
+
+    /// 用户确认后释放遗留的健康检查端口，兜底解决运行记录丢失。
+    pub async fn release_port(&self, app: &OfficialApp) -> AppResult<()> {
+        let Some(pid) = listening_pid(&app.process.ready_url)? else {
+            return Err(AppError::Process(format!("{} 的端口当前未被占用", app.id)));
+        };
+        let process_group = process_group_id(pid).filter(|group| *group == pid);
+        let terminated = if let Some(group) = process_group {
+            terminate_process_group(group as i32).await
+        } else {
+            terminate_process(pid as i32).await
+        };
+        if !terminated || ensure_ready_port_available(&app.process.ready_url).is_err() {
+            return Err(AppError::Process(format!("{} 的端口仍被占用", app.id)));
+        }
+        let _ = remove_runtime_record(&app.id);
         Ok(())
     }
 
@@ -392,6 +429,49 @@ impl ProcessManager {
         // kill(pid, 0) 不发信号，仅检查进程是否存在
         // 返回 0 = 存在；返回 -1 且 errno=ESRCH = 不存在
         pid > 0 && unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    async fn adopt_orphaned_process(&self, app: &OfficialApp) -> AppResult<Option<u32>> {
+        let Some(pid) = listening_pid(&app.process.ready_url)? else {
+            return Ok(None);
+        };
+        let source = official_app_installer::source_dir(&app.id)?;
+        if !process_matches_app(pid, app, &source) || !is_ready(&app.process.ready_url).await {
+            return Ok(None);
+        }
+        let process_group = process_group_id(pid)
+            .ok_or_else(|| AppError::Process(format!("{} 遗留进程缺少独立进程组", app.id)))?;
+        let working_directory =
+            canonical_working_directory(&source, &app.process.working_directory)?;
+        let program = source.join(&app.process.command[0]);
+        let record = RuntimeRecord {
+            app_id: app.id.clone(),
+            pid,
+            process_group: Some(process_group),
+            started_at: chrono::Utc::now().timestamp(),
+            process_started_at: process_started_at(pid).unwrap_or_default(),
+            command: runtime_command(&program, &app.process.command),
+            working_directory: working_directory.to_string_lossy().into_owned(),
+            ready_url: app.process.ready_url.clone(),
+            log_path: crate::config::data_root()?
+                .join("logs")
+                .join(&app.id)
+                .join("app.log")
+                .to_string_lossy()
+                .into_owned(),
+            version: app.version.clone(),
+            instance_id: uuid::Uuid::new_v4().to_string(),
+        };
+        write_runtime_record(&record)?;
+        self.table.lock().unwrap().entries.insert(
+            app.id.clone(),
+            ProcessEntry {
+                pid,
+                process_group: Some(process_group),
+                kill_tx: None,
+            },
+        );
+        Ok(Some(pid))
     }
 }
 
@@ -572,6 +652,32 @@ fn process_matches_record(record: &RuntimeRecord) -> bool {
         && process_working_directory_matches(record.pid, &record.working_directory)
 }
 
+fn process_matches_app(pid: u32, app: &OfficialApp, source: &Path) -> bool {
+    let Ok((program, _)) = command_for_official_app(app, source) else {
+        return false;
+    };
+    let Ok(working_directory) = canonical_working_directory(source, &app.process.working_directory)
+    else {
+        return false;
+    };
+    let record = RuntimeRecord {
+        app_id: app.id.clone(),
+        pid,
+        process_group: process_group_id(pid),
+        started_at: 0,
+        process_started_at: process_started_at(pid).unwrap_or_default(),
+        command: runtime_command(&program, &app.process.command),
+        working_directory: working_directory.to_string_lossy().into_owned(),
+        ready_url: app.process.ready_url.clone(),
+        log_path: String::new(),
+        version: app.version.clone(),
+        instance_id: String::new(),
+    };
+    !record.process_started_at.is_empty()
+        && record.process_group == Some(pid)
+        && process_matches_record(&record)
+}
+
 fn process_group_matches_record(record: &RuntimeRecord) -> bool {
     let Some(expected) = record.process_group else {
         return false;
@@ -585,6 +691,19 @@ fn process_group_matches_record(record: &RuntimeRecord) -> bool {
     {
         let _ = expected;
         false
+    }
+}
+
+fn process_group_id(pid: u32) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        let group = unsafe { libc::getpgid(pid as i32) };
+        (group >= 0).then_some(group as u32)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        None
     }
 }
 
@@ -652,42 +771,49 @@ async fn is_ready(url: &str) -> bool {
 }
 
 async fn terminate_child_process_group(child: &mut tokio::process::Child, pid: u32) {
-    terminate_process_group(pid as i32).await;
+    let _ = terminate_process_group(pid as i32).await;
     let _ = child.wait().await;
 }
 
-async fn terminate_process(pid: i32) {
+async fn terminate_process(pid: i32) -> bool {
     if pid <= 0 {
-        return;
+        return false;
     }
     unsafe {
         libc::kill(pid, libc::SIGTERM);
     }
     for _ in 0..50 {
         if !process_alive(pid) {
-            return;
+            return true;
         }
         sleep(Duration::from_millis(100)).await;
     }
     unsafe {
         libc::kill(pid, libc::SIGKILL);
     }
+    for _ in 0..50 {
+        if !process_alive(pid) {
+            return true;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    false
 }
 
 fn process_alive(pid: i32) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
 }
 
-async fn terminate_process_group(process_group: i32) {
+async fn terminate_process_group(process_group: i32) -> bool {
     if process_group <= 0 {
-        return;
+        return false;
     }
     unsafe {
         libc::kill(-process_group, libc::SIGTERM);
     }
     for _ in 0..50 {
         if !process_group_alive(process_group) {
-            return;
+            return true;
         }
         sleep(Duration::from_millis(100)).await;
     }
@@ -696,10 +822,11 @@ async fn terminate_process_group(process_group: i32) {
     }
     for _ in 0..50 {
         if !process_group_alive(process_group) {
-            return;
+            return true;
         }
         sleep(Duration::from_millis(100)).await;
     }
+    false
 }
 
 fn process_group_alive(process_group: i32) -> bool {
@@ -722,6 +849,26 @@ fn ensure_ready_port_available(url: &str) -> AppResult<()> {
                 "端口 {host}:{port} 已被占用，无法启动官方应用: {error}"
             ))
         })
+}
+
+/// 返回占用官方应用健康检查端口的监听进程 PID。
+fn listening_pid(url: &str) -> AppResult<Option<u32>> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| AppError::Process(format!("健康检查地址无效: {error}")))?;
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| AppError::Process("健康检查地址缺少端口".into()))?;
+    let output = std::process::Command::new("lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fp"])
+        .output()
+        .map_err(|error| AppError::Process(format!("查询端口监听进程失败: {error}")))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix('p'))
+        .and_then(|pid| pid.parse().ok()))
 }
 
 /// 启动用户明确设置为随 aIdea 启动的官方应用。
@@ -758,7 +905,7 @@ pub async fn start_configured_official_apps(manager: &ProcessManager) {
 mod tests {
     use super::{
         canonical_working_directory, check_official_source, command_for_official_app,
-        command_matches, ensure_ready_port_available, read_runtime_record_at,
+        command_matches, ensure_ready_port_available, listening_pid, read_runtime_record_at,
         runtime_record_matches_app, write_runtime_record_at, ProcessManager, ProcessStatus,
         RuntimeRecord,
     };
@@ -977,6 +1124,18 @@ mod tests {
             .to_string();
 
         assert!(error.contains(&format!("端口 127.0.0.1:{port} 已被占用")));
+    }
+
+    #[test]
+    fn 能找到健康检查端口的监听进程() {
+        let _guard = NETWORK_TEST_LOCK.lock().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        assert_eq!(
+            listening_pid(&format!("http://127.0.0.1:{port}/health")).unwrap(),
+            Some(std::process::id())
+        );
     }
 
     #[test]

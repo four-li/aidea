@@ -15,9 +15,10 @@ interface Props {
   states: Record<string, AppState>;
   theme?: Exclude<ThemeMode, 'system'>;
   onFrameRef?: AppFrameRef;
+  onBackToMain?: () => void;
 }
 
-export function ContentArea({ apps, activeApp, states, theme, onFrameRef }: Props) {
+export function ContentArea({ apps, activeApp, states, theme, onFrameRef, onBackToMain }: Props) {
   // 所有 webview 子应用都挂载，用 CSS 控制显隐，避免切换时 iframe 重载
   const webviewApps = useMemo(() => apps.filter((a) => a.ui.mode === 'webview'), [apps]);
 
@@ -65,7 +66,7 @@ export function ContentArea({ apps, activeApp, states, theme, onFrameRef }: Prop
         {/* builtin / none 子应用：按需渲染 */}
         {activeApp.ui.mode === 'builtin' && (
           <div className="absolute inset-0 min-h-0">
-            <BuiltinPage app={activeApp} />
+            <BuiltinPage app={activeApp} onBackToMain={onBackToMain} />
           </div>
         )}
         {activeApp.ui.mode === 'none' && (

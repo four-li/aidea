@@ -17,6 +17,7 @@ const mockResetAppSettings = vi.fn();
 const mockSaveAppUserSettings = vi.fn();
 const mockStartApp = vi.fn();
 const mockStopApp = vi.fn();
+const mockReleaseAppPort = vi.fn();
 const mockUninstallOfficialApp = vi.fn();
 const mockGetDevToolsSettings = vi.fn();
 const mockListOfficialApps = vi.fn();
@@ -36,6 +37,7 @@ vi.mock('../../src/lib/ipc', () => ({
     saveAppUserSettings: (...args: unknown[]) => mockSaveAppUserSettings(...args),
     startApp: (...args: unknown[]) => mockStartApp(...args),
     stopApp: (...args: unknown[]) => mockStopApp(...args),
+    releaseAppPort: (...args: unknown[]) => mockReleaseAppPort(...args),
     uninstallOfficialApp: (...args: unknown[]) => mockUninstallOfficialApp(...args),
     getDevToolsSettings: (...args: unknown[]) => mockGetDevToolsSettings(...args),
     saveDevToolsSettings: vi.fn(),
@@ -59,6 +61,7 @@ describe('AppManagementPage', () => {
     mockSaveAppUserSettings.mockResolvedValue(undefined);
     mockStartApp.mockResolvedValue(123);
     mockStopApp.mockResolvedValue(undefined);
+    mockReleaseAppPort.mockResolvedValue(undefined);
     mockUninstallOfficialApp.mockResolvedValue(undefined);
     mockGetDevToolsSettings.mockResolvedValue({ hidden_tabs: [] });
     mockListOfficialApps.mockResolvedValue([]);
@@ -337,9 +340,44 @@ describe('AppManagementPage', () => {
     });
 
     expect(await screen.findByRole('menuitem', { name: '重试启动' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: '释放端口' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: '启动' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('menuitem', { name: '重试启动' }));
     await waitFor(() => expect(mockStartApp).toHaveBeenCalledWith('official-mail'));
+  });
+
+  it('端口占用时可确认释放遗留端口', async () => {
+    mockListApps.mockResolvedValue([
+      {
+        id: 'official-mail',
+        name: '邮件管理',
+        version: '1.0.0',
+        category: 'test',
+        status: 'active',
+        ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
+        process: {},
+      },
+    ]);
+    render(
+      <AppManagementPage
+        onAppsChanged={vi.fn()}
+        onShowLog={vi.fn()}
+        states={{
+          'official-mail': {
+            id: 'official-mail',
+            status: 'stopped',
+            pid: null,
+            issue: { level: 'warning', message: '端口已被占用', updated_at: 0 },
+          },
+        }}
+      />,
+    );
+    fireEvent.keyDown(await screen.findByRole('button', { name: '邮件管理 更多操作' }), {
+      key: 'ArrowDown',
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '释放端口' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认释放' }));
+    await waitFor(() => expect(mockReleaseAppPort).toHaveBeenCalledWith('official-mail'));
   });
 
   it('显示开关在悬浮 200ms 后说明其作用', async () => {

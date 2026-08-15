@@ -23,6 +23,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::shell::get_aidea_version,
             commands::shell::get_os_username,
+            commands::shell::get_os_user_avatar,
             commands::shell::open_external_url,
             commands::shell::check_aidea_update,
             commands::shell::install_aidea_update,
@@ -40,6 +41,7 @@ pub fn run() {
             commands::shell::save_app_user_settings,
             commands::shell::start_app,
             commands::shell::stop_app,
+            commands::shell::release_app_port,
             commands::shell::get_app_states,
             commands::shell::read_app_log,
             commands::dev_tools::get_dev_tools_settings,

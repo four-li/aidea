@@ -1,10 +1,11 @@
 // 顶部横排导航栏：Chrome 风格标签页
 // macOS 圆点（左侧）+ 子应用标签（中间）
-import { CircleArrowUp, LoaderCircle, TriangleAlert } from 'lucide-react';
+import { LoaderCircle, TriangleAlert } from 'lucide-react';
 import { AppIcon, processStatusLabel } from './AppIcon';
 import { AppContextMenu } from './AppContextMenu';
 import { AccountMenu } from './AccountMenu';
 import type { AppManifest, AppState } from '../types/manifest';
+import type { ThemeMode } from '../hooks/useTheme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 interface Props {
@@ -17,6 +18,8 @@ interface Props {
   onShowLog: (app: AppManifest) => void;
   onOpenSettings: () => void;
   onOpenDeveloperGuide?: () => void;
+  themeMode: ThemeMode;
+  onThemeChange: (mode: ThemeMode) => void;
   updateAvailable?: boolean;
   onOpenUpdate?: () => void;
 }
@@ -63,6 +66,8 @@ export function TopBar({
   onShowLog,
   onOpenSettings,
   onOpenDeveloperGuide,
+  themeMode,
+  onThemeChange,
   updateAvailable = false,
   onOpenUpdate = () => undefined,
 }: Props) {
@@ -72,7 +77,7 @@ export function TopBar({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="h-topbar bg-background flex items-center overflow-hidden">
+      <div className="h-topbar bg-background flex select-none items-center overflow-hidden">
       {/* macOS 拖拽区（红绿圆点浮在这里） */}
       <div className="w-20 h-full flex-shrink-0" data-tauri-drag-region />
 
@@ -88,7 +93,7 @@ export function TopBar({
           >
             <button
               onClick={() => onSelectApp(app.id)}
-              className={`h-full min-w-[120px] px-3.5 flex items-center gap-2 text-tab flex-shrink-0 transition-colors ${
+              className={`h-full min-w-[120px] px-3.5 flex select-none items-center gap-2 text-tab flex-shrink-0 transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 ${
                 app.issue ?? states[app.id]?.issue
                   ? 'text-muted-foreground opacity-60 hover:bg-card/50'
                   : app.id === activeAppId
@@ -104,24 +109,13 @@ export function TopBar({
         ))}
       </div>
 
-      {updateAvailable && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="flex h-full w-10 shrink-0 items-center justify-center text-emerald-500 transition-colors hover:bg-muted hover:text-emerald-400"
-              aria-label="有新版本可更新"
-              onClick={onOpenUpdate}
-            >
-              <CircleArrowUp size={22} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>有新版本可更新</TooltipContent>
-        </Tooltip>
-      )}
       <AccountMenu
         onOpenSettings={onOpenSettings}
         onOpenDeveloperGuide={onOpenDeveloperGuide}
+        themeMode={themeMode}
+        onThemeChange={onThemeChange}
+        updateAvailable={updateAvailable}
+        onOpenUpdate={onOpenUpdate}
       />
       </div>
     </TooltipProvider>

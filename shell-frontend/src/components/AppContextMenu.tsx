@@ -27,6 +27,9 @@ export function AppContextMenu({ app, state, onRefresh, onShowLog, children }: P
   const hasProcess = !!app.process;
   const hasIssue = !!(app.issue ?? state?.issue);
 
+  // 内置应用没有进程控制项，不挂载空的右键菜单浮层。
+  if (!hasProcess) return <>{children}</>;
+
   const handleStart = async () => {
     try {
       const request = ipc.startApp(app.id);
@@ -72,26 +75,20 @@ export function AppContextMenu({ app, state, onRefresh, onShowLog, children }: P
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent>
-        {hasProcess && (
+        {!isRunning && !transitioning && (
+          <ContextMenuItem onClick={handleStart}>{hasIssue ? '重试启动' : '启动'}</ContextMenuItem>
+        )}
+        {isRunning && !transitioning && (
           <>
-            {!isRunning && !transitioning && (
-              <ContextMenuItem onClick={handleStart}>
-                {hasIssue ? '重试启动' : '启动'}
-              </ContextMenuItem>
-            )}
-            {isRunning && !transitioning && (
-              <>
-                <ContextMenuItem onClick={handleStop}>停止</ContextMenuItem>
-                <ContextMenuItem onClick={handleRestart}>重启</ContextMenuItem>
-              </>
-            )}
-            {transitioning && (
-              <ContextMenuItem disabled>{state?.status === 'starting' ? '启动中...' : '停止中...'}</ContextMenuItem>
-            )}
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => onShowLog(app)}>查看日志</ContextMenuItem>
+            <ContextMenuItem onClick={handleStop}>停止</ContextMenuItem>
+            <ContextMenuItem onClick={handleRestart}>重启</ContextMenuItem>
           </>
         )}
+        {transitioning && (
+          <ContextMenuItem disabled>{state?.status === 'starting' ? '启动中...' : '停止中...'}</ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onShowLog(app)}>查看日志</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

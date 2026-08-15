@@ -14,6 +14,8 @@ describe('TopBar', () => {
         onRefreshStates={vi.fn()}
         onShowLog={vi.fn()}
         onOpenSettings={vi.fn()}
+        themeMode="system"
+        onThemeChange={vi.fn()}
       />,
     );
 
@@ -42,6 +44,8 @@ describe('TopBar', () => {
         onRefreshStates={vi.fn()}
         onShowLog={vi.fn()}
         onOpenSettings={vi.fn()}
+        themeMode="system"
+        onThemeChange={vi.fn()}
       />,
     );
 
@@ -77,9 +81,14 @@ describe('TopBar', () => {
         onRefreshStates={vi.fn()}
         onShowLog={vi.fn()}
         onOpenSettings={vi.fn()}
+        themeMode="system"
+        onThemeChange={vi.fn()}
       />,
     );
 
+    expect(screen.getByRole('button', { name: /DevTools/ })).toHaveClass(
+      'focus-visible:ring-offset-0',
+    );
     expect(screen.getByLabelText('邮件中心：运行中')).toHaveClass('ml-auto');
     expect(screen.queryByLabelText('DevTools：已停止')).not.toBeInTheDocument();
   });
@@ -96,6 +105,8 @@ describe('TopBar', () => {
         onRefreshStates={vi.fn()}
         onShowLog={vi.fn()}
         onOpenSettings={vi.fn()}
+        themeMode="system"
+        onThemeChange={vi.fn()}
         updateAvailable
         onOpenUpdate={onOpenUpdate}
       />,

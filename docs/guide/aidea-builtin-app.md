@@ -35,7 +35,7 @@ settings:
   reset_command: [builtin, dev-tools]
 ```
 
-- `id` 全局唯一且使用 kebab-case；`name` 是显示名称；只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。
+- `id` 全局唯一且使用 kebab-case；`name` 是显示名称；开发阶段不因代码改动自动更新 `version`；正式发布时，只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，发布流程必须同步更新 `version`。纯重构、测试和文档不要求升版本。
 - `ui.mode` 固定为 `builtin`；`ui.icon` 使用 lucide-react 图标名或图片路径。
 - `ui.entry` 未声明时从顶部应用栏进入；当前只有 `developer-guide` 使用 `account-menu`，它只从账号菜单的“开发手册”入口进入，不显示在顶部应用栏或应用管理中。
 - 应用管理页为内置应用提供 aIdea 的通用设置详情；没有业务设置的内置应用显示空配置状态。

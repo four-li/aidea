@@ -2,9 +2,12 @@ use crate::config::{load_config, save_config, AppUserSettings, ShellConfig, Star
 use crate::error::{AppError, AppResult};
 use crate::manifest::{find_manifest, load_all_manifests, AppManifest};
 use crate::process::{AppState, ProcessManager};
+use base64::{engine::general_purpose::STANDARD, Engine};
+use std::time::Duration;
 use tauri::{Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 #[derive(serde::Serialize)]
 pub struct OfficialAppInstallResult {
@@ -34,6 +37,49 @@ pub fn get_os_username() -> AppResult<String> {
         .ok()
         .filter(|username| !username.trim().is_empty())
         .ok_or_else(|| AppError::Config("无法读取 macOS 短用户名".into()))
+}
+
+#[tauri::command]
+pub async fn get_os_user_avatar() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let username = std::env::var("USER").ok()?;
+        let output = timeout(
+            Duration::from_secs(2),
+            Command::new("/usr/bin/dscl")
+                .args([".", "-read", &format!("/Users/{username}"), "JPEGPhoto"])
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let photo = decode_jpeg_photo(&String::from_utf8(output.stdout).ok()?)?;
+        return Some(format!("data:image/jpeg;base64,{}", STANDARD.encode(photo)));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn decode_jpeg_photo(output: &str) -> Option<Vec<u8>> {
+    let hex: String = output
+        .strip_prefix("JPEGPhoto:")?
+        .chars()
+        .filter(|character| character.is_ascii_hexdigit())
+        .collect();
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    for pair in hex.as_bytes().chunks_exact(2) {
+        bytes.push(u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()?);
+    }
+    (bytes.starts_with(&[0xff, 0xd8]) && bytes.ends_with(&[0xff, 0xd9])).then_some(bytes)
 }
 
 #[tauri::command]
@@ -302,13 +348,29 @@ pub async fn reset_app_settings(id: String) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        builtin_reset_command_for, current_aidea_version, get_os_username, reset_command_for,
+        builtin_reset_command_for, current_aidea_version, decode_jpeg_photo, get_os_username,
+        reset_command_for,
     };
     use crate::manifest::{AppManifest, AppStatus, SettingsConfig, UiConfig, UiMode};
 
     #[test]
     fn 读取当前用户短用户名() {
         assert!(!get_os_username().expect("测试环境应提供 USER").is_empty());
+    }
+
+    #[test]
+    fn 解析_dscl返回的账户头像() {
+        let photo = decode_jpeg_photo("JPEGPhoto:\n ffd8 ffe0 0010 4a46 4946 ffd9\n")
+            .expect("JPEGPhoto 应解析为 JPEG 字节");
+        assert_eq!(
+            photo,
+            vec![0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0xff, 0xd9]
+        );
+    }
+
+    #[test]
+    fn 拒绝不完整的_jpeg十六进制数据() {
+        assert!(decode_jpeg_photo("JPEGPhoto:\n ffd8 ffd9f\n").is_none());
     }
 
     fn manifest(mode: UiMode, settings: Option<SettingsConfig>) -> AppManifest {
@@ -387,6 +449,12 @@ pub async fn start_app(id: String, manager: State<'_, ProcessManager>) -> AppRes
 #[tauri::command]
 pub async fn stop_app(id: String, manager: State<'_, ProcessManager>) -> AppResult<()> {
     manager.stop(&id).await
+}
+
+#[tauri::command]
+pub async fn release_app_port(id: String, manager: State<'_, ProcessManager>) -> AppResult<()> {
+    let app = crate::official_app_installer::installed_definition(&id)?;
+    manager.release_port(&app).await
 }
 
 #[tauri::command]

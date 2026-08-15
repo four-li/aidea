@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { TopBar } from './components/TopBar';
@@ -23,6 +23,7 @@ function App() {
   const { states, refresh } = useProcessStatus(apps.length > 0);
   const { mode: themeMode, resolvedTheme, setTheme } = useTheme();
   const [developerGuide, setDeveloperGuide] = useState<AppManifest | null>(null);
+  const previousMainAppId = useRef<string | null>(null);
 
   useEffect(() => {
     void ipc
@@ -162,8 +163,12 @@ function App() {
         onShowLog={setLogApp}
         onOpenSettings={() => setShowSettings(true)}
         onOpenDeveloperGuide={() => {
-          if (developerGuide) selectApp(developerGuide.id);
+          if (!developerGuide) return;
+          if (apps.some((app) => app.id === activeAppId)) previousMainAppId.current = activeAppId;
+          selectApp(developerGuide.id);
         }}
+        themeMode={themeMode}
+        onThemeChange={setTheme}
         updateAvailable={updateAvailable}
         onOpenUpdate={() => {
           setSettingsCategory('about');
@@ -178,6 +183,10 @@ function App() {
           states={states}
           theme={resolvedTheme}
           onFrameRef={registerFrame}
+          onBackToMain={() => {
+            const previousAppId = previousMainAppId.current;
+            selectApp(apps.some((app) => app.id === previousAppId) ? previousAppId : apps[0]?.id ?? null);
+          }}
         />
       </div>
       <LogPanel app={logApp} onClose={() => setLogApp(null)} />

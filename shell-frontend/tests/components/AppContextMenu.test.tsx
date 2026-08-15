@@ -46,4 +46,27 @@ describe('AppContextMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '重试启动' }));
     await waitFor(() => expect(mockStartApp).toHaveBeenCalledWith('official-mail'));
   });
+
+  it('内置应用右键不显示空菜单', () => {
+    render(
+      <AppContextMenu
+        app={{
+          id: 'dev-tools',
+          name: 'DevTools',
+          version: '1.0.0',
+          category: 'test',
+          status: 'active',
+          ui: { mode: 'builtin' },
+        }}
+        onRefresh={vi.fn()}
+        onShowLog={vi.fn()}
+      >
+        <button type="button">DevTools</button>
+      </AppContextMenu>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'DevTools' }));
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
 });

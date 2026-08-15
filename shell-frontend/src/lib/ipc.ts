@@ -25,6 +25,7 @@ import type { AideaUpdate } from '../types/update';
 export const ipc = {
   getAideaVersion: (): Promise<string> => invoke('get_aidea_version'),
   getOsUsername: (): Promise<string> => invoke('get_os_username'),
+  getOsUserAvatar: (): Promise<string | null> => invoke('get_os_user_avatar'),
   openExternalUrl: (url: string): Promise<void> => invoke('open_external_url', { url }),
   checkAideaUpdate: (): Promise<AideaUpdate | null> => invoke('check_aidea_update'),
   installAideaUpdate: (): Promise<void> => invoke('install_aidea_update'),
@@ -56,6 +57,9 @@ export const ipc = {
 
   /** 停止子应用 */
   stopApp: (id: string): Promise<void> => invoke<void>('stop_app', { id }),
+
+  /** 用户确认后释放遗留官方应用端口 */
+  releaseAppPort: (id: string): Promise<void> => invoke<void>('release_app_port', { id }),
 
   /** 查询所有子应用的进程状态 */
   getAppStates: (): Promise<AppState[]> => invoke<AppState[]>('get_app_states'),

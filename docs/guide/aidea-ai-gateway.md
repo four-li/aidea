@@ -110,12 +110,15 @@ AI 网关把 `message` 作为本次任务的用户指令，内部根据 AI 网�
 模型请求工具 -> AI 网关执行工具 -> 工具结果回传模型 -> 继续请求模型
 ```
 
-当前通用工具包括：
+首期通用工具只有：
 
 - `read_file(path, start_line?, end_line?)`：读取文件的全部或指定行。
-- `write_file(path, content)`：写入完整文件内容。
-- `edit_file(path, old_text, new_text)`：替换文本；`old_text` 必须恰好命中一次，否则工具失败。
 - `exec(command, cwd?)`：在指定目录或当前目录执行命令。
+
+当前 Worktrace 和邮件中心都不需要 AI 网关直接写入文件，因此不提供
+`write_file` 或 `edit_file`。当第一个明确的写文件业务需求确定后，再以
+`edit_file(path, old_text, new_text)` 为起点扩展契约；`old_text` 必须恰好命中一次，
+否则工具失败。
 
 不提供 `list_dir`、`search`、MCP、RAG、Memory、多 Agent 或 `worktrace.git_status` 这类业务专用工具。Worktrace 可以在提示词中要求模型执行 `git status`、`git diff` 和 `git log`；邮件中心可以直接把邮件内容拼接到 `message` 中。
 

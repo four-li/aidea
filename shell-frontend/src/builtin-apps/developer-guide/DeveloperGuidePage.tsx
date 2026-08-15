@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen } from 'lucide-react';
+import { ArrowLeft, BookOpen } from 'lucide-react';
 import { gfmTableFromMarkdown } from 'mdast-util-gfm-table';
 import { gfmTable } from 'micromark-extension-gfm-table';
 import ReactMarkdown from 'react-markdown';
@@ -21,7 +21,11 @@ function remarkTables(this: Processor) {
   data.fromMarkdownExtensions = fromMarkdownExtensions;
 }
 
-export function DeveloperGuidePage() {
+interface Props {
+  onBack?: () => void;
+}
+
+export function DeveloperGuidePage({ onBack = () => undefined }: Props) {
   const [activeDocumentId, setActiveDocumentId] = useState('README.md');
   const activeDocument =
     GUIDE_DOCUMENTS.find((document) => document.id === activeDocumentId) ?? GUIDE_DOCUMENTS[0];
@@ -29,7 +33,10 @@ export function DeveloperGuidePage() {
   return (
     <div className="flex h-full min-w-0 bg-background">
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-muted/20 p-3">
-        <div className="flex h-8 items-center gap-2 px-2 text-sm font-semibold">
+        <div className="flex h-8 items-center gap-2 text-sm font-semibold">
+          <Button variant="ghost" size="icon" aria-label="返回主页面" onClick={onBack}>
+            <ArrowLeft size={16} />
+          </Button>
           <BookOpen aria-hidden="true" />
           开发手册
         </div>
