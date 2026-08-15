@@ -16,6 +16,7 @@ interface Props {
   onRefreshStates: () => void;
   onShowLog: (app: AppManifest) => void;
   onOpenSettings: () => void;
+  onOpenDeveloperGuide?: () => void;
   updateAvailable?: boolean;
   onOpenUpdate?: () => void;
 }
@@ -61,6 +62,7 @@ export function TopBar({
   onRefreshStates,
   onShowLog,
   onOpenSettings,
+  onOpenDeveloperGuide,
   updateAvailable = false,
   onOpenUpdate = () => undefined,
 }: Props) {
@@ -117,7 +119,10 @@ export function TopBar({
           <TooltipContent>有新版本可更新</TooltipContent>
         </Tooltip>
       )}
-      <AccountMenu onOpenSettings={onOpenSettings} />
+      <AccountMenu
+        onOpenSettings={onOpenSettings}
+        onOpenDeveloperGuide={onOpenDeveloperGuide}
+      />
       </div>
     </TooltipProvider>
   );

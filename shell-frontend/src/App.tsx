@@ -15,12 +15,26 @@ import { ipc } from './lib/ipc';
 import type { AppManifest } from './types/manifest';
 
 const APP_ORDER_STORAGE_KEY = 'aidea-app-order';
+const DEVELOPER_GUIDE_APP_ID = 'developer-guide';
 
 function App() {
   const { apps, loading, error, refresh: refreshApps } = useApps();
   const { activeAppId, selectApp } = useActiveApp();
   const { states, refresh } = useProcessStatus(apps.length > 0);
   const { mode: themeMode, resolvedTheme, setTheme } = useTheme();
+  const [developerGuide, setDeveloperGuide] = useState<AppManifest | null>(null);
+
+  useEffect(() => {
+    void ipc
+      .listApps()
+      .then((allApps) => {
+        setDeveloperGuide(
+          allApps.find((app) => app.id === DEVELOPER_GUIDE_APP_ID && app.ui.entry === 'account-menu') ??
+            null,
+        );
+      })
+      .catch(() => undefined);
+  }, []);
 
   const handleNavigateRequest = useCallback(
     async ({ appId }: { appId: string; path?: string }) => {
@@ -114,8 +128,10 @@ function App() {
   }, [appOrder]);
 
   const activeApp = useMemo(
-    () => apps.find((a) => a.id === activeAppId) || null,
-    [apps, activeAppId],
+    () =>
+      apps.find((app) => app.id === activeAppId) ||
+      (activeAppId === developerGuide?.id ? developerGuide : null),
+    [apps, activeAppId, developerGuide],
   );
 
   if (loading) {
@@ -145,6 +161,9 @@ function App() {
         onRefreshStates={refresh}
         onShowLog={setLogApp}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenDeveloperGuide={() => {
+          if (developerGuide) selectApp(developerGuide.id);
+        }}
         updateAvailable={updateAvailable}
         onOpenUpdate={() => {
           setSettingsCategory('about');

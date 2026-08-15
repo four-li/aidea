@@ -59,7 +59,7 @@ iframe.contentWindow?.postMessage(message, appOrigin);
 应用不能通过读取 `window.parent.origin` 获取壳来源：跨源 iframe 不允许可靠读取父窗口的 origin，实际 WebView 中可能抛出跨源访问错误。应用必须从 `document.referrer` 解析父页面 origin，只接受下面两个精确值：
 
 ```ts
-const shellOrigins = new Set(['tauri://localhost', 'http://localhost:5173']);
+const shellOrigins = new Set(['http://tauri.localhost', 'tauri://localhost', 'http://localhost:5173']);
 const shellOrigin = (() => {
   if (window.parent === window) return null;
   try {
@@ -71,7 +71,7 @@ const shellOrigin = (() => {
 })();
 ```
 
-`document.referrer` 为空、解析失败或不在白名单时，应用必须安全地作为独立页面运行，不发送 `ready`，也不处理壳消息。禁止使用 `window.parent.origin`、`'*'`、前缀匹配或从未校验的 URL 推导 `targetOrigin`。在当前 macOS Tauri WebView 中，嵌入页面可以取得 `tauri://localhost`。
+`document.referrer` 为空、解析失败或不在白名单时，应用必须安全地作为独立页面运行，不发送 `ready`，也不处理壳消息。禁止使用 `window.parent.origin`、`'*'`、前缀匹配或从未校验的 URL 推导 `targetOrigin`。当前 macOS Tauri WebView 的生产来源是 `http://tauri.localhost`；保留 `tauri://localhost` 仅用于兼容已有壳版本。
 
 ## 消息信封
 
@@ -123,7 +123,7 @@ event.source == window.parent
 message.appId == 自己的 appId
 ```
 
-应用允许的壳 origin 必须由上面的 `document.referrer` 白名单确定：生产壳 origin 是 `tauri://localhost`，开发壳 origin 是 `http://localhost:5173`。这些校验用于防止跨源串线、错误 iframe 和应用 ID 冒用；当前官方应用是 aIdea 自己维护的可信应用，不额外防范本机恶意进程。
+应用允许的壳 origin 必须由上面的 `document.referrer` 白名单确定：生产壳 origin 是 `http://tauri.localhost`，`tauri://localhost` 只作旧壳兼容，开发壳 origin 是 `http://localhost:5173`。这些校验用于防止跨源串线、错误 iframe 和应用 ID 冒用；当前官方应用是 aIdea 自己维护的可信应用，不额外防范本机恶意进程。
 
 ## 握手和能力声明
 

@@ -2,7 +2,7 @@
 const APP_ID = 'reference-app';
 const PROTOCOL = 'aidea-app-bridge';
 const VERSION = 1;
-const SHELL_ORIGINS = new Set(['tauri://localhost', 'http://localhost:5173']);
+const SHELL_ORIGINS = new Set(['http://tauri.localhost', 'tauri://localhost', 'http://localhost:5173']);
 
 interface Envelope {
   protocol: typeof PROTOCOL;

@@ -17,7 +17,7 @@
 ## 接入清单（子应用必须遵循）
 
 1. **appId 一致**：消息中的 `appId` 必须与 `aidea.yaml` 的 `id` 完全相同。
-2. **明确目标源**：从 `document.referrer` 取得父窗口 origin，只接受 `tauri://localhost` 或 `http://localhost:5173`；跨源 iframe 不要读取 `window.parent.origin`，禁止使用 `'*'` 或模糊匹配。拿不到合法来源时作为独立页面运行，不发送 `ready`。
+2. **明确目标源**：从 `document.referrer` 取得父窗口 origin，只接受生产壳 `http://tauri.localhost`、旧壳兼容 `tauri://localhost` 或开发壳 `http://localhost:5173`；跨源 iframe 不要读取 `window.parent.origin`，禁止使用 `'*'` 或模糊匹配。拿不到合法来源时作为独立页面运行，不发送 `ready`。
 3. **声明 `supported`**：只列出应用实际支持的壳下发能力。本范本声明 `navigate`；`theme` 是基础能力，不需要声明。
 4. **发送 `ready`**：主页面加载和刷新后都发送一次。业务设置由应用自己的主页面内导航完成，不属于 App Bridge 或壳契约。
 5. **主题适配**：首屏读取 `aidea_theme=light|dark`，运行期处理壳发来的 `theme` 消息。

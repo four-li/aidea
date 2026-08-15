@@ -86,6 +86,8 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 | `AIDEA_APP_ID` | 当前应用 ID。 |
 | `AIDEA_APP_DATA_DIR` | 应用数据目录；数据库固定为其中的 `app.db`。 |
 | `AIDEA_APP_LOG_DIR` | 应用日志目录。 |
+| `AIDEA_AI_GATEWAY_URL` | aIdea AI 网关基础地址；应用按 [AI 网关契约](aidea-ai-gateway.md) 调用 `/api`。 |
+| `AIDEA_AI_GATEWAY_TOKEN` | AI 网关保存的访问令牌；它不是上游 API Key。 |
 | `PATH` | 解压包根目录。 |
 
 子进程环境会被清空，应用不得依赖上表以外的环境变量，包括 `HOME`、`LANG` 和 `TMPDIR`。临时文件、
@@ -100,6 +102,8 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 官方应用不得使用 Tauri IPC、`@tauri-apps/api`、`window.__TAURI__`、`AIDEA_COMMAND`、
 aIdea Rust 命令或壳前端封装。壳与官方应用的运行期通信只使用
 [App Bridge](aidea-app-bridge.md) 的 `postMessage` 契约。
+
+官方应用调用 AI 能力时，按 [AI 网关契约](aidea-ai-gateway.md) 使用注入的 AI 网关地址和令牌；不得直接访问上游 AI 服务或读取 API Key。
 
 aIdea 首次加载时追加 `aidea_theme=light|dark`，页面 `ready` 后由 Bridge 的 `theme` 保持同步。
 搜索是应用自身能力，不经 Bridge。账户、同步和其他业务设置由应用主页面进入、校验并保存；

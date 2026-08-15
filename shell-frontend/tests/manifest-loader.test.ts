@@ -61,6 +61,22 @@ describe('loadVisibleApps', () => {
     await expect(loadVisibleApps()).resolves.toEqual([]);
   });
 
+  it('仅从账号菜单进入的内置应用不出现在普通应用列表', async () => {
+    const mockApps: AppManifest[] = [
+      {
+        id: 'developer-guide',
+        name: '开发手册',
+        version: '0.1.0',
+        category: '开发',
+        status: 'active',
+        ui: { mode: 'builtin', entry: 'account-menu' },
+      },
+    ];
+    vi.mocked(invoke).mockResolvedValueOnce(mockApps).mockResolvedValueOnce({ app_settings: {} });
+
+    await expect(loadVisibleApps()).resolves.toEqual([]);
+  });
+
   it('旧配置缺少 app_settings 时仍能加载应用', async () => {
     const mockApps: AppManifest[] = [
       {

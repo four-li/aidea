@@ -508,6 +508,7 @@ fn unavailable_app_manifest(record: &InstalledApp, error: AppError) -> AppManife
             mode: UiMode::None,
             url: None,
             icon: None,
+            entry: None,
         },
         settings: None,
         process: None,
@@ -569,6 +570,7 @@ fn installed_app_manifest(definition: &OfficialApp) -> AppResult<AppManifest> {
             mode: UiMode::Webview,
             url: Some(url.into()),
             icon: Some(definition.icon.clone()),
+            entry: None,
         },
         settings: None,
         process: Some(ProcessConfig {

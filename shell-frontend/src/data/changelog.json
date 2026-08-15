@@ -1,5 +1,10 @@
 [
   {
+    "version": "0.2.2",
+    "date": "2026-08-15",
+    "notes": "优化\n- 自动生成的维护性更新。"
+  },
+  {
     "version": "0.2.1",
     "date": "2026-08-14",
     "notes": "新增\n- 支持 Gitee/GitHub/GitLab Release 并改为纯二进制安装"

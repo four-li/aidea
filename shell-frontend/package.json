@@ -1,6 +1,6 @@
 {
   "name": "aidea-shell-frontend",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -56,8 +56,11 @@
     "fast-xml-parser": "^5.10.1",
     "js-yaml": "^5.2.3",
     "lucide-react": "^1.28.0",
+    "mdast-util-gfm-table": "^2.0.0",
+    "micromark-extension-gfm-table": "^2.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",

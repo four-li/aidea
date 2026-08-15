@@ -9,6 +9,8 @@ export async function loadVisibleApps(): Promise<AppManifest[]> {
   // 仅 active 显示在侧边栏，disabled 不显示但保留配置记录
   return all.filter(
     (app) =>
-      app.status === ('active' as AppStatus) && appSettings[app.id]?.visible !== false,
+      app.status === ('active' as AppStatus) &&
+      app.ui.entry !== 'account-menu' &&
+      appSettings[app.id]?.visible !== false,
   );
 }

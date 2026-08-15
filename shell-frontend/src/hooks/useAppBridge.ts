@@ -143,13 +143,17 @@ export function useAppBridge(
         () => flushPendingNavigation(request.appId),
         () => undefined,
       );
-    }).then((registeredListener) => {
-      if (disposed) {
-        void registeredListener.unregister();
-      } else {
-        listener = registeredListener;
-      }
-    });
+    }).then(
+      (registeredListener) => {
+        if (disposed) {
+          void registeredListener.unregister();
+        } else {
+          listener = registeredListener;
+        }
+      },
+      // macOS 桌面通知插件没有 action listener；通知发送不受此限制。
+      () => undefined,
+    );
 
     return () => {
       disposed = true;

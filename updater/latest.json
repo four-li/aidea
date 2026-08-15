@@ -1,11 +1,11 @@
 {
-  "version": "0.2.1",
-  "notes": "新增\n- 支持 Gitee/GitHub/GitLab Release 并改为纯二进制安装",
-  "pub_date": "2026-08-14T07:07:00.597Z",
+  "version": "0.2.2",
+  "notes": "优化\n- 自动生成的维护性更新。",
+  "pub_date": "2026-08-15T07:18:27.590Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.1/开搞.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3RqMEdHZFVnRTkzakVGaWFBeTZVRTBiU3hSSGcxbTRCdFByYTAzdWtFSEpzZFdySG45VGFFM0c2N3JUVi9TSitVYVJvWktVR3NrMVVLSitFWVhnS3dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NjkxMjIwCWZpbGU65byA5pCeLmFwcC50YXIuZ3oKQ0paVytnVzJnQTVBdlZNWmhjSnNaZU1FL1doM0p1WFhRZUFLZTN2ODgvMmM5dFg0clZnYUpQcU1JRzBmdlNqeEtrUEkrbS9SSEJVYUdWbGlDYmlXQVE9PQo="
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.2/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3RUK3dhbjhXYVRKTVZOOFpNc0wvMlhBY25oM3VhRnc3K2JKc0JiZUlJWU5TTWpjVnhEYzBGQTFnZlZvN3ZNcW5hZVc0eVlVV1dJSHVUdXZ4eDNGTEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2Nzc4MzA3CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKV0huSXo4L1B2NXV4US8zcWxuWjdLSWpVT0VOVUJ3bFl4Ym02SXl0SnU5d1dzeUNpVzJ1dGtRTGx3VGlRY2owRVBqelZsdk1LTjBnV0N1MG8wdEs3Q3c9PQo="
     }
   }
 }

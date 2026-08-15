@@ -100,6 +100,26 @@ describe('useAppBridge', () => {
     );
   });
 
+  it('系统不支持通知点击监听时仍完成 ready 握手', async () => {
+    notificationMocks.onAction.mockRejectedValueOnce(new Error('Command not found'));
+    render(<Harness theme="dark" />);
+    const iframe = screen.getByTitle('邮件') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe.contentWindow, 'postMessage', {
+      configurable: true,
+      value: postMessage,
+    });
+
+    dispatchMessage(iframe, envelope('ready', { appId: app.id }));
+
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'theme', payload: { mode: 'dark' } }),
+        'http://127.0.0.1:43001',
+      );
+    });
+  });
+
   it('主题变化只发送 theme，不重建或重新注册 iframe', () => {
     const { rerender } = render(<Harness />);
     const iframe = screen.getByTitle('邮件') as HTMLIFrameElement;

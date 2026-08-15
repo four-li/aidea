@@ -1,0 +1,10 @@
+id: developer-guide
+name: 开发手册
+description: aIdea 开发规范与任务路由
+version: 0.1.0
+category: 开发
+status: active
+ui:
+  mode: builtin
+  icon: BookOpen
+  entry: account-menu

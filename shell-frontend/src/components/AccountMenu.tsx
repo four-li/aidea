@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings, UserRound } from 'lucide-react';
+import { BookOpen, Settings, UserRound } from 'lucide-react';
 import { ipc } from '../lib/ipc';
 import {
   DropdownMenu,
@@ -13,9 +13,10 @@ import { Button } from './ui/button';
 
 interface Props {
   onOpenSettings: () => void;
+  onOpenDeveloperGuide?: () => void;
 }
 
-export function AccountMenu({ onOpenSettings }: Props) {
+export function AccountMenu({ onOpenSettings, onOpenDeveloperGuide = () => undefined }: Props) {
   const [username, setUsername] = useState('账户');
 
   useEffect(() => {
@@ -50,6 +51,10 @@ export function AccountMenu({ onOpenSettings }: Props) {
         <DropdownMenuItem onSelect={onOpenSettings}>
           <Settings className="mr-2" size={16} />
           设置
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onOpenDeveloperGuide}>
+          <BookOpen className="mr-2" size={16} />
+          开发手册
         </DropdownMenuItem>
         <DropdownMenuItem disabled>
           <span className="mr-2 text-base leading-none">?</span>

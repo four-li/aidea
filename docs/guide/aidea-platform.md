@@ -33,6 +33,7 @@
 - Tauri IPC 仅供 aIdea 壳和内置应用使用。内置应用前端统一通过 `shell-frontend/src/lib/ipc.ts` 调用，不得在业务组件直接调用 `invoke`。
 - 官方应用不得依赖 `@tauri-apps/api`、`window.__TAURI__`、Rust 命令名或壳前端 IPC 封装。这些都是壳的内部实现。
 - 官方应用与 aIdea 壳之间的运行时通信统一使用 [App Bridge](aidea-app-bridge.md)；首期只实现 `ready`、`theme`、`notify` 和 `navigate`。搜索不属于 App Bridge，按 [应用内搜索规范](aidea-search.md) 由应用自己实现。
+- 官方应用调用 aIdea AI 能力时使用 [AI 网关契约](aidea-ai-gateway.md) 的本机 `/api` 接口；不直接访问上游 AI 服务、API Key 或 Codex app-server。
 - 官方应用只能使用 aIdea 注入的应用数据和日志目录；应用业务代码直接读写自己的数据库。
 - 内置应用的页面不能直接访问本地文件，所以通过 `ipc.ts` 调用自己的 Rust 业务模块；这不改变数据库归属。
 - 两类应用都不得读取 aIdea 壳配置或其他应用的数据库。

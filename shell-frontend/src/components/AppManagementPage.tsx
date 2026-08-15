@@ -118,7 +118,7 @@ export function AppManagementPage({
   const load = useCallback(async () => {
     try {
       const [allApps, config] = await Promise.all([ipc.listApps(), ipc.getShellConfig()]);
-      setApps(allApps);
+      setApps(allApps.filter((app) => app.ui.entry !== 'account-menu'));
       setSettings(config.app_settings);
     } catch (error) {
       toast.error('读取应用状态失败', { description: String(error) });

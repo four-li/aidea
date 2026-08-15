@@ -9,6 +9,7 @@ export interface UiConfig {
   mode: UiMode;
   url?: string;
   icon?: string;
+  entry?: 'topbar' | 'account-menu';
 }
 
 export interface SettingsConfig {

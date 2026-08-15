@@ -3,7 +3,10 @@ use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-const BUILTIN_MANIFESTS: &[&str] = &[include_str!("../../apps/builtin/dev-tools.yaml")];
+const BUILTIN_MANIFESTS: &[&str] = &[
+    include_str!("../../apps/builtin/dev-tools.yaml"),
+    include_str!("../../apps/builtin/developer-guide.yaml"),
+];
 
 /// UI 接入模式
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -15,6 +18,16 @@ pub enum UiMode {
     Builtin,
     /// 无 UI，纯后台进程
     None,
+}
+
+/// UI 入口位置
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum UiEntry {
+    /// 普通应用标签栏
+    Topbar,
+    /// 账号菜单中的固定入口
+    AccountMenu,
 }
 
 /// 子应用生命周期状态
@@ -39,6 +52,9 @@ pub struct UiConfig {
     /// lucide-react 图标名或图片资源路径
     #[serde(default)]
     pub icon: Option<String>,
+    /// 未声明时由前端作为顶部应用标签处理
+    #[serde(default)]
+    pub entry: Option<UiEntry>,
 }
 
 /// 应用设置能力。设置字段由应用自己定义，aIdea 只管理入口和重置授权。
@@ -135,7 +151,8 @@ pub fn find_manifest(id: &str) -> AppResult<AppManifest> {
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_unique_manifest_ids, AppManifest, AppStatus, SettingsConfig, UiConfig, UiMode,
+        load_all_manifests, validate_unique_manifest_ids, AppManifest, AppStatus, SettingsConfig,
+        UiConfig, UiEntry, UiMode,
     };
 
     fn manifest(id: &str) -> AppManifest {
@@ -150,6 +167,7 @@ mod tests {
                 mode: UiMode::None,
                 url: None,
                 icon: None,
+                entry: None,
             },
             settings: None,
             process: None,
@@ -177,5 +195,17 @@ mod tests {
             serde_yaml::from_str("reset_command: [node, scripts/reset-config.mjs]\n").unwrap();
 
         assert_eq!(settings.reset_command.unwrap()[0], "node");
+    }
+
+    #[test]
+    fn developer_guide_uses_account_menu_entry() {
+        let guide = load_all_manifests()
+            .unwrap()
+            .into_iter()
+            .find(|manifest| manifest.id == "developer-guide")
+            .expect("开发手册 manifest 应已注册");
+
+        assert_eq!(guide.ui.mode, UiMode::Builtin);
+        assert_eq!(guide.ui.entry, Some(UiEntry::AccountMenu));
     }
 }

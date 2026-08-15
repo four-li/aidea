@@ -37,6 +37,7 @@ settings:
 
 - `id` 全局唯一且使用 kebab-case；`name` 是显示名称；只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，就必须更新 `version`；纯重构、测试和文档不要求升版本。
 - `ui.mode` 固定为 `builtin`；`ui.icon` 使用 lucide-react 图标名或图片路径。
+- `ui.entry` 未声明时从顶部应用栏进入；当前只有 `developer-guide` 使用 `account-menu`，它只从账号菜单的“开发手册”入口进入，不显示在顶部应用栏或应用管理中。
 - 应用管理页为内置应用提供 aIdea 的通用设置详情；没有业务设置的内置应用显示空配置状态。
 - 内置应用的业务设置由应用自己负责，统一保存在 `app-data/<app-id>/app.db`，不写入 `shell.config.json` 或壳数据库。DevTools 的工具显示偏好保存在自己的 `app.db`。
 - `settings.reset_command` 只能使用已注册的壳内处理器。aIdea 先完成页面确认，再执行配置重置；处理器不能删除整个应用数据目录或业务数据库。
@@ -44,6 +45,8 @@ settings:
 ## IPC 与类型
 
 内置应用继续使用 Tauri IPC，并统一通过 `shell-frontend/src/lib/ipc.ts` 调用自己的 Rust 业务代码。内置应用不接入官方应用的跨源 App Bridge。
+
+`ai-gateway` 是一个例外：它的页面仍按内置应用使用 Tauri IPC，但其 Rust 后端同时为官方应用提供 [AI 网关契约](aidea-ai-gateway.md) 定义的本机 `/api` 接口。
 
 内置应用需要搜索时，搜索框、快捷键、匹配、高亮和翻页都在该内置应用页面内完成，遵守 [应用内搜索规范](aidea-search.md)。aIdea 壳不提供全局 `Cmd+F` 搜索。
 

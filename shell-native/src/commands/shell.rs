@@ -323,6 +323,7 @@ mod tests {
                 mode,
                 url: Some("http://127.0.0.1:43120".into()),
                 icon: None,
+                entry: None,
             },
             settings,
             process: None,
