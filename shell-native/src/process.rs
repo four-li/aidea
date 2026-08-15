@@ -5,6 +5,7 @@ use crate::manifest::AppIssue;
 use crate::official_market::OfficialApp;
 use crate::{
     config::{load_config, StartupMode},
+    diagnostics::{self, LogChannel, LogOwner},
     official_app_installer,
 };
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration, Instant};
@@ -197,13 +199,12 @@ impl ProcessManager {
             return Ok(pid);
         }
         ensure_ready_port_available(&app.process.ready_url)?;
-        let log_dir = crate::config::data_root()?.join("logs").join(&app.id);
+        let log_dir = crate::config::data_root()?
+            .join("logs")
+            .join("official")
+            .join(&app.id)
+            .join("runtime");
         std::fs::create_dir_all(&log_dir)?;
-        let log_path = log_dir.join("app.log");
-        let log_file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)?;
         let app_data_dir = crate::config::data_root()?.join("app-data").join(&app.id);
         std::fs::create_dir_all(&app_data_dir)?;
 
@@ -215,8 +216,8 @@ impl ProcessManager {
             .env("AIDEA_APP_ID", &app.id)
             .env("AIDEA_APP_DATA_DIR", &app_data_dir)
             .env("AIDEA_APP_LOG_DIR", &log_dir)
-            .stdout(Stdio::from(log_file.try_clone()?))
-            .stderr(Stdio::from(log_file));
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         if let Some(path) = path {
             command.env("PATH", path);
         }
@@ -233,6 +234,35 @@ impl ProcessManager {
         let pid = child
             .id()
             .ok_or_else(|| AppError::Process(format!("获取 {} PID 失败", app.id)))?;
+        let owner = LogOwner::Official(app.id.clone());
+        if let Some(stdout) = child.stdout.take() {
+            let owner = owner.clone();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(stdout).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Err(error) = diagnostics::append(&owner, LogChannel::Runtime, "stdout", &line) {
+                        eprintln!("写入官方应用 stdout 日志失败: {error}");
+                    }
+                }
+            });
+        }
+        if let Some(stderr) = child.stderr.take() {
+            let owner = owner.clone();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Err(error) = diagnostics::append(&owner, LogChannel::Runtime, "stderr", &line) {
+                        eprintln!("写入官方应用 stderr 日志失败: {error}");
+                    }
+                }
+            });
+        }
+        let _ = diagnostics::append(
+            &owner,
+            LogChannel::Platform,
+            "aidea",
+            &format!("启动进程 pid={pid}"),
+        );
         let runtime_record = RuntimeRecord {
             app_id: app.id.clone(),
             pid,
@@ -242,7 +272,7 @@ impl ProcessManager {
             command: runtime_command(&program, &app.process.command),
             working_directory: working_dir.to_string_lossy().into_owned(),
             ready_url: app.process.ready_url.clone(),
-            log_path: log_path.to_string_lossy().into_owned(),
+            log_path: log_dir.to_string_lossy().into_owned(),
             version: app.version.clone(),
             instance_id: uuid::Uuid::new_v4().to_string(),
         };
@@ -255,8 +285,17 @@ impl ProcessManager {
         let manager = self.clone();
         tokio::spawn(async move {
             tokio::select! {
-                _ = child.wait() => {
+                result = child.wait() => {
                     manager.clear_exited_process(&id, pid);
+                    let status = result
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|error| error.to_string());
+                    let _ = diagnostics::append(
+                        &LogOwner::Official(id.clone()),
+                        LogChannel::Platform,
+                        "aidea",
+                        &format!("进程退出 pid={pid} status={status}"),
+                    );
                     eprintln!("子应用 {} (pid={}) 已退出", id, pid);
                 }
                 _ = kill_rx => {}
@@ -455,8 +494,9 @@ impl ProcessManager {
             ready_url: app.process.ready_url.clone(),
             log_path: crate::config::data_root()?
                 .join("logs")
+                .join("official")
                 .join(&app.id)
-                .join("app.log")
+                .join("runtime")
                 .to_string_lossy()
                 .into_owned(),
             version: app.version.clone(),
@@ -487,6 +527,13 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
     std::fs::create_dir_all(&log_dir)?;
 
     let (program, path) = staging_command_for_official_app(app, source)?;
+    let owner = LogOwner::Official(app.id.clone());
+    let _ = diagnostics::append(
+        &owner,
+        LogChannel::Install,
+        "aidea",
+        "启动 staging 版本进行健康检查",
+    );
     let mut command = Command::new(&program);
     command
         .env_clear()
@@ -495,8 +542,8 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
         .env("AIDEA_APP_ID", &app.id)
         .env("AIDEA_APP_DATA_DIR", &data_dir)
         .env("AIDEA_APP_LOG_DIR", &log_dir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     if let Some(path) = path {
         command.env("PATH", path);
     }
@@ -513,6 +560,25 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
         }
     };
 
+    if let Some(stdout) = child.stdout.take() {
+        let owner = owner.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = diagnostics::append(&owner, LogChannel::Install, "stdout", &line);
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let owner = owner.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = diagnostics::append(&owner, LogChannel::Install, "stderr", &line);
+            }
+        });
+    }
+
     let result = wait_until_ready(&app.process.ready_url).await;
     let pid = child.id().map(|pid| pid as i32);
     if let Some(pid) = pid {
@@ -522,7 +588,12 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
     }
     let _ = child.wait().await;
     let _ = std::fs::remove_dir_all(check_root);
-    result.map_err(|error| AppError::Process(format!("{} staging 版本未就绪: {error}", app.id)))
+    result
+        .map_err(|error| {
+            let message = format!("{} staging 版本未就绪: {error}", app.id);
+            let _ = diagnostics::append(&owner, LogChannel::Install, "aidea", &message);
+            AppError::Process(message)
+        })
 }
 
 fn command_for_official_app(
@@ -966,6 +1037,7 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: format!("http://127.0.0.1:{port}/health"),
             },
+            available: true,
             update_available: false,
         };
 
@@ -997,6 +1069,7 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            available: true,
             update_available: false,
         };
 
@@ -1039,6 +1112,7 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            available: true,
             update_available: false,
         };
         let record = RuntimeRecord {
@@ -1091,6 +1165,7 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            available: true,
             update_available: false,
         };
         let record = RuntimeRecord {

@@ -1,6 +1,9 @@
 use crate::config::project_root;
+#[cfg(not(test))]
+use crate::diagnostics::{self, LogChannel, LogOwner};
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// 随 aIdea 发布的官方应用收录项，不承载应用版本和运行命令。
@@ -10,6 +13,14 @@ pub struct OfficialCatalogEntry {
     pub schema_version: u32,
     pub repository: String,
     pub enabled: bool,
+}
+
+/// 官方市场唯一的远端索引文件，避免依赖平台目录 API。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficialCatalogIndex {
+    pub schema_version: u32,
+    pub apps: BTreeMap<String, OfficialCatalogEntry>,
 }
 
 /// 开搞内置的官方市场仓库地址，用于获取可变的应用收录目录。
@@ -42,6 +53,12 @@ pub struct CachedOfficialApp {
     pub definition: OfficialAppDefinition,
 }
 
+#[derive(Debug, Clone)]
+struct UnavailableOfficialApp {
+    id: String,
+    repository: String,
+}
+
 impl CachedOfficialApp {
     pub fn into_app(self) -> OfficialApp {
         self.definition.into_app(self.repository)
@@ -60,12 +77,36 @@ impl OfficialAppDefinition {
             repository,
             artifact: self.artifact,
             process: self.process,
+            available: true,
             update_available: false,
         }
     }
 }
 
 impl OfficialApp {
+    fn unavailable(id: String, repository: String) -> Self {
+        Self {
+            name: id.clone(),
+            description: "当前网络无法访问应用仓库，暂不可安装".into(),
+            category: "官方应用".into(),
+            version: "-".into(),
+            icon: "Package".into(),
+            artifact: OfficialArtifact {
+                url: String::new(),
+                sha256: String::new(),
+            },
+            process: OfficialProcess {
+                command: Vec::new(),
+                working_directory: ".".into(),
+                ready_url: String::new(),
+            },
+            id,
+            repository,
+            available: false,
+            update_available: false,
+        }
+    }
+
     pub fn manifest_snapshot(&self) -> OfficialAppDefinition {
         OfficialAppDefinition {
             schema_version: 1,
@@ -92,9 +133,15 @@ pub struct OfficialApp {
     pub repository: String,
     pub artifact: OfficialArtifact,
     pub process: OfficialProcess,
+    #[serde(default = "default_available")]
+    pub available: bool,
     /// 仅用于市场 IPC 展示，不参与仓库定义和缓存。
     #[serde(default)]
     pub update_available: bool,
+}
+
+fn default_available() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -169,6 +216,23 @@ fn validate_catalog_entry(entry: &OfficialCatalogEntry) -> AppResult<()> {
         ));
     }
     parse_repository(&entry.repository)?;
+    Ok(())
+}
+
+fn validate_catalog_index(index: &OfficialCatalogIndex) -> AppResult<()> {
+    if index.schema_version != 1 {
+        return Err(AppError::Config(
+            "官方市场索引 schema_version 必须为 1".into(),
+        ));
+    }
+    for (id, entry) in &index.apps {
+        if !is_kebab_case(id) {
+            return Err(AppError::Config(format!(
+                "官方市场索引应用 ID 必须是 kebab-case: {id}"
+            )));
+        }
+        validate_catalog_entry(entry)?;
+    }
     Ok(())
 }
 
@@ -472,57 +536,21 @@ fn market_catalog_cache_dir() -> AppResult<PathBuf> {
     Ok(market_cache_dir()?.join("catalog"))
 }
 
-fn percent_encode(value: &str) -> String {
-    value
-        .bytes()
-        .flat_map(|byte| {
-            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-                vec![byte as char]
-            } else {
-                format!("%{byte:02X}").chars().collect()
-            }
-        })
-        .collect()
-}
-
-fn repository_api_url(repository: &RepositoryLocation, path: &str) -> String {
+fn repository_raw_url(repository: &RepositoryLocation, path: &str) -> String {
     match repository.provider {
         RepositoryProvider::Gitee => {
-            format!(
-                "https://gitee.com/api/v5/repos/{}/contents/{path}",
-                repository.project
-            )
+            format!("https://gitee.com/{}/raw/HEAD/{path}", repository.project)
         }
-        RepositoryProvider::GitHub => {
-            format!(
-                "https://api.github.com/repos/{}/contents/{path}",
-                repository.project
-            )
-        }
-        RepositoryProvider::GitLab => format!(
-            "{}/api/v4/projects/{}/repository/files/{}/raw?ref=HEAD",
-            repository.origin,
-            percent_encode(&repository.project),
-            percent_encode(path),
-        ),
-    }
-}
-
-fn repository_catalog_api_url(repository: &RepositoryLocation) -> String {
-    match repository.provider {
-        RepositoryProvider::Gitee => format!(
-            "https://gitee.com/api/v5/repos/{}/contents/official",
-            repository.project
-        ),
         RepositoryProvider::GitHub => format!(
-            "https://api.github.com/repos/{}/contents/official",
+            "https://raw.githubusercontent.com/{}/HEAD/{path}",
             repository.project
         ),
-        RepositoryProvider::GitLab => format!(
-            "{}/api/v4/projects/{}/repository/tree?path=official&ref=HEAD&per_page=100",
-            repository.origin,
-            percent_encode(&repository.project),
-        ),
+        RepositoryProvider::GitLab => {
+            format!(
+                "{}/{}/-/raw/HEAD/{path}",
+                repository.origin, repository.project
+            )
+        }
     }
 }
 
@@ -532,6 +560,18 @@ fn http_client() -> AppResult<reqwest::Client> {
         .user_agent("aIdea")
         .build()
         .map_err(|error| AppError::Network(format!("初始化市场请求失败: {error}")))
+}
+
+fn record_market_warning(message: &str) {
+    #[cfg(not(test))]
+    let _ = diagnostics::append(
+        &LogOwner::Aidea,
+        LogChannel::Platform,
+        "official-market",
+        message,
+    );
+    #[cfg(test)]
+    let _ = message;
 }
 
 async fn fetch_text(client: &reqwest::Client, url: &str) -> AppResult<String> {
@@ -549,64 +589,29 @@ async fn fetch_text(client: &reqwest::Client, url: &str) -> AppResult<String> {
 
 async fn fetch_manifest(client: &reqwest::Client, repository: &str) -> AppResult<String> {
     let repository = parse_repository(repository)?;
-    if repository.provider == RepositoryProvider::GitLab {
-        return fetch_text(client, &repository_api_url(&repository, "aidea.yaml")).await;
-    }
-    let endpoint = repository_api_url(&repository, "aidea.yaml");
-    let payload: serde_json::Value = client
-        .get(&endpoint)
-        .send()
-        .await
-        .map_err(|error| AppError::Network(format!("读取应用 manifest 失败: {error}")))?
-        .error_for_status()
-        .map_err(|error| AppError::Network(format!("读取应用 manifest 失败: {error}")))?
-        .json()
-        .await
-        .map_err(|error| AppError::Network(format!("解析应用 manifest 地址失败: {error}")))?;
-    let url = payload
-        .get("download_url")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| value.starts_with("https://"))
-        .ok_or_else(|| AppError::Network("应用 manifest 响应缺少 HTTPS download_url".into()))?;
-    fetch_text(client, url).await
+    fetch_text(client, &repository_raw_url(&repository, "aidea.yaml")).await
 }
 
 async fn fetch_market_catalog(repository: &str) -> AppResult<PathBuf> {
     let repository = parse_repository(repository)?;
     let client = http_client()?;
-    let payload: Vec<serde_json::Value> = client
-        .get(repository_catalog_api_url(&repository))
-        .send()
-        .await
-        .map_err(|error| AppError::Network(format!("读取官方市场目录失败: {error}")))?
-        .error_for_status()
-        .map_err(|error| AppError::Network(format!("读取官方市场目录失败: {error}")))?
-        .json()
-        .await
-        .map_err(|error| AppError::Network(format!("解析官方市场目录失败: {error}")))?;
+    let index: OfficialCatalogIndex = serde_yaml::from_str(
+        &fetch_text(&client, &repository_raw_url(&repository, "market.yaml")).await?,
+    )
+    .map_err(|error| AppError::Network(format!("解析官方市场索引失败: {error}")))?;
+    validate_catalog_index(&index)
+        .map_err(|error| AppError::Network(format!("校验官方市场索引失败: {error}")))?;
     let staging = std::env::temp_dir().join(format!("aidea-catalog-{}", uuid::Uuid::new_v4()));
     let official = staging.join("official");
     std::fs::create_dir_all(&official)?;
     let result = async {
-        for entry in payload {
-            let name = entry
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .filter(|name| name.ends_with(".yaml") && !name.contains('/'))
-                .ok_or_else(|| AppError::Network("官方市场目录包含无效文件名".into()))?;
-            let url = if repository.provider == RepositoryProvider::GitLab {
-                repository_api_url(&repository, &format!("official/{name}"))
-            } else {
-                entry
-                    .get("download_url")
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|value| value.starts_with("https://"))
-                    .ok_or_else(|| {
-                        AppError::Network("官方市场目录响应缺少 HTTPS download_url".into())
-                    })?
-                    .to_owned()
-            };
-            std::fs::write(official.join(name), fetch_text(&client, &url).await?)?;
+        for (id, entry) in index.apps {
+            std::fs::write(
+                official.join(format!("{id}.yaml")),
+                serde_yaml::to_string(&entry).map_err(|error| {
+                    AppError::Config(format!("序列化官方市场收录项失败: {error}"))
+                })?,
+            )?;
         }
         load_catalog_entries(&official)?;
         Ok(())
@@ -698,29 +703,52 @@ pub fn load_cached_official_apps() -> AppResult<Vec<OfficialApp>> {
         .collect())
 }
 
-/// 通过 HTTPS API/Raw 读取每个已收录仓库默认分支的 `aidea.yaml`。
-pub async fn refresh_official_definitions_from_dir(
+/// 通过 HTTPS Raw 地址读取每个已收录仓库默认分支的 `aidea.yaml`。
+async fn refresh_official_definitions_from_dir(
     catalog_dir: &Path,
     cache_dir: &Path,
-) -> AppResult<Vec<CachedOfficialApp>> {
+) -> AppResult<(Vec<CachedOfficialApp>, Vec<UnavailableOfficialApp>)> {
     let mut definitions = Vec::new();
+    let mut unavailable = Vec::new();
     std::fs::create_dir_all(cache_dir)?;
     let client = http_client()?;
     for (cache_key, entry) in load_catalog_entries(catalog_dir)? {
         if !entry.enabled {
             continue;
         }
-        let content = fetch_manifest(&client, &entry.repository).await?;
-        let definition: OfficialAppDefinition =
-            serde_yaml::from_str(&content).map_err(|error| {
-                AppError::Config(format!(
-                    "解析官方应用定义 {} 失败: {error}",
-                    entry.repository
-                ))
-            })?;
-        validate_definition(&definition)?;
-        validate_catalog_definition_id(&cache_key, &definition)?;
-        validate_artifact_repository(&entry.repository, &definition)?;
+        let content = match fetch_manifest(&client, &entry.repository).await {
+            Ok(content) => content,
+            Err(error) => {
+                record_market_warning(&format!("应用 {cache_key} manifest 不可用: {error}"));
+                unavailable.push(UnavailableOfficialApp {
+                    id: cache_key,
+                    repository: entry.repository,
+                });
+                continue;
+            }
+        };
+        let definition: OfficialAppDefinition = match serde_yaml::from_str(&content) {
+            Ok(definition) => definition,
+            Err(error) => {
+                record_market_warning(&format!("应用 {cache_key} manifest 解析失败: {error}"));
+                unavailable.push(UnavailableOfficialApp {
+                    id: cache_key,
+                    repository: entry.repository,
+                });
+                continue;
+            }
+        };
+        let validation = validate_definition(&definition)
+            .and_then(|_| validate_catalog_definition_id(&cache_key, &definition))
+            .and_then(|_| validate_artifact_repository(&entry.repository, &definition));
+        if let Err(error) = validation {
+            record_market_warning(&format!("应用 {cache_key} manifest 校验失败: {error}"));
+            unavailable.push(UnavailableOfficialApp {
+                id: cache_key,
+                repository: entry.repository,
+            });
+            continue;
+        }
         let app_cache_dir = cache_dir.join(&cache_key);
         std::fs::create_dir_all(&app_cache_dir)?;
         let cache_definition = app_cache_dir.join("aidea.yaml");
@@ -741,11 +769,11 @@ pub async fn refresh_official_definitions_from_dir(
         });
     }
     validate_unique_definition_ids(&definitions)?;
-    Ok(definitions)
+    Ok((definitions, unavailable))
 }
 
 /// 刷新远程市场目录及其收录的官方应用定义，并更新本地缓存。
-pub async fn refresh_official_definitions() -> AppResult<Vec<CachedOfficialApp>> {
+pub async fn refresh_official_definitions() -> AppResult<Vec<OfficialApp>> {
     let source = load_market_source(&market_source_path_or_development()?)?;
     let catalog_staging = fetch_market_catalog(&source.repository).await?;
     let cache_dir = market_cache_dir()?;
@@ -759,11 +787,22 @@ pub async fn refresh_official_definitions() -> AppResult<Vec<CachedOfficialApp>>
     )
     .await
     {
-        Ok(definitions) => match cache_market_catalog(
+        Ok((definitions, unavailable)) => match cache_market_catalog(
             &catalog_staging.join("official"),
             &cache_staging.join("catalog"),
         ) {
-            Ok(()) => replace_directory(&cache_staging, &cache_dir).map(|_| definitions),
+            Ok(()) => replace_directory(&cache_staging, &cache_dir).map(|_| {
+                let mut apps: Vec<OfficialApp> = definitions
+                    .into_iter()
+                    .map(CachedOfficialApp::into_app)
+                    .collect();
+                apps.extend(
+                    unavailable
+                        .into_iter()
+                        .map(|app| OfficialApp::unavailable(app.id, app.repository)),
+                );
+                apps
+            }),
             Err(error) => Err(error),
         },
         Err(error) => Err(error),
@@ -913,7 +952,7 @@ mod tests {
     use super::{
         bundled_market_source, load_cached_definitions_from_dir, load_from_dir,
         validate_catalog_entry, validate_definition, CachedOfficialApp, OfficialAppDefinition,
-        OfficialCatalogEntry,
+        OfficialCatalogEntry, OfficialCatalogIndex,
     };
     use std::fs;
 
@@ -1163,29 +1202,113 @@ mod tests {
     }
 
     #[test]
-    fn 市场_api_url_不依赖_git_clone() {
+    fn 市场_raw_url_不依赖_api() {
         let gitee =
             super::parse_repository("https://gitee.com/aidea-org/aidea-market.git").unwrap();
         assert_eq!(
-            super::repository_catalog_api_url(&gitee),
-            "https://gitee.com/api/v5/repos/aidea-org/aidea-market/contents/official"
+            super::repository_raw_url(&gitee, "market.yaml"),
+            "https://gitee.com/aidea-org/aidea-market/raw/HEAD/market.yaml"
         );
         let github = super::parse_repository("https://github.com/aidea-org/demo.git").unwrap();
         assert_eq!(
-            super::repository_api_url(&github, "aidea.yaml"),
-            "https://api.github.com/repos/aidea-org/demo/contents/aidea.yaml"
+            super::repository_raw_url(&github, "aidea.yaml"),
+            "https://raw.githubusercontent.com/aidea-org/demo/HEAD/aidea.yaml"
         );
         let gitlab = super::parse_repository("https://gitlab.com/group/demo.git").unwrap();
         assert_eq!(
-            super::repository_api_url(&gitlab, "aidea.yaml"),
-            "https://gitlab.com/api/v4/projects/group%2Fdemo/repository/files/aidea.yaml/raw?ref=HEAD"
+            super::repository_raw_url(&gitlab, "aidea.yaml"),
+            "https://gitlab.com/group/demo/-/raw/HEAD/aidea.yaml"
         );
         let private_gitlab =
             super::parse_repository("http://gitlab.intra.example/group/demo.git").unwrap();
         assert_eq!(
-            super::repository_api_url(&private_gitlab, "aidea.yaml"),
-            "http://gitlab.intra.example/api/v4/projects/group%2Fdemo/repository/files/aidea.yaml/raw?ref=HEAD"
+            super::repository_raw_url(&private_gitlab, "aidea.yaml"),
+            "http://gitlab.intra.example/group/demo/-/raw/HEAD/aidea.yaml"
         );
+    }
+
+    #[test]
+    fn 市场索引只维护一个_yaml文件() {
+        let index: OfficialCatalogIndex = serde_yaml::from_str(
+            "schema_version: 1\napps:\n  demo-app:\n    schema_version: 1\n    repository: https://gitee.com/aidea-org/demo.git\n    enabled: true\n",
+        )
+        .unwrap();
+
+        assert_eq!(index.apps.len(), 1);
+        assert!(index.apps.contains_key("demo-app"));
+        assert!(super::validate_catalog_index(&index).is_ok());
+    }
+
+    #[test]
+    fn 不可访问的官方应用只能作为不可安装占位项() {
+        let app = super::OfficialApp::unavailable(
+            "internal-tool".into(),
+            "https://gitlab.intra.example/team/internal-tool.git".into(),
+        );
+
+        assert!(!app.available);
+        assert_eq!(app.id, "internal-tool");
+        assert!(app.artifact.url.is_empty());
+    }
+
+    #[tokio::test]
+    async fn 单个应用无法访问不阻断其他市场应用() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let manifest = format!(
+            "schema_version: 1\nid: available-app\nname: Available\ndescription: test\ncategory: test\nversion: 0.1.0\nicon: Package\nartifact:\n  url: {origin}/team/available/-/releases/v0.1.0/downloads/available.tar.gz\n  sha256: {}\nprocess:\n  command: [available]\n  working_directory: .\n  ready_url: http://127.0.0.1:43120/health\n",
+            "a".repeat(64),
+        );
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 2048];
+                let read = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                if request.contains("/team/available/") {
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        manifest.len(),
+                        manifest
+                    )
+                    .unwrap();
+                } else {
+                    stream
+                        .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        .unwrap();
+                }
+            }
+        });
+        let directory = std::env::temp_dir().join(format!("aidea-market-{}", uuid::Uuid::new_v4()));
+        let catalog = directory.join("catalog");
+        let cache = directory.join("cache");
+        fs::create_dir_all(&catalog).unwrap();
+        fs::write(
+            catalog.join("available-app.yaml"),
+            format!("schema_version: 1\nrepository: {origin}/team/available.git\nenabled: true\n"),
+        )
+        .unwrap();
+        fs::write(
+            catalog.join("internal-app.yaml"),
+            format!("schema_version: 1\nrepository: {origin}/team/internal.git\nenabled: true\n"),
+        )
+        .unwrap();
+
+        let (definitions, unavailable) =
+            super::refresh_official_definitions_from_dir(&catalog, &cache)
+                .await
+                .unwrap();
+
+        server.join().unwrap();
+        fs::remove_dir_all(directory).unwrap();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].definition.id, "available-app");
+        assert_eq!(unavailable.len(), 1);
+        assert_eq!(unavailable[0].id, "internal-app");
     }
 
     #[test]

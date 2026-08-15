@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod diagnostics;
 pub mod error;
 pub mod manifest;
 pub mod official_app_installer;
@@ -37,13 +38,17 @@ pub fn run() {
             commands::shell::read_official_app_install_log,
             commands::shell::uninstall_official_app,
             commands::shell::get_shell_config,
+            commands::shell::get_log_settings,
+            commands::shell::save_log_settings,
+            commands::shell::record_builtin_diagnostic,
+            commands::shell::record_aidea_diagnostic,
+            commands::shell::read_diagnostic_log,
             commands::shell::reset_app_settings,
             commands::shell::save_app_user_settings,
             commands::shell::start_app,
             commands::shell::stop_app,
             commands::shell::release_app_port,
             commands::shell::get_app_states,
-            commands::shell::read_app_log,
             commands::dev_tools::get_dev_tools_settings,
             commands::dev_tools::save_dev_tools_settings,
             commands::network::get_network_info,
@@ -128,6 +133,12 @@ pub fn run() {
         .setup(move |_app| {
             config::migrate_legacy_data()
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
+            let _ = diagnostics::append(
+                &diagnostics::LogOwner::Aidea,
+                diagnostics::LogChannel::Platform,
+                "aidea",
+                "aIdea 已启动",
+            );
             // 恢复受管进程，并启动用户明确设置为随 aIdea 启动的官方应用。
             let m = startup_manager.clone();
             tauri::async_runtime::spawn(async move {
@@ -142,6 +153,12 @@ pub fn run() {
         .expect("启动 Tauri 应用失败");
     app.run(move |_app, event| {
         if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+            let _ = diagnostics::append(
+                &diagnostics::LogOwner::Aidea,
+                diagnostics::LogChannel::Platform,
+                "aidea",
+                "aIdea 正在关闭",
+            );
             tauri::async_runtime::block_on(shutdown_manager.stop_all());
         }
     });

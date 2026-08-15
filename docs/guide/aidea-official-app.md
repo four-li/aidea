@@ -4,20 +4,22 @@
 
 ## 市场
 
-完整定义位于应用仓库根目录 `aidea.yaml`。官方市场仓库的
-`official/<app-id>.yaml` 只决定应用是否可见及其仓库地址：
+完整定义位于应用仓库根目录 `aidea.yaml`。官方市场仓库只维护一个
+`market.yaml`，其中决定应用是否可见及其仓库地址：
 
 ```yaml
 schema_version: 1
-repository: https://gitee.com/aidea-org/example.git
-enabled: true
+apps:
+  example:
+    schema_version: 1
+    repository: https://gitee.com/aidea-org/example.git
+    enabled: true
 ```
 
-市场链路固定为 `market-source.yaml` -> 市场收录文件 -> 应用仓库
-`aidea.yaml`。刷新市场时，aIdea 通过 Gitee、GitHub 或 GitLab（包括自建实例）的 API/Raw 地址读取
-市场目录与每个已启用应用默认分支的 manifest，绝不 clone 应用仓库；自建 GitLab 使用其仓库的 HTTP 或 HTTPS 地址。
-全部成功后才整体替换本地缓存。
-失败时继续使用最近一次成功缓存。
+市场链路固定为 `market-source.yaml` -> 市场仓库 Raw `market.yaml` -> 应用仓库
+`aidea.yaml`。刷新市场时，aIdea 通过 Gitee、GitHub 或 GitLab（包括自建实例）的 Raw 地址读取
+单一市场索引和每个已启用应用默认分支的 manifest，绝不 clone 应用仓库；自建 GitLab 使用其仓库的 HTTP 或 HTTPS 地址。
+市场索引读取失败时继续使用最近一次成功缓存；索引成功后逐个读取应用 manifest，单个应用失败不阻断其他应用，成功项整体替换本地缓存，失败项仅显示为不可安装的占位卡片。
 
 新增应用、变更仓库地址或启用状态时才修改市场仓库。日常版本发布不修改市场收录。
 
@@ -96,6 +98,8 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 
 应用及其派生子进程必须处理 `SIGTERM`，在收到信号后及时完成必要持久化并退出。停止时 aIdea 向整个
 应用进程组发送 `SIGTERM`；5 秒内仍未退出时发送 `SIGKILL`，之后不保证继续执行清理逻辑。
+
+壳会采集官方应用与 staging 健康检查进程的 stdout/stderr，分别作为运行和安装更新日志保留。应用不得向 stdout、stderr 或 `AIDEA_APP_LOG_DIR` 输出密码、授权码、OAuth 令牌、API Key、邮件正文或通知正文。
 
 ## 壳通信与设置
 

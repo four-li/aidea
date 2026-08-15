@@ -1,6 +1,7 @@
 // 设置弹出窗：使用 shadcn Dialog + Button
 // 布局：左侧分类菜单 + 右侧内容区，卡片分组，无分割线
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import {
   Settings,
   Info,
@@ -41,6 +42,7 @@ interface Props {
   appOrder?: string[];
   onReorder?: (newOrder: string[]) => void;
   onShowLog: (app: AppManifest) => void;
+  onShowAideaLog?: () => void;
   category?: SettingsCategory;
   checkUpdate?: number;
 }
@@ -90,6 +92,7 @@ export function SettingsPanel({
   appOrder,
   onReorder,
   onShowLog,
+  onShowAideaLog = () => undefined,
   category,
   checkUpdate,
 }: Props) {
@@ -168,7 +171,7 @@ export function SettingsPanel({
               )}
               {activeCategory === 'notifications' && <NotificationsSettings />}
               {activeCategory === 'privacy' && <PrivacySettings />}
-              {activeCategory === 'advanced' && <AdvancedSettings />}
+              {activeCategory === 'advanced' && <AdvancedSettings onShowAideaLog={onShowAideaLog} />}
               {activeCategory === 'about' && <AboutSettings checkUpdate={checkUpdate} />}
             </div>
           </div>
@@ -361,9 +364,62 @@ function PrivacySettings() {
   return <p className="text-sm text-foreground">开搞本地应用不收集任何用户数据。</p>;
 }
 
-function AdvancedSettings() {
+function AdvancedSettings({ onShowAideaLog }: { onShowAideaLog: () => void }) {
+  const [settings, setSettings] = useState({ retention_days: 30, max_total_mb: 500 });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void ipc.getLogSettings().then(setSettings).catch((error) => {
+      toast.error('读取日志设置失败', { description: String(error) });
+    });
+  }, []);
+
+  const saveLogs = async (next: typeof settings) => {
+    setSettings(next);
+    setSaving(true);
+    try {
+      await ipc.saveLogSettings(next);
+      toast.success('日志设置已保存');
+    } catch (error) {
+      toast.error('保存日志设置失败', { description: String(error) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
+      <Section title="日志">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm text-foreground">保存时间</div>
+            <div className="text-xs text-muted-foreground mt-1">超过期限的日志会自动清理</div>
+          </div>
+          <Select
+            value={String(settings.retention_days)}
+            disabled={saving}
+            onValueChange={(value) => void saveLogs({ ...settings, retention_days: Number(value) })}
+          >
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>{[7, 14, 30, 90, 180].map((value) => <SelectItem key={value} value={String(value)}>{value} 天</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm text-foreground">最大容量</div>
+            <div className="text-xs text-muted-foreground mt-1">超过容量时优先清理最旧日志</div>
+          </div>
+          <Select
+            value={String(settings.max_total_mb)}
+            disabled={saving}
+            onValueChange={(value) => void saveLogs({ ...settings, max_total_mb: Number(value) })}
+          >
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>{[100, 250, 500, 1024, 2048].map((value) => <SelectItem key={value} value={String(value)}>{value >= 1024 ? `${value / 1024} GB` : `${value} MB`}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <Button variant="outline" onClick={onShowAideaLog}>查看 aIdea 日志</Button>
+      </Section>
       <Section title="开发者选项">
         <ToggleItem
           label="启用调试模式"

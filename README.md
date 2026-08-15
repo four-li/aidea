@@ -32,8 +32,8 @@ aIdea/
 ```text
 开搞的 market-source.yaml
   -> https://gitee.com/aidea-org/aidea-market.git
-  -> official/<app-id>.yaml
-  -> 市场收录项指定的 Gitee、GitHub 或 GitLab（含自建实例）应用仓库的 aidea.yaml
+  -> Raw market.yaml
+  -> 索引项指定的 Gitee、GitHub 或 GitLab（含自建实例）应用仓库的 aidea.yaml
 ```
 
 当前本机开发目录约定为：
@@ -118,7 +118,7 @@ xattr -dr com.apple.quarantine /Applications/开搞.app
 当前只开发内置应用和官方应用，第三方市场、自定义安装和自动发现不属于现行能力。旧内置邮件已经从 aIdea 移除；新的邮件管理固定为独立官方应用 `mail-center`，使用自己的应用数据目录和数据库，不读取、不迁移旧邮件数据。
 
 - 内置应用：代码放在 `shell-frontend/src/builtin-apps/<app-id>/`，manifest 放在 `apps/builtin/`。
-- 官方应用：独立仓库根目录提供 `aidea.yaml`；官方市场仓库 `aidea-market` 的 `official/` 只收录仓库地址。修改市场仓库后，用户在开搞中刷新市场即可获取，无需发布开搞。
+- 官方应用：独立仓库根目录提供 `aidea.yaml`；官方市场仓库 `aidea-market` 的 `market.yaml` 统一维护应用仓库地址和启用状态。修改市场仓库后，用户在开搞中刷新市场即可获取，无需发布开搞。
 - 具体契约按任务读取 [AGENTS.md](AGENTS.md) 的文档路由表。
 
 ### 内置应用 Manifest 示例

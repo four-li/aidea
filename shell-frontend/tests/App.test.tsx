@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { activeApp, mockListApps, mockSelectApp, visibleApps } = vi.hoisted(() => ({
+const { activeApp, mockListApps, mockRecordBuiltinDiagnostic, mockSelectApp, visibleApps } = vi.hoisted(() => ({
   activeApp: { id: 'hidden-app' },
   mockListApps: vi.fn(),
+  mockRecordBuiltinDiagnostic: vi.fn<[id: string, source: string, message: string], Promise<void>>(
+    () => Promise.resolve(),
+  ),
   mockSelectApp: vi.fn(),
   visibleApps: [
     {
@@ -34,7 +37,14 @@ vi.mock('../src/components/TopBar', () => ({
     </button>
   ),
 }));
-vi.mock('../src/components/LogPanel', () => ({ LogPanel: () => null }));
+vi.mock('../src/components/LogWorkspace', () => ({
+  LogWorkspace: () => null,
+  targetFromManifest: (app: { id: string; name: string }) => ({
+    scope: 'builtin',
+    id: app.id,
+    name: app.name,
+  }),
+}));
 vi.mock('../src/components/SettingsPanel', () => ({ SettingsPanel: () => null }));
 vi.mock('../src/components/ui/sonner', () => ({ Toaster: () => null }));
 vi.mock('../src/components/ContentArea', () => ({
@@ -75,12 +85,31 @@ vi.mock('../src/lib/ipc', () => ({
   ipc: {
     listApps: (...args: unknown[]) => mockListApps(...args),
     checkAideaUpdate: vi.fn(() => Promise.resolve(null)),
+    recordBuiltinDiagnostic: (id: string, source: string, message: string) =>
+      mockRecordBuiltinDiagnostic(id, source, message),
+    recordAideaDiagnostic: vi.fn(() => Promise.resolve()),
   },
 }));
 
 import App from '../src/App';
 
 describe('主界面', () => {
+  beforeEach(() => {
+    mockListApps.mockClear();
+  });
+
+  it('未处理前端错误会记录到当前内置应用', async () => {
+    activeApp.id = 'dev-tools';
+    mockRecordBuiltinDiagnostic.mockClear();
+    mockListApps.mockResolvedValue([]);
+    render(<App />);
+
+    window.dispatchEvent(new ErrorEvent('error', { message: 'render failed' }));
+    await waitFor(() =>
+      expect(mockRecordBuiltinDiagnostic).toHaveBeenCalledWith('dev-tools', 'frontend', 'render failed'),
+    );
+  });
+
   it('不会把已隐藏应用的旧选中状态回退为开发手册', async () => {
     activeApp.id = 'hidden-app';
     mockListApps.mockResolvedValue([

@@ -17,6 +17,8 @@ export interface OfficialApp {
     working_directory: string;
     ready_url: string;
   };
+  /** 后端无法读取 manifest 时为 false，此时只能展示占位卡片。 */
+  available?: boolean;
   /** 由后端按已安装记录计算，市场版本更高时为 true。 */
   update_available: boolean;
   installed_version?: string;

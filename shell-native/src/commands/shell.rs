@@ -1,4 +1,5 @@
-use crate::config::{load_config, save_config, AppUserSettings, ShellConfig, StartupMode};
+use crate::config::{load_config, save_config, AppUserSettings, LogSettings, ShellConfig, StartupMode};
+use crate::diagnostics::{self, LogChannel, LogOwner};
 use crate::error::{AppError, AppResult};
 use crate::manifest::{find_manifest, load_all_manifests, AppManifest};
 use crate::process::{AppState, ProcessManager};
@@ -8,6 +9,13 @@ use tauri::{Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
 use tokio::process::Command;
 use tokio::time::timeout;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DiagnosticLogRequest {
+    pub scope: String,
+    pub app_id: Option<String>,
+    pub channel: String,
+}
 
 #[derive(serde::Serialize)]
 pub struct OfficialAppInstallResult {
@@ -104,10 +112,18 @@ pub async fn open_external_url(url: String) -> AppResult<()> {
 pub async fn check_aidea_update(app: tauri::AppHandle) -> AppResult<Option<AideaUpdate>> {
     let update = app
         .updater()
-        .map_err(|error| AppError::Network(format!("初始化更新检查失败: {error}")))?
+        .map_err(|error| {
+            let message = format!("初始化更新检查失败: {error}");
+            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            AppError::Network(message)
+        })?
         .check()
         .await
-        .map_err(|error| AppError::Network(format!("检查更新失败: {error}")))?;
+        .map_err(|error| {
+            let message = format!("检查更新失败: {error}");
+            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            AppError::Network(message)
+        })?;
 
     Ok(update.map(|update| AideaUpdate {
         version: update.version,
@@ -120,16 +136,32 @@ pub async fn check_aidea_update(app: tauri::AppHandle) -> AppResult<Option<Aidea
 pub async fn install_aidea_update(app: tauri::AppHandle) -> AppResult<()> {
     let update = app
         .updater()
-        .map_err(|error| AppError::Network(format!("初始化更新失败: {error}")))?
+        .map_err(|error| {
+            let message = format!("初始化更新失败: {error}");
+            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            AppError::Network(message)
+        })?
         .check()
         .await
-        .map_err(|error| AppError::Network(format!("检查更新失败: {error}")))?
-        .ok_or_else(|| AppError::Config("当前没有可安装的更新".into()))?;
+        .map_err(|error| {
+            let message = format!("检查更新失败: {error}");
+            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            AppError::Network(message)
+        })?
+        .ok_or_else(|| {
+            let message = "当前没有可安装的更新";
+            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", message);
+            AppError::Config(message.into())
+        })?;
 
     update
         .download_and_install(|_, _| {}, || {})
         .await
-        .map_err(|error| AppError::Network(format!("下载或验证更新失败: {error}")))?;
+        .map_err(|error| {
+            let message = format!("下载或验证更新失败: {error}");
+            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            AppError::Network(message)
+        })?;
     app.restart();
 }
 
@@ -185,11 +217,7 @@ pub async fn list_official_app_releases(
 #[tauri::command]
 pub async fn refresh_official_apps() -> AppResult<Vec<crate::official_market::OfficialAppListing>> {
     crate::official_market::add_install_status(
-        crate::official_market::refresh_official_definitions()
-            .await?
-            .into_iter()
-            .map(crate::official_market::CachedOfficialApp::into_app)
-            .collect(),
+        crate::official_market::refresh_official_definitions().await?,
     )
 }
 
@@ -313,6 +341,65 @@ pub async fn uninstall_official_app(
 #[tauri::command]
 pub async fn get_shell_config() -> AppResult<ShellConfig> {
     load_config()
+}
+
+#[tauri::command]
+pub async fn get_log_settings() -> AppResult<LogSettings> {
+    Ok(load_config()?.log_settings())
+}
+
+#[tauri::command]
+pub async fn save_log_settings(settings: LogSettings) -> AppResult<()> {
+    settings.validate()?;
+    let mut config = load_config()?;
+    config.log_retention_days = settings.retention_days;
+    config.log_max_total_mb = settings.max_total_mb;
+    save_config(&config)?;
+    diagnostics::cleanup(&settings)
+}
+
+#[tauri::command]
+pub async fn record_builtin_diagnostic(id: String, source: String, message: String) -> AppResult<()> {
+    if !matches!(source.as_str(), "frontend" | "ipc") || message.trim().is_empty() {
+        return Err(AppError::Config("内置应用日志参数无效".into()));
+    }
+    diagnostics::append(
+        &LogOwner::Builtin(id),
+        LogChannel::Platform,
+        &source,
+        message.trim(),
+    )
+}
+
+#[tauri::command]
+pub async fn record_aidea_diagnostic(source: String, message: String) -> AppResult<()> {
+    if !matches!(source.as_str(), "frontend" | "ipc") || message.trim().is_empty() {
+        return Err(AppError::Config("aIdea 日志参数无效".into()));
+    }
+    diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, &source, message.trim())
+}
+
+#[tauri::command]
+pub async fn read_diagnostic_log(request: DiagnosticLogRequest) -> AppResult<String> {
+    let channel = match request.channel.as_str() {
+        "runtime" => LogChannel::Runtime,
+        "install" => LogChannel::Install,
+        "platform" => LogChannel::Platform,
+        _ => return Err(AppError::Config("日志来源无效".into())),
+    };
+    let owner = match request.scope.as_str() {
+        "aidea" if request.app_id.is_none() && channel == LogChannel::Platform => LogOwner::Aidea,
+        "builtin" if request.app_id.is_some() && channel != LogChannel::Install => {
+            LogOwner::Builtin(request.app_id.unwrap())
+        }
+        "official" if request.app_id.is_some() => LogOwner::Official(request.app_id.unwrap()),
+        _ => return Err(AppError::Config("日志范围与来源不匹配".into())),
+    };
+    let settings = load_config()?.log_settings();
+    if let Err(error) = diagnostics::cleanup(&settings) {
+        let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "diagnostics", &error.to_string());
+    }
+    diagnostics::read_recent(&owner, channel, diagnostics::DEFAULT_LOG_LINES)
 }
 
 #[tauri::command]
@@ -465,32 +552,4 @@ pub async fn get_app_states(manager: State<'_, ProcessManager>) -> AppResult<Vec
         .filter_map(|m| m.process.map(|_| m.id))
         .collect();
     manager.get_all_states(&ids)
-}
-
-#[tauri::command]
-pub async fn read_app_log(id: String) -> AppResult<String> {
-    let manifest = find_manifest(&id)?;
-    let log_path = manifest
-        .process
-        .and_then(|process| process.log_file)
-        .unwrap_or(
-            crate::config::data_root()?
-                .join("logs")
-                .join(&id)
-                .join("app.log")
-                .to_string_lossy()
-                .into_owned(),
-        );
-
-    if !std::path::Path::new(&log_path).exists() {
-        return Ok(String::from("日志文件不存在"));
-    }
-
-    let content = std::fs::read_to_string(&log_path)?;
-    let lines: Vec<&str> = content.lines().rev().take(200).collect();
-    let mut result = lines.into_iter().rev().collect::<Vec<_>>().join("\n");
-    if !result.is_empty() {
-        result.push('\n');
-    }
-    Ok(result)
 }

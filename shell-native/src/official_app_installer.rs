@@ -1,4 +1,5 @@
 use crate::config::data_root;
+use crate::diagnostics::{self, LogChannel, LogOwner};
 use crate::error::{AppError, AppResult};
 use crate::manifest::{AppIssue, AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode};
 use crate::official_market::{load_cached_official_apps, OfficialApp, OfficialAppDefinition};
@@ -78,10 +79,6 @@ fn record_path(id: &str) -> AppResult<PathBuf> {
     Ok(install_root(id)?.join("install-state.yaml"))
 }
 
-fn install_log_path(id: &str) -> AppResult<PathBuf> {
-    Ok(data_root()?.join("logs").join(id).join("install.log"))
-}
-
 fn app(id: &str) -> AppResult<OfficialApp> {
     load_cached_official_apps()?
         .into_iter()
@@ -89,6 +86,7 @@ fn app(id: &str) -> AppResult<OfficialApp> {
         .ok_or_else(|| AppError::AppNotFound(id.to_string()))
 }
 
+#[cfg(test)]
 fn read_log_tail(path: &Path) -> AppResult<String> {
     if !path.exists() {
         return Ok(String::from("安装日志不存在"));
@@ -231,7 +229,7 @@ pub(crate) fn validate_arm64_binary(path: &Path, id: &str) -> AppResult<()> {
     Ok(())
 }
 
-async fn download_artifact(url: &str, destination: &Path, log: &mut File) -> AppResult<()> {
+async fn download_artifact<W: Write>(url: &str, destination: &Path, log: &mut W) -> AppResult<()> {
     writeln!(log, "下载预编译包 {url}")?;
     let response = reqwest::Client::builder()
         .timeout(ARTIFACT_DOWNLOAD_TIMEOUT)
@@ -261,20 +259,20 @@ async fn install_inner(
 ) -> AppResult<(InstalledApp, UpdateRollback)> {
     let root = install_root(&def.id)?;
     fs::create_dir_all(&root)?;
-    let log_path = install_log_path(&def.id)?;
-    let log_parent = log_path
-        .parent()
-        .ok_or_else(|| AppError::Config("无法定位官方应用安装日志目录".into()))?;
-    fs::create_dir_all(log_parent)?;
-    let mut log = File::create(&log_path)?;
-    writeln!(log, "开始安装官方应用 {}", def.id)?;
+    let owner = LogOwner::Official(def.id.clone());
+    diagnostics::append(&owner, LogChannel::Install, "aidea", &format!("开始安装官方应用 {}", def.id))?;
     let staging = root.join(format!("staging-{}", Uuid::new_v4()));
     let old_source = root.join("source");
     let result = async {
         report_progress(def, on_progress, "downloading", "正在下载预编译包…");
         fs::create_dir_all(&staging)?;
         let archive_path = staging.join("artifact.tar.gz");
-        download_artifact(&def.artifact.url, &archive_path, &mut log).await?;
+        let mut download_log = Vec::new();
+        download_artifact(&def.artifact.url, &archive_path, &mut download_log).await?;
+        if !download_log.is_empty() {
+            let message = String::from_utf8_lossy(&download_log);
+            diagnostics::append(&owner, LogChannel::Install, "aidea", message.trim_end())?;
+        }
         report_progress(def, on_progress, "checking", "正在校验预编译包…");
         verify_sha256(&archive_path, &def.artifact.sha256)?;
         let staged_source = staging.join("source");
@@ -330,7 +328,7 @@ async fn install_inner(
         if staging.exists() {
             let _ = fs::remove_dir_all(&staging);
         }
-        writeln!(log, "安装完成")?;
+        diagnostics::append(&owner, LogChannel::Install, "aidea", "安装完成")?;
         report_progress(def, on_progress, "completed", "安装完成");
         Ok((installed, rollback))
     }
@@ -339,7 +337,7 @@ async fn install_inner(
         let _ = fs::remove_dir_all(&staging);
     }
     if let Err(error) = &result {
-        let _ = writeln!(log, "安装失败: {error}");
+        let _ = diagnostics::append(&owner, LogChannel::Install, "aidea", &format!("安装失败: {error}"));
         report_progress(def, on_progress, "failed", "安装失败");
     }
     result
@@ -412,7 +410,11 @@ pub fn read_install_log(id: &str) -> AppResult<String> {
     if !record_path(id)?.exists() {
         return Err(AppError::AppNotFound(id.to_string()));
     }
-    read_log_tail(&install_log_path(id)?)
+    diagnostics::read_recent(
+        &LogOwner::Official(id.to_string()),
+        LogChannel::Install,
+        diagnostics::DEFAULT_LOG_LINES,
+    )
 }
 
 pub fn list_installed() -> AppResult<Vec<InstalledApp>> {
@@ -841,6 +843,7 @@ mod tests {
                 working_directory: ".".into(),
                 ready_url: "http://127.0.0.1:43120/health".into(),
             },
+            available: true,
             update_available: false,
         };
         let manifest = installed_app_manifest(&definition).unwrap();

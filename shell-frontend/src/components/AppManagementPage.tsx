@@ -576,7 +576,7 @@ export function AppManagementPage({
                               <TooltipContent>应用设置</TooltipContent>
                             </Tooltip>
                           ) : (
-                            officialApp && (
+                            officialApp && officialApp.available !== false && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -630,6 +630,7 @@ export function AppManagementPage({
               <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {availableOfficialApps.map((app) => {
                   const pending = pendingId === app.id;
+                  const available = app.available !== false;
                   return (
                     <div
                       key={app.id}
@@ -643,18 +644,18 @@ export function AppManagementPage({
                           </h3>
                           <Button
                             size="sm"
-                            disabled={pending}
+                            disabled={!available || pending}
                             aria-label={`安装 ${app.name}`}
                             onClick={() => void installOfficialApp(app)}
                           >
-                            {pending ? '处理中' : '安装'}
+                            {pending ? '处理中' : available ? '安装' : '暂不可用'}
                           </Button>
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
                           {app.description}
                         </p>
                         <p className="mt-2 text-xs text-muted-foreground">
-                          v{app.version} · {app.category}
+                          {available ? `v${app.version} · ${app.category}` : app.description}
                         </p>
                         {pending && installStage && (
                           <p className="mt-2 text-xs text-primary" role="status">

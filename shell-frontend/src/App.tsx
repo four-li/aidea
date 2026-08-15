@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
-import { LogPanel } from './components/LogPanel';
+import { LogWorkspace, targetFromManifest, type LogWorkspaceTarget } from './components/LogWorkspace';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toaster } from './components/ui/sonner';
 import { useApps } from './hooks/useApps';
@@ -64,7 +64,7 @@ function App() {
     }
   }, [loading, apps, activeAppId, selectApp]);
 
-  const [logApp, setLogApp] = useState<AppManifest | null>(null);
+  const [logTarget, setLogTarget] = useState<LogWorkspaceTarget | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<'about' | undefined>();
   const [checkUpdate, setCheckUpdate] = useState(0);
@@ -135,6 +135,25 @@ function App() {
     [apps, activeAppId, developerGuide],
   );
 
+  useEffect(() => {
+    const record = (message: string) => {
+      if (!message.trim()) return;
+      if (activeApp?.ui.mode === 'builtin') {
+        void ipc.recordBuiltinDiagnostic(activeApp.id, 'frontend', message).catch(() => undefined);
+      } else {
+        void ipc.recordAideaDiagnostic('frontend', message).catch(() => undefined);
+      }
+    };
+    const onError = (event: ErrorEvent) => record(event.message || '未处理前端错误');
+    const onRejection = (event: PromiseRejectionEvent) => record(String(event.reason));
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [activeApp]);
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background text-muted-foreground">
@@ -160,7 +179,7 @@ function App() {
         states={states}
         onSelectApp={selectApp}
         onRefreshStates={refresh}
-        onShowLog={setLogApp}
+        onShowLog={(app) => setLogTarget(targetFromManifest(app))}
         onOpenSettings={() => setShowSettings(true)}
         onOpenDeveloperGuide={() => {
           if (!developerGuide) return;
@@ -189,7 +208,7 @@ function App() {
           }}
         />
       </div>
-      <LogPanel app={logApp} onClose={() => setLogApp(null)} />
+      <LogWorkspace target={logTarget} onClose={() => setLogTarget(null)} />
       <SettingsPanel
         themeMode={themeMode}
         onThemeChange={setTheme}
@@ -201,7 +220,8 @@ function App() {
         onRefreshStates={refresh}
         appOrder={appOrder}
         onReorder={setAppOrder}
-        onShowLog={setLogApp}
+        onShowLog={(app) => setLogTarget(targetFromManifest(app))}
+        onShowAideaLog={() => setLogTarget({ scope: 'aidea', name: 'aIdea' })}
         category={settingsCategory}
         checkUpdate={checkUpdate}
       />

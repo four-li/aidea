@@ -21,6 +21,7 @@ import type {
 } from '../types/official-app';
 import type { DevToolsSettings } from '../types/dev-tools';
 import type { AideaUpdate } from '../types/update';
+import type { DiagnosticLogRequest, LogSettings } from '../types/diagnostics';
 
 export const ipc = {
   getAideaVersion: (): Promise<string> => invoke('get_aidea_version'),
@@ -47,6 +48,15 @@ export const ipc = {
     invoke('uninstall_official_app', { id }),
   /** 加载壳全局设置 */
   getShellConfig: (): Promise<ShellConfig> => invoke<ShellConfig>('get_shell_config'),
+  getLogSettings: (): Promise<LogSettings> => invoke<LogSettings>('get_log_settings'),
+  saveLogSettings: (settings: LogSettings): Promise<void> =>
+    invoke<void>('save_log_settings', { settings }),
+  readDiagnosticLog: (request: DiagnosticLogRequest): Promise<string> =>
+    invoke<string>('read_diagnostic_log', { request }),
+  recordBuiltinDiagnostic: (id: string, source: 'frontend' | 'ipc', message: string): Promise<void> =>
+    invoke<void>('record_builtin_diagnostic', { id, source, message }),
+  recordAideaDiagnostic: (source: 'frontend' | 'ipc', message: string): Promise<void> =>
+    invoke<void>('record_aidea_diagnostic', { source, message }),
 
   resetAppSettings: (id: string): Promise<void> => invoke<void>('reset_app_settings', { id }),
   saveAppUserSettings: (id: string, settings: AppUserSettings): Promise<void> =>
@@ -63,8 +73,6 @@ export const ipc = {
 
   /** 查询所有子应用的进程状态 */
   getAppStates: (): Promise<AppState[]> => invoke<AppState[]>('get_app_states'),
-  readAppLog: (id: string): Promise<string> => invoke<string>('read_app_log', { id }),
-
   getDevToolsSettings: (): Promise<DevToolsSettings> => invoke('get_dev_tools_settings'),
   saveDevToolsSettings: (settings: DevToolsSettings): Promise<void> =>
     invoke('save_dev_tools_settings', { settings }),

@@ -48,6 +48,8 @@ export interface AppIssue {
 
 export interface ShellConfig {
   app_settings: Record<string, AppUserSettings>;
+  log_retention_days: number;
+  log_max_total_mb: number;
 }
 
 export type StartupMode = 'manual' | 'with-aidea';

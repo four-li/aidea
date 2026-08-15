@@ -646,6 +646,32 @@ describe('AppManagementPage', () => {
     await waitFor(() => expect(mockInstallOfficialApp).toHaveBeenCalledWith('available-app'));
   });
 
+  it('不可访问的官方应用显示占位卡片并禁用安装', async () => {
+    mockListOfficialApps.mockResolvedValue([
+      {
+        id: 'internal-tool',
+        name: 'internal-tool',
+        description: '当前网络无法访问应用仓库，暂不可安装',
+        category: '官方应用',
+        version: '-',
+        icon: 'Package',
+        repository: 'https://gitlab.intra.example/team/internal-tool.git',
+        artifact: { url: '', sha256: '' },
+        process: { command: [], working_directory: '.', ready_url: '' },
+        available: false,
+        update_available: false,
+      },
+    ]);
+    mockListInstalledOfficialApps.mockResolvedValue([]);
+
+    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
+
+    const button = await screen.findByRole('button', { name: '安装 internal-tool' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mockInstallOfficialApp).not.toHaveBeenCalled();
+  });
+
   it('首次安装成功后选中官方应用以展示 WebView', async () => {
     mockListOfficialApps.mockResolvedValue([
       {

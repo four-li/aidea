@@ -7,7 +7,26 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
-    use super::{app_data_dir, AppUserSettings, StartupMode};
+    use super::{app_data_dir, AppUserSettings, LogSettings, ShellConfig, StartupMode};
+
+    #[test]
+    fn 日志策略缺省值与校验() {
+        let config: ShellConfig = serde_json::from_str(r#"{"app_settings":{}}"#).unwrap();
+        assert_eq!(config.log_retention_days, 30);
+        assert_eq!(config.log_max_total_mb, 500);
+        assert!(LogSettings {
+            retention_days: 0,
+            max_total_mb: 500,
+        }
+        .validate()
+        .is_err());
+        assert!(LogSettings {
+            retention_days: 30,
+            max_total_mb: 0,
+        }
+        .validate()
+        .is_err());
+    }
 
     #[test]
     fn 官方应用默认可见且手动启动() {
@@ -47,6 +66,32 @@ pub struct AppUserSettings {
     pub startup_mode: StartupMode,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogSettings {
+    pub retention_days: u16,
+    pub max_total_mb: u16,
+}
+
+impl LogSettings {
+    pub fn validate(&self) -> AppResult<()> {
+        if !(1..=365).contains(&self.retention_days) {
+            return Err(crate::error::AppError::Config("日志保留天数必须为 1-365".into()));
+        }
+        if !(1..=10_240).contains(&self.max_total_mb) {
+            return Err(crate::error::AppError::Config("日志容量必须为 1-10240 MB".into()));
+        }
+        Ok(())
+    }
+}
+
+fn default_log_retention_days() -> u16 {
+    30
+}
+
+fn default_log_max_total_mb() -> u16 {
+    500
+}
+
 fn default_visible() -> bool {
     true
 }
@@ -65,12 +110,27 @@ pub struct ShellConfig {
     /// 已安装或内置应用的用户级显示与启动偏好。
     #[serde(default)]
     pub app_settings: BTreeMap<String, AppUserSettings>,
+    #[serde(default = "default_log_retention_days")]
+    pub log_retention_days: u16,
+    #[serde(default = "default_log_max_total_mb")]
+    pub log_max_total_mb: u16,
 }
 
 impl Default for ShellConfig {
     fn default() -> Self {
         Self {
             app_settings: BTreeMap::new(),
+            log_retention_days: default_log_retention_days(),
+            log_max_total_mb: default_log_max_total_mb(),
+        }
+    }
+}
+
+impl ShellConfig {
+    pub fn log_settings(&self) -> LogSettings {
+        LogSettings {
+            retention_days: self.log_retention_days,
+            max_total_mb: self.log_max_total_mb,
         }
     }
 }
