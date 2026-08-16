@@ -377,6 +377,7 @@ mod tests {
     fn 日志按应用类型隔离并拒绝路径穿越() {
         let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("aidea-diagnostics-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("AIDEA_DATA_DIR");
         std::env::set_var("AIDEA_DATA_DIR", &root);
 
         append_level(
@@ -403,13 +404,20 @@ mod tests {
         )
         .is_err());
 
+        if let Some(value) = previous.as_ref() {
+            std::env::set_var("AIDEA_DATA_DIR", value);
+        } else {
+            std::env::remove_var("AIDEA_DATA_DIR");
+        }
         let _ = std::fs::remove_dir_all(root);
+        assert_eq!(std::env::var_os("AIDEA_DATA_DIR"), previous);
     }
 
     #[test]
     fn 官方应用兼容旧日志并保留当前文件() {
         let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("aidea-legacy-log-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("AIDEA_DATA_DIR");
         std::env::set_var("AIDEA_DATA_DIR", &root);
         let legacy_dir = root.join("logs/demo");
         std::fs::create_dir_all(&legacy_dir).unwrap();
@@ -437,6 +445,11 @@ mod tests {
             .unwrap()
             .count();
         assert_eq!(runtime_files, 1);
+        if let Some(value) = previous.as_ref() {
+            std::env::set_var("AIDEA_DATA_DIR", value);
+        } else {
+            std::env::remove_var("AIDEA_DATA_DIR");
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -444,6 +457,7 @@ mod tests {
     fn 只统计_warn_及以上并可清空全部日志() {
         let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("aidea-log-count-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("AIDEA_DATA_DIR");
         std::env::set_var("AIDEA_DATA_DIR", &root);
 
         append_level(
@@ -483,6 +497,11 @@ mod tests {
                     .next()
                     .is_none()
         );
+        if let Some(value) = previous.as_ref() {
+            std::env::set_var("AIDEA_DATA_DIR", value);
+        } else {
+            std::env::remove_var("AIDEA_DATA_DIR");
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 }

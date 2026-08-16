@@ -1,11 +1,11 @@
 {
-  "version": "0.2.2",
-  "notes": "优化\n- 自动生成的维护性更新。",
-  "pub_date": "2026-08-15T07:18:27.590Z",
+  "version": "0.2.4",
+  "notes": "新增\n- 支持拖放目录到官方应用并统一日志调试体验\n- 统一日志调试并增强市场刷新容错\n- 新增统一日志诊断与端口释放能力\n\n修复\n- 修复界面焦点样式并优化更新日志排序",
+  "pub_date": "2026-08-16T09:35:46.639Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.2/开搞.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK3RUK3dhbjhXYVRKTVZOOFpNc0wvMlhBY25oM3VhRnc3K2JKc0JiZUlJWU5TTWpjVnhEYzBGQTFnZlZvN3ZNcW5hZVc0eVlVV1dJSHVUdXZ4eDNGTEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2Nzc4MzA3CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKV0huSXo4L1B2NXV4US8zcWxuWjdLSWpVT0VOVUJ3bFl4Ym02SXl0SnU5d1dzeUNpVzJ1dGtRTGx3VGlRY2owRVBqelZsdk1LTjBnV0N1MG8wdEs3Q3c9PQo="
+      "url": "https://gitee.com/aidea-org/aidea-app/releases/download/v0.2.4/开搞.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUM0Z5YkJXVTVwK2lxUmc2N1AyZ3ZLR2l5N3ZHMysrY1Q0MGVQTEJkUXdoSHkvQU9meVVnZWZLUGhaVy9ncmk0NXljcEZyUGh4ZzdQR2ppdTB5YnZDZWVLbHJpM2NrZUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2ODcyOTQ2CWZpbGU65byA5pCeLmFwcC50YXIuZ3oKMzZFU3dJZkwzdFpjQTRMNWFTMThHZVVDSEE4U1l5MzR5Wm9kaUo5cmoxY2lnRkFMRjk1ZnkybGdHS1ZjaWQwSEJmK3RsYWlDbVZjZnpKbWlRMHdFQkE9PQo="
     }
   }
 }
