@@ -4,23 +4,39 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+#[cfg(test)]
+use std::sync::Mutex;
+
+#[cfg(test)]
+/// `AIDEA_DATA_DIR` 是进程级环境变量，测试必须串行修改。
+pub static TEST_DATA_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
 mod tests {
-    use super::{app_data_dir, AppUserSettings, LogSettings, ShellConfig, StartupMode};
+    use super::{
+        app_data_dir, AppUserSettings, LogLevel, LogSettings, LogVerbosity, ShellConfig,
+        StartupMode,
+    };
 
     #[test]
     fn 日志策略缺省值与校验() {
         let config: ShellConfig = serde_json::from_str(r#"{"app_settings":{}}"#).unwrap();
+        assert_eq!(config.log_level, LogVerbosity::Standard);
         assert_eq!(config.log_retention_days, 30);
         assert_eq!(config.log_max_total_mb, 500);
+        assert!(LogVerbosity::Minimal.allows(LogLevel::Warn));
+        assert!(!LogVerbosity::Minimal.allows(LogLevel::Info));
+        assert!(LogVerbosity::Standard.allows(LogLevel::Info));
+        assert!(LogVerbosity::Debug.allows(LogLevel::Debug));
         assert!(LogSettings {
+            level: LogVerbosity::Standard,
             retention_days: 0,
             max_total_mb: 500,
         }
         .validate()
         .is_err());
         assert!(LogSettings {
+            level: LogVerbosity::Standard,
             retention_days: 30,
             max_total_mb: 0,
         }
@@ -66,8 +82,72 @@ pub struct AppUserSettings {
     pub startup_mode: StartupMode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Debug => "DEBUG",
+            Self::Info => "INFO",
+            Self::Warn => "WARN",
+            Self::Error => "ERROR",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_uppercase().as_str() {
+            "DEBUG" => Some(Self::Debug),
+            "INFO" => Some(Self::Info),
+            "WARN" | "WARNING" => Some(Self::Warn),
+            "ERROR" | "ERR" => Some(Self::Error),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LogVerbosity {
+    Minimal,
+    Standard,
+    Debug,
+}
+
+impl Default for LogVerbosity {
+    fn default() -> Self {
+        Self::Standard
+    }
+}
+
+impl LogVerbosity {
+    pub fn allows(self, level: LogLevel) -> bool {
+        match self {
+            Self::Minimal => matches!(level, LogLevel::Warn | LogLevel::Error),
+            Self::Standard => !matches!(level, LogLevel::Debug),
+            Self::Debug => true,
+        }
+    }
+
+    pub fn child_env_value(self) -> &'static str {
+        match self {
+            Self::Minimal => "warn",
+            Self::Standard => "info",
+            Self::Debug => "debug",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogSettings {
+    #[serde(default)]
+    pub level: LogVerbosity,
     pub retention_days: u16,
     pub max_total_mb: u16,
 }
@@ -75,10 +155,14 @@ pub struct LogSettings {
 impl LogSettings {
     pub fn validate(&self) -> AppResult<()> {
         if !(1..=365).contains(&self.retention_days) {
-            return Err(crate::error::AppError::Config("日志保留天数必须为 1-365".into()));
+            return Err(crate::error::AppError::Config(
+                "日志保留天数必须为 1-365".into(),
+            ));
         }
         if !(1..=10_240).contains(&self.max_total_mb) {
-            return Err(crate::error::AppError::Config("日志容量必须为 1-10240 MB".into()));
+            return Err(crate::error::AppError::Config(
+                "日志容量必须为 1-10240 MB".into(),
+            ));
         }
         Ok(())
     }
@@ -86,6 +170,10 @@ impl LogSettings {
 
 fn default_log_retention_days() -> u16 {
     30
+}
+
+fn default_log_level() -> LogVerbosity {
+    LogVerbosity::Standard
 }
 
 fn default_log_max_total_mb() -> u16 {
@@ -110,6 +198,8 @@ pub struct ShellConfig {
     /// 已安装或内置应用的用户级显示与启动偏好。
     #[serde(default)]
     pub app_settings: BTreeMap<String, AppUserSettings>,
+    #[serde(default = "default_log_level")]
+    pub log_level: LogVerbosity,
     #[serde(default = "default_log_retention_days")]
     pub log_retention_days: u16,
     #[serde(default = "default_log_max_total_mb")]
@@ -120,6 +210,7 @@ impl Default for ShellConfig {
     fn default() -> Self {
         Self {
             app_settings: BTreeMap::new(),
+            log_level: default_log_level(),
             log_retention_days: default_log_retention_days(),
             log_max_total_mb: default_log_max_total_mb(),
         }
@@ -129,6 +220,7 @@ impl Default for ShellConfig {
 impl ShellConfig {
     pub fn log_settings(&self) -> LogSettings {
         LogSettings {
+            level: self.log_level,
             retention_days: self.log_retention_days,
             max_total_mb: self.log_max_total_mb,
         }

@@ -1,5 +1,7 @@
-use crate::config::{load_config, save_config, AppUserSettings, LogSettings, ShellConfig, StartupMode};
-use crate::diagnostics::{self, LogChannel, LogOwner};
+use crate::config::{
+    load_config, save_config, AppUserSettings, LogSettings, ShellConfig, StartupMode,
+};
+use crate::diagnostics::{self, LogChannel, LogLevel, LogOwner};
 use crate::error::{AppError, AppResult};
 use crate::manifest::{find_manifest, load_all_manifests, AppManifest};
 use crate::process::{AppState, ProcessManager};
@@ -15,6 +17,38 @@ pub struct DiagnosticLogRequest {
     pub scope: String,
     pub app_id: Option<String>,
     pub channel: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DiagnosticSummary {
+    pub scope: String,
+    pub app_id: Option<String>,
+    pub warn_count: usize,
+}
+
+fn validate_diagnostic_input(
+    level: &str,
+    event: &str,
+    message: &str,
+    error_prefix: &str,
+) -> AppResult<LogLevel> {
+    let level = LogLevel::parse(level)
+        .ok_or_else(|| AppError::Config(format!("{error_prefix}级别无效")))?;
+    let event = event.trim();
+    let message = message.trim();
+    if event.is_empty()
+        || event.len() > 80
+        || event.chars().any(char::is_control)
+        || message.is_empty()
+        || message.len() > 4_000
+    {
+        return Err(AppError::Config(format!("{error_prefix}参数无效")));
+    }
+    Ok(level)
+}
+
+fn diagnostic_message(event: &str, message: &str) -> String {
+    format!("{} {}", event.trim(), message.trim())
 }
 
 #[derive(serde::Serialize)]
@@ -114,14 +148,26 @@ pub async fn check_aidea_update(app: tauri::AppHandle) -> AppResult<Option<Aidea
         .updater()
         .map_err(|error| {
             let message = format!("初始化更新检查失败: {error}");
-            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Error,
+                "updater",
+                &message,
+            );
             AppError::Network(message)
         })?
         .check()
         .await
         .map_err(|error| {
             let message = format!("检查更新失败: {error}");
-            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Error,
+                "updater",
+                &message,
+            );
             AppError::Network(message)
         })?;
 
@@ -138,19 +184,37 @@ pub async fn install_aidea_update(app: tauri::AppHandle) -> AppResult<()> {
         .updater()
         .map_err(|error| {
             let message = format!("初始化更新失败: {error}");
-            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Error,
+                "updater",
+                &message,
+            );
             AppError::Network(message)
         })?
         .check()
         .await
         .map_err(|error| {
             let message = format!("检查更新失败: {error}");
-            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Error,
+                "updater",
+                &message,
+            );
             AppError::Network(message)
         })?
         .ok_or_else(|| {
             let message = "当前没有可安装的更新";
-            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", message);
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Warn,
+                "updater",
+                message,
+            );
             AppError::Config(message.into())
         })?;
 
@@ -159,7 +223,13 @@ pub async fn install_aidea_update(app: tauri::AppHandle) -> AppResult<()> {
         .await
         .map_err(|error| {
             let message = format!("下载或验证更新失败: {error}");
-            let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "updater", &message);
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Error,
+                "updater",
+                &message,
+            );
             AppError::Network(message)
         })?;
     app.restart();
@@ -352,6 +422,7 @@ pub async fn get_log_settings() -> AppResult<LogSettings> {
 pub async fn save_log_settings(settings: LogSettings) -> AppResult<()> {
     settings.validate()?;
     let mut config = load_config()?;
+    config.log_level = settings.level;
     config.log_retention_days = settings.retention_days;
     config.log_max_total_mb = settings.max_total_mb;
     save_config(&config)?;
@@ -359,24 +430,75 @@ pub async fn save_log_settings(settings: LogSettings) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn record_builtin_diagnostic(id: String, source: String, message: String) -> AppResult<()> {
-    if !matches!(source.as_str(), "frontend" | "ipc") || message.trim().is_empty() {
+pub async fn clear_diagnostic_logs() -> AppResult<()> {
+    diagnostics::clear_all()
+}
+
+#[tauri::command]
+pub async fn list_diagnostic_summaries() -> AppResult<Vec<DiagnosticSummary>> {
+    let mut summaries = vec![DiagnosticSummary {
+        scope: "aidea".into(),
+        app_id: None,
+        warn_count: diagnostics::count_warn_plus(&LogOwner::Aidea)?,
+    }];
+    for app in load_all_manifests()? {
+        if app.ui.entry == Some(crate::manifest::UiEntry::AccountMenu) {
+            continue;
+        }
+        let (scope, owner) = match app.ui.mode {
+            crate::manifest::UiMode::Builtin => ("builtin", LogOwner::Builtin(app.id.clone())),
+            crate::manifest::UiMode::Webview | crate::manifest::UiMode::None => {
+                ("official", LogOwner::Official(app.id.clone()))
+            }
+        };
+        summaries.push(DiagnosticSummary {
+            scope: scope.into(),
+            app_id: Some(app.id),
+            warn_count: diagnostics::count_warn_plus(&owner)?,
+        });
+    }
+    Ok(summaries)
+}
+
+#[tauri::command]
+pub async fn record_builtin_diagnostic(
+    id: String,
+    source: String,
+    level: String,
+    event: String,
+    message: String,
+) -> AppResult<()> {
+    if !matches!(source.as_str(), "frontend" | "ipc") {
         return Err(AppError::Config("内置应用日志参数无效".into()));
     }
-    diagnostics::append(
+    let level = validate_diagnostic_input(&level, &event, &message, "内置应用日志")?;
+    diagnostics::append_level(
         &LogOwner::Builtin(id),
         LogChannel::Platform,
+        level,
         &source,
-        message.trim(),
+        &diagnostic_message(&event, &message),
     )
 }
 
 #[tauri::command]
-pub async fn record_aidea_diagnostic(source: String, message: String) -> AppResult<()> {
-    if !matches!(source.as_str(), "frontend" | "ipc") || message.trim().is_empty() {
+pub async fn record_aidea_diagnostic(
+    source: String,
+    level: String,
+    event: String,
+    message: String,
+) -> AppResult<()> {
+    if !matches!(source.as_str(), "frontend" | "ipc") {
         return Err(AppError::Config("aIdea 日志参数无效".into()));
     }
-    diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, &source, message.trim())
+    let level = validate_diagnostic_input(&level, &event, &message, "aIdea 日志")?;
+    diagnostics::append_level(
+        &LogOwner::Aidea,
+        LogChannel::Platform,
+        level,
+        &source,
+        &diagnostic_message(&event, &message),
+    )
 }
 
 #[tauri::command]
@@ -397,7 +519,13 @@ pub async fn read_diagnostic_log(request: DiagnosticLogRequest) -> AppResult<Str
     };
     let settings = load_config()?.log_settings();
     if let Err(error) = diagnostics::cleanup(&settings) {
-        let _ = diagnostics::append(&LogOwner::Aidea, LogChannel::Platform, "diagnostics", &error.to_string());
+        let _ = diagnostics::append_level(
+            &LogOwner::Aidea,
+            LogChannel::Platform,
+            LogLevel::Error,
+            "diagnostics",
+            &error.to_string(),
+        );
     }
     diagnostics::read_recent(&owner, channel, diagnostics::DEFAULT_LOG_LINES)
 }
@@ -436,9 +564,25 @@ pub async fn reset_app_settings(id: String) -> AppResult<()> {
 mod tests {
     use super::{
         builtin_reset_command_for, current_aidea_version, decode_jpeg_photo, get_os_username,
-        reset_command_for,
+        reset_command_for, validate_diagnostic_input,
     };
+    use crate::config::LogLevel;
     use crate::manifest::{AppManifest, AppStatus, SettingsConfig, UiConfig, UiMode};
+
+    #[test]
+    fn 日志参数校验接受合法级别并拒绝危险输入() {
+        assert_eq!(
+            validate_diagnostic_input("warn", "sync_failed", "timeout", "测试").unwrap(),
+            LogLevel::Warn
+        );
+        assert!(validate_diagnostic_input("trace", "sync_failed", "timeout", "测试").is_err());
+        assert!(validate_diagnostic_input("error", "", "timeout", "测试").is_err());
+        assert!(validate_diagnostic_input("error", "sync_failed\nx", "timeout", "测试").is_err());
+        assert!(validate_diagnostic_input("error", "sync_failed", "", "测试").is_err());
+        assert!(
+            validate_diagnostic_input("error", "sync_failed", &"x".repeat(4_001), "测试").is_err()
+        );
+    }
 
     #[test]
     fn 读取当前用户短用户名() {

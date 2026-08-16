@@ -5,7 +5,7 @@ use crate::manifest::AppIssue;
 use crate::official_market::OfficialApp;
 use crate::{
     config::{load_config, StartupMode},
-    diagnostics::{self, LogChannel, LogOwner},
+    diagnostics::{self, LogChannel, LogLevel, LogOwner},
     official_app_installer,
 };
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,16 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration, Instant};
+
+fn log_process_error(id: &str, error: &AppError) {
+    let _ = diagnostics::append_level(
+        &LogOwner::Official(id.to_string()),
+        LogChannel::Platform,
+        LogLevel::Error,
+        "process",
+        &error.to_string(),
+    );
+}
 
 /// 进程状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -198,7 +208,16 @@ impl ProcessManager {
         if let Some(pid) = self.adopt_orphaned_process(app).await? {
             return Ok(pid);
         }
-        ensure_ready_port_available(&app.process.ready_url)?;
+        if let Err(error) = ensure_ready_port_available(&app.process.ready_url) {
+            let _ = diagnostics::append_level(
+                &LogOwner::Official(app.id.clone()),
+                LogChannel::Platform,
+                LogLevel::Error,
+                "process",
+                &error.to_string(),
+            );
+            return Err(error);
+        }
         let log_dir = crate::config::data_root()?
             .join("logs")
             .join("official")
@@ -216,6 +235,10 @@ impl ProcessManager {
             .env("AIDEA_APP_ID", &app.id)
             .env("AIDEA_APP_DATA_DIR", &app_data_dir)
             .env("AIDEA_APP_LOG_DIR", &log_dir)
+            .env(
+                "AIDEA_LOG_LEVEL",
+                load_config()?.log_level.child_env_value(),
+            )
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(path) = path {
@@ -224,12 +247,15 @@ impl ProcessManager {
         #[cfg(unix)]
         command.process_group(0);
         let mut child = command.spawn().map_err(|error| {
-            AppError::Process(format!(
-                "启动 {} 失败（{}）: {}",
-                app.id,
-                program.display(),
-                error
-            ))
+            let message = format!("启动 {} 失败（{}）: {}", app.id, program.display(), error);
+            let _ = diagnostics::append_level(
+                &LogOwner::Official(app.id.clone()),
+                LogChannel::Platform,
+                LogLevel::Error,
+                "process",
+                &message,
+            );
+            AppError::Process(message)
         })?;
         let pid = child
             .id()
@@ -240,7 +266,9 @@ impl ProcessManager {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stdout).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if let Err(error) = diagnostics::append(&owner, LogChannel::Runtime, "stdout", &line) {
+                    if let Err(error) =
+                        diagnostics::append_external(&owner, LogChannel::Runtime, "stdout", &line)
+                    {
                         eprintln!("写入官方应用 stdout 日志失败: {error}");
                     }
                 }
@@ -251,15 +279,18 @@ impl ProcessManager {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if let Err(error) = diagnostics::append(&owner, LogChannel::Runtime, "stderr", &line) {
+                    if let Err(error) =
+                        diagnostics::append_external(&owner, LogChannel::Runtime, "stderr", &line)
+                    {
                         eprintln!("写入官方应用 stderr 日志失败: {error}");
                     }
                 }
             });
         }
-        let _ = diagnostics::append(
+        let _ = diagnostics::append_level(
             &owner,
             LogChannel::Platform,
+            LogLevel::Info,
             "aidea",
             &format!("启动进程 pid={pid}"),
         );
@@ -290,9 +321,10 @@ impl ProcessManager {
                     let status = result
                         .map(|value| value.to_string())
                         .unwrap_or_else(|error| error.to_string());
-                    let _ = diagnostics::append(
+                    let _ = diagnostics::append_level(
                         &LogOwner::Official(id.clone()),
                         LogChannel::Platform,
+                        if status.contains("exit status: 0") { LogLevel::Info } else { LogLevel::Error },
                         "aidea",
                         &format!("进程退出 pid={pid} status={status}"),
                     );
@@ -329,7 +361,9 @@ impl ProcessManager {
 
         let Some(entry) = entry else {
             self.clear_transition(id);
-            return Err(AppError::Process(format!("{} 未在运行", id)));
+            let error = AppError::Process(format!("{} 未在运行", id));
+            log_process_error(id, &error);
+            return Err(error);
         };
 
         // 先发 kill_tx 通知监控协程退出 select 分支
@@ -353,7 +387,9 @@ impl ProcessManager {
                 },
             );
             self.clear_transition(id);
-            return Err(AppError::Process(format!("{} 进程未能退出", id)));
+            let error = AppError::Process(format!("{} 进程未能退出", id));
+            log_process_error(id, &error);
+            return Err(error);
         }
         let _ = remove_runtime_record(id);
         self.clear_transition(id);
@@ -362,8 +398,17 @@ impl ProcessManager {
 
     /// 用户确认后释放遗留的健康检查端口，兜底解决运行记录丢失。
     pub async fn release_port(&self, app: &OfficialApp) -> AppResult<()> {
-        let Some(pid) = listening_pid(&app.process.ready_url)? else {
-            return Err(AppError::Process(format!("{} 的端口当前未被占用", app.id)));
+        let pid = match listening_pid(&app.process.ready_url) {
+            Ok(pid) => pid,
+            Err(error) => {
+                log_process_error(&app.id, &error);
+                return Err(error);
+            }
+        };
+        let Some(pid) = pid else {
+            let error = AppError::Process(format!("{} 的端口当前未被占用", app.id));
+            log_process_error(&app.id, &error);
+            return Err(error);
         };
         let process_group = process_group_id(pid).filter(|group| *group == pid);
         let terminated = if let Some(group) = process_group {
@@ -372,7 +417,9 @@ impl ProcessManager {
             terminate_process(pid as i32).await
         };
         if !terminated || ensure_ready_port_available(&app.process.ready_url).is_err() {
-            return Err(AppError::Process(format!("{} 的端口仍被占用", app.id)));
+            let error = AppError::Process(format!("{} 的端口仍被占用", app.id));
+            log_process_error(&app.id, &error);
+            return Err(error);
         }
         let _ = remove_runtime_record(&app.id);
         Ok(())
@@ -421,6 +468,7 @@ impl ProcessManager {
     }
 
     pub fn record_issue(&self, id: &str, error: &AppError) {
+        log_process_error(id, error);
         self.issues.lock().unwrap().insert(
             id.into(),
             AppIssue {
@@ -528,9 +576,10 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
 
     let (program, path) = staging_command_for_official_app(app, source)?;
     let owner = LogOwner::Official(app.id.clone());
-    let _ = diagnostics::append(
+    let _ = diagnostics::append_level(
         &owner,
         LogChannel::Install,
+        LogLevel::Info,
         "aidea",
         "启动 staging 版本进行健康检查",
     );
@@ -542,6 +591,10 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
         .env("AIDEA_APP_ID", &app.id)
         .env("AIDEA_APP_DATA_DIR", &data_dir)
         .env("AIDEA_APP_LOG_DIR", &log_dir)
+        .env(
+            "AIDEA_LOG_LEVEL",
+            load_config()?.log_level.child_env_value(),
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(path) = path {
@@ -565,7 +618,7 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let _ = diagnostics::append(&owner, LogChannel::Install, "stdout", &line);
+                let _ = diagnostics::append_external(&owner, LogChannel::Install, "stdout", &line);
             }
         });
     }
@@ -574,7 +627,7 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let _ = diagnostics::append(&owner, LogChannel::Install, "stderr", &line);
+                let _ = diagnostics::append_external(&owner, LogChannel::Install, "stderr", &line);
             }
         });
     }
@@ -588,12 +641,17 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
     }
     let _ = child.wait().await;
     let _ = std::fs::remove_dir_all(check_root);
-    result
-        .map_err(|error| {
-            let message = format!("{} staging 版本未就绪: {error}", app.id);
-            let _ = diagnostics::append(&owner, LogChannel::Install, "aidea", &message);
-            AppError::Process(message)
-        })
+    result.map_err(|error| {
+        let message = format!("{} staging 版本未就绪: {error}", app.id);
+        let _ = diagnostics::append_level(
+            &owner,
+            LogChannel::Install,
+            LogLevel::Error,
+            "aidea",
+            &message,
+        );
+        AppError::Process(message)
+    })
 }
 
 fn command_for_official_app(

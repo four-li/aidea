@@ -564,9 +564,10 @@ fn http_client() -> AppResult<reqwest::Client> {
 
 fn record_market_warning(message: &str) {
     #[cfg(not(test))]
-    let _ = diagnostics::append(
+    let _ = diagnostics::append_level(
         &LogOwner::Aidea,
         LogChannel::Platform,
+        diagnostics::LogLevel::Warn,
         "official-market",
         message,
     );
@@ -575,16 +576,21 @@ fn record_market_warning(message: &str) {
 }
 
 async fn fetch_text(client: &reqwest::Client, url: &str) -> AppResult<String> {
-    client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| AppError::Network(format!("读取官方市场失败: {error}")))?
-        .error_for_status()
-        .map_err(|error| AppError::Network(format!("读取官方市场失败: {error}")))?
-        .text()
-        .await
-        .map_err(|error| AppError::Network(format!("读取官方市场失败: {error}")))
+    let response = client.get(url).send().await.map_err(|error| {
+        let message = format!("读取官方市场失败: {error}");
+        record_market_warning(&message);
+        AppError::Network(message)
+    })?;
+    if let Err(error) = response.error_for_status_ref() {
+        let message = format!("读取官方市场失败: {error}");
+        record_market_warning(&message);
+        return Err(AppError::Network(message));
+    }
+    response.text().await.map_err(|error| {
+        let message = format!("读取官方市场失败: {error}");
+        record_market_warning(&message);
+        AppError::Network(message)
+    })
 }
 
 async fn fetch_manifest(client: &reqwest::Client, repository: &str) -> AppResult<String> {

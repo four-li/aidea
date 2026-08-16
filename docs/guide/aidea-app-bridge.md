@@ -6,12 +6,13 @@
 
 ## 目标与边界
 
-App Bridge v1 只解决平台级的四件事：
+App Bridge v1 只解决平台级的五件事：
 
 - `ready`：官方应用告诉壳页面已经加载并声明可选能力。
 - `theme`：壳把当前浅色/深色主题同步给应用。
 - `notify`：应用请求 aIdea 发送 macOS 原生通知。
 - `navigate`：通知点击后，壳把应用内部路径交给来源应用。
+- `directory:drop`：壳将用户拖入的本地目录交给已声明支持的当前应用。
 
 本契约不提供搜索、数据共享、凭据共享、业务路由解析、全局快捷键或 SDK。官方应用按本文档手写所需的少量通信代码。
 
@@ -144,7 +145,7 @@ message.appId == 自己的 appId
 }
 ```
 
-`supported` 只列出应用支持的可选壳到应用命令。v1 中 `navigate` 是唯一可选命令；`theme` 是基础能力，不需要声明；`notify` 是应用到壳的请求，也不放入 `supported`。省略 `supported` 只表示支持基础能力，不表示支持未来能力。
+`supported` 只列出应用支持的可选壳到应用命令。v1 中 `navigate` 和 `directory-drop` 是可选命令；`theme` 是基础能力，不需要声明；`notify` 是应用到壳的请求，也不放入 `supported`。省略 `supported` 只表示支持基础能力，不表示支持未来能力。
 
 壳验证 `ready` 后登记连接和能力，并立即发送当前 `theme`。应用未 `ready` 前，壳不发送 `navigate`。壳不实现心跳；进程是否存活由 `/health` 检查负责。
 
@@ -156,6 +157,7 @@ message.appId == 自己的 appId
 | `theme` | 壳 -> 应用 | `{ mode: 'light' | 'dark' }` | 无 |
 | `notify` | 应用 -> 壳 | `{ title, body, action? }` | `notify:result` |
 | `navigate` | 壳 -> 应用 | `{ path }` | 无 |
+| `directory:drop` | 壳 -> 应用 | `{ path }` | 无 |
 
 ### notify 请求
 
@@ -208,6 +210,22 @@ message.appId == 自己的 appId
 应用收到后自行完成路由和业务数据加载。aIdea 不解析应用路由、不直接修改 iframe URL、不执行外部跳转，也不等待或处理导航完成回执。
 
 没有 action 的通知只需要显示 aIdea 并切换到来源应用。
+
+### directory:drop 命令
+
+用户从 Finder 拖入目录时，aIdea 原生窗口只接受一个存在的绝对目录，并把路径交给当前激活、已经 `ready` 且在 `supported` 中声明 `directory-drop` 的官方应用：
+
+```json
+{
+  "type": "directory:drop",
+  "payload": { "path": "/absolute/path/to/project" }
+}
+```
+
+- aIdea 只检查路径是一个存在的绝对目录，不解释目录业务含义。
+- 目标应用负责后续校验、错误提示与保存；例如 Worktrace 负责验证 Git 工作树。
+- 路径只定向发送给目标 iframe，不写入壳日志、不广播给其他应用，也没有回执。
+- 当前只有 Worktrace 声明并使用 `directory-drop`。其他官方应用未声明时不会收到该消息。
 
 ## 主题同步
 

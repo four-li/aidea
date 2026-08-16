@@ -22,6 +22,7 @@ interface Props {
   onThemeChange: (mode: ThemeMode) => void;
   updateAvailable?: boolean;
   onOpenUpdate?: () => void;
+  onOpenDebug?: () => void;
 }
 
 function TopBarProcessStatus({ app, state }: { app: AppManifest; state?: AppState }) {
@@ -70,6 +71,7 @@ export function TopBar({
   onThemeChange,
   updateAvailable = false,
   onOpenUpdate = () => undefined,
+  onOpenDebug = () => undefined,
 }: Props) {
   const sortedApps = appOrder
     .map((id) => apps.find((a) => a.id === id))
@@ -111,6 +113,7 @@ export function TopBar({
 
       <AccountMenu
         onOpenSettings={onOpenSettings}
+        onOpenDebug={onOpenDebug}
         onOpenDeveloperGuide={onOpenDeveloperGuide}
         themeMode={themeMode}
         onThemeChange={onThemeChange}

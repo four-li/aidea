@@ -33,6 +33,7 @@ export type AppFrameRef = (app: AppManifest, iframe: HTMLIFrameElement | null) =
 
 export interface AppBridgeController {
   registerFrame: AppFrameRef;
+  deliverDirectoryDrop: (path: string) => void;
 }
 
 type NavigateRequestHandler = (request: AppNotificationAction) => void | Promise<void>;
@@ -258,5 +259,12 @@ export function useAppBridge(
     });
   }, [theme]);
 
-  return { registerFrame };
+  const deliverDirectoryDrop = useCallback((path: string) => {
+    const connection = connectionsRef.current.get('worktrace');
+    if (!path.startsWith('/') || !connection?.connected) return;
+    if (!connection.supported.includes('directory-drop')) return;
+    send(connection, 'aidea-shell', 'directory:drop', { path });
+  }, []);
+
+  return { registerFrame, deliverDirectoryDrop };
 }

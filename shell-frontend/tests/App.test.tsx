@@ -1,13 +1,24 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { activeApp, mockListApps, mockRecordBuiltinDiagnostic, mockSelectApp, visibleApps } = vi.hoisted(() => ({
+const {
+  activeApp,
+  mockDeliverDirectoryDrop,
+  mockListApps,
+  mockRecordBuiltinDiagnostic,
+  mockSelectApp,
+  nativeListeners,
+  visibleApps,
+} = vi.hoisted(() => ({
   activeApp: { id: 'hidden-app' },
+  mockDeliverDirectoryDrop: vi.fn(),
   mockListApps: vi.fn(),
-  mockRecordBuiltinDiagnostic: vi.fn<[id: string, source: string, message: string], Promise<void>>(
-    () => Promise.resolve(),
-  ),
+  mockRecordBuiltinDiagnostic: vi.fn<
+    [id: string, source: string, level: string, event: string, message: string],
+    Promise<void>
+  >(() => Promise.resolve()),
   mockSelectApp: vi.fn(),
+  nativeListeners: new Map<string, (event: { payload: unknown }) => void>(),
   visibleApps: [
     {
       id: 'home',
@@ -28,13 +39,39 @@ const { activeApp, mockListApps, mockRecordBuiltinDiagnostic, mockSelectApp, vis
   ],
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(() => Promise.resolve(() => undefined)) }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn((event: string, handler: (event: { payload: unknown }) => void) => {
+    nativeListeners.set(event, handler);
+    return Promise.resolve(() => nativeListeners.delete(event));
+  }),
+}));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 vi.mock('../src/components/TopBar', () => ({
-  TopBar: ({ onOpenDeveloperGuide }: { onOpenDeveloperGuide: () => void }) => (
-    <button type="button" onClick={onOpenDeveloperGuide}>
-      打开开发手册
-    </button>
+  TopBar: ({
+    onOpenDebug,
+    onOpenDeveloperGuide,
+  }: {
+    onOpenDebug: () => void;
+    onOpenDeveloperGuide: () => void;
+  }) => (
+    <div>
+      <button type="button" onClick={onOpenDeveloperGuide}>
+        打开开发手册
+      </button>
+      <button type="button" onClick={onOpenDebug}>
+        打开调试
+      </button>
+    </div>
+  ),
+}));
+vi.mock('../src/components/DebugPage', () => ({
+  DebugPage: ({ onClose }: { onClose: () => void }) => (
+    <div>
+      调试页
+      <button type="button" onClick={onClose}>
+        返回主页面
+      </button>
+    </div>
   ),
 }));
 vi.mock('../src/components/LogWorkspace', () => ({
@@ -77,7 +114,9 @@ vi.mock('../src/hooks/useActiveApp', () => ({
 vi.mock('../src/hooks/useProcessStatus', () => ({
   useProcessStatus: () => ({ states: {}, refresh: vi.fn() }),
 }));
-vi.mock('../src/hooks/useAppBridge', () => ({ useAppBridge: () => ({ registerFrame: vi.fn() }) }));
+vi.mock('../src/hooks/useAppBridge', () => ({
+  useAppBridge: () => ({ registerFrame: vi.fn(), deliverDirectoryDrop: mockDeliverDirectoryDrop }),
+}));
 vi.mock('../src/hooks/useTheme', () => ({
   useTheme: () => ({ mode: 'system', resolvedTheme: 'light', setTheme: vi.fn() }),
 }));
@@ -85,9 +124,16 @@ vi.mock('../src/lib/ipc', () => ({
   ipc: {
     listApps: (...args: unknown[]) => mockListApps(...args),
     checkAideaUpdate: vi.fn(() => Promise.resolve(null)),
-    recordBuiltinDiagnostic: (id: string, source: string, message: string) =>
-      mockRecordBuiltinDiagnostic(id, source, message),
-    recordAideaDiagnostic: vi.fn(() => Promise.resolve()),
+    recordBuiltinDiagnostic: (
+      id: string,
+      source: string,
+      level: string,
+      event: string,
+      message: string,
+    ) => mockRecordBuiltinDiagnostic(id, source, level, event, message),
+    recordAideaDiagnostic: vi.fn(
+      (_source: string, _level: string, _event: string, _message: string) => Promise.resolve(),
+    ),
   },
 }));
 
@@ -96,6 +142,25 @@ import App from '../src/App';
 describe('主界面', () => {
   beforeEach(() => {
     mockListApps.mockClear();
+    mockDeliverDirectoryDrop.mockClear();
+    nativeListeners.clear();
+  });
+
+  it('仅在 Worktrace 是当前应用时转发原生目录拖入', async () => {
+    activeApp.id = 'worktrace';
+    mockListApps.mockResolvedValue([]);
+    const firstView = render(<App />);
+
+    await waitFor(() => expect(nativeListeners.get('aidea:directory-dropped')).toBeDefined());
+    nativeListeners.get('aidea:directory-dropped')?.({ payload: { path: '/tmp/project' } });
+    expect(mockDeliverDirectoryDrop).toHaveBeenCalledWith('/tmp/project');
+
+    firstView.unmount();
+    activeApp.id = 'dev-tools';
+    render(<App />);
+    await waitFor(() => expect(nativeListeners.get('aidea:directory-dropped')).toBeDefined());
+    nativeListeners.get('aidea:directory-dropped')?.({ payload: { path: '/tmp/other-project' } });
+    expect(mockDeliverDirectoryDrop).toHaveBeenCalledTimes(1);
   });
 
   it('未处理前端错误会记录到当前内置应用', async () => {
@@ -106,7 +171,13 @@ describe('主界面', () => {
 
     window.dispatchEvent(new ErrorEvent('error', { message: 'render failed' }));
     await waitFor(() =>
-      expect(mockRecordBuiltinDiagnostic).toHaveBeenCalledWith('dev-tools', 'frontend', 'render failed'),
+      expect(mockRecordBuiltinDiagnostic).toHaveBeenCalledWith(
+        'dev-tools',
+        'frontend',
+        'error',
+        'frontend_unhandled_error',
+        'render failed',
+      ),
     );
   });
 
@@ -176,5 +247,31 @@ describe('主界面', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回主页面' }));
 
     expect(mockSelectApp).toHaveBeenNthCalledWith(2, 'home');
+  });
+
+  it('从调试页打开开发手册会先退出调试页', async () => {
+    activeApp.id = 'dev-tools';
+    mockListApps.mockClear();
+    mockSelectApp.mockClear();
+    mockListApps.mockResolvedValue([
+      {
+        id: 'developer-guide',
+        name: '开发手册',
+        version: '0.1.0',
+        category: '开发',
+        status: 'active',
+        ui: { mode: 'builtin', entry: 'account-menu' },
+      },
+    ]);
+
+    render(<App />);
+
+    await waitFor(() => expect(mockListApps).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '打开调试' }));
+    expect(screen.getByText('调试页')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '打开开发手册' }));
+
+    expect(screen.queryByText('调试页')).not.toBeInTheDocument();
+    expect(mockSelectApp).toHaveBeenCalledWith('developer-guide');
   });
 });

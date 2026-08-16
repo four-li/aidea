@@ -24,10 +24,18 @@ import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 import { AppManagementPage } from './AppManagementPage';
 import { ipc } from '../lib/ipc';
 import type { AideaUpdate } from '../types/update';
+import type { LogSettings } from '../types/diagnostics';
 import changelog from '../data/changelog.json';
 
 interface Props {
@@ -42,7 +50,6 @@ interface Props {
   appOrder?: string[];
   onReorder?: (newOrder: string[]) => void;
   onShowLog: (app: AppManifest) => void;
-  onShowAideaLog?: () => void;
   category?: SettingsCategory;
   checkUpdate?: number;
 }
@@ -92,7 +99,6 @@ export function SettingsPanel({
   appOrder,
   onReorder,
   onShowLog,
-  onShowAideaLog = () => undefined,
   category,
   checkUpdate,
 }: Props) {
@@ -171,7 +177,7 @@ export function SettingsPanel({
               )}
               {activeCategory === 'notifications' && <NotificationsSettings />}
               {activeCategory === 'privacy' && <PrivacySettings />}
-              {activeCategory === 'advanced' && <AdvancedSettings onShowAideaLog={onShowAideaLog} />}
+              {activeCategory === 'advanced' && <AdvancedSettings />}
               {activeCategory === 'about' && <AboutSettings checkUpdate={checkUpdate} />}
             </div>
           </div>
@@ -364,9 +370,11 @@ function PrivacySettings() {
   return <p className="text-sm text-foreground">开搞本地应用不收集任何用户数据。</p>;
 }
 
-function AdvancedSettings({ onShowAideaLog }: { onShowAideaLog: () => void }) {
-  const [settings, setSettings] = useState({ retention_days: 30, max_total_mb: 500 });
+function AdvancedSettings() {
+  const [settings, setSettings] = useState<LogSettings>({ level: 'standard', retention_days: 30, max_total_mb: 500 });
   const [saving, setSaving] = useState(false);
+  const [clearLogsOpen, setClearLogsOpen] = useState(false);
+  const [clearingLogs, setClearingLogs] = useState(false);
 
   useEffect(() => {
     void ipc.getLogSettings().then(setSettings).catch((error) => {
@@ -387,9 +395,40 @@ function AdvancedSettings({ onShowAideaLog }: { onShowAideaLog: () => void }) {
     }
   };
 
+  const clearLogs = async () => {
+    setClearingLogs(true);
+    try {
+      await ipc.clearDiagnosticLogs();
+      setClearLogsOpen(false);
+      toast.success('日志已清理');
+    } catch (error) {
+      toast.error('清理日志失败', { description: String(error) });
+    } finally {
+      setClearingLogs(false);
+    }
+  };
+
   return (
     <div>
       <Section title="日志">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm text-foreground">日志详细程度</div>
+            <div className="text-xs text-muted-foreground mt-1">默认使用标准，排查问题时可临时切换调试</div>
+          </div>
+          <Select
+            value={settings.level}
+            disabled={saving}
+            onValueChange={(value) => void saveLogs({ ...settings, level: value as typeof settings.level })}
+          >
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minimal">精简</SelectItem>
+              <SelectItem value="standard">标准</SelectItem>
+              <SelectItem value="debug">调试</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-sm text-foreground">保存时间</div>
@@ -418,27 +457,38 @@ function AdvancedSettings({ onShowAideaLog }: { onShowAideaLog: () => void }) {
             <SelectContent>{[100, 250, 500, 1024, 2048].map((value) => <SelectItem key={value} value={String(value)}>{value >= 1024 ? `${value / 1024} GB` : `${value} MB`}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-        <Button variant="outline" onClick={onShowAideaLog}>查看 aIdea 日志</Button>
-      </Section>
-      <Section title="开发者选项">
-        <ToggleItem
-          label="启用调试模式"
-          description="显示额外的调试信息"
-          defaultChecked={false}
-          disabled
-        />
       </Section>
       <Section title="数据管理">
         <div className="flex items-center justify-between">
-          <div className="opacity-60">
-            <div className="text-sm text-foreground">清除缓存</div>
-            <div className="text-xs text-muted-foreground mt-1">删除临时文件和缓存数据</div>
+          <div>
+            <div className="text-sm text-foreground">清理日志</div>
+            <div className="text-xs text-muted-foreground mt-1">只删除已记录的日志，不影响应用数据</div>
           </div>
-          <Button variant="destructive" size="sm" disabled>
-            清除
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setClearLogsOpen(true)}
+          >
+            清理
           </Button>
         </div>
       </Section>
+      <Dialog open={clearLogsOpen} onOpenChange={setClearLogsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认清理日志</DialogTitle>
+            <DialogDescription>将删除 aIdea 和所有子应用的日志，且不会影响应用数据。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={clearingLogs} onClick={() => setClearLogsOpen(false)}>
+              取消
+            </Button>
+            <Button variant="destructive" disabled={clearingLogs} onClick={() => void clearLogs()}>
+              {clearingLogs ? '清理中...' : '确认清理'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
-import { LogWorkspace, targetFromManifest, type LogWorkspaceTarget } from './components/LogWorkspace';
+import { DebugPage, type DebugTarget } from './components/DebugPage';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toaster } from './components/ui/sonner';
 import { useApps } from './hooks/useApps';
@@ -55,7 +55,26 @@ function App() {
     },
     [apps, states, selectApp, refresh],
   );
-  const { registerFrame } = useAppBridge(resolvedTheme, handleNavigateRequest);
+  const { registerFrame, deliverDirectoryDrop } = useAppBridge(resolvedTheme, handleNavigateRequest);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ path?: unknown }>('aidea:directory-dropped', ({ payload }) => {
+      if (activeAppId !== 'worktrace' || typeof payload?.path !== 'string') return;
+      deliverDirectoryDrop(payload.path);
+    }).then((dispose) => {
+      if (disposed) {
+        void dispose();
+      } else {
+        unlisten = dispose;
+      }
+    });
+    return () => {
+      disposed = true;
+      void unlisten?.();
+    };
+  }, [activeAppId, deliverDirectoryDrop]);
 
   // apps 加载完成后，自动选中第一个（仅当还没选中时）
   useEffect(() => {
@@ -64,9 +83,10 @@ function App() {
     }
   }, [loading, apps, activeAppId, selectApp]);
 
-  const [logTarget, setLogTarget] = useState<LogWorkspaceTarget | null>(null);
+  const [debugTarget, setDebugTarget] = useState<DebugTarget | undefined>();
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsCategory, setSettingsCategory] = useState<'about' | undefined>();
+  const [showDebug, setShowDebug] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<'about' | 'advanced' | undefined>();
   const [checkUpdate, setCheckUpdate] = useState(0);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
@@ -136,16 +156,20 @@ function App() {
   );
 
   useEffect(() => {
-    const record = (message: string) => {
+    const record = (level: 'error', event: string, message: string) => {
       if (!message.trim()) return;
       if (activeApp?.ui.mode === 'builtin') {
-        void ipc.recordBuiltinDiagnostic(activeApp.id, 'frontend', message).catch(() => undefined);
+        void ipc
+          .recordBuiltinDiagnostic(activeApp.id, 'frontend', level, event, message)
+          .catch(() => undefined);
       } else {
-        void ipc.recordAideaDiagnostic('frontend', message).catch(() => undefined);
+        void ipc.recordAideaDiagnostic('frontend', level, event, message).catch(() => undefined);
       }
     };
-    const onError = (event: ErrorEvent) => record(event.message || '未处理前端错误');
-    const onRejection = (event: PromiseRejectionEvent) => record(String(event.reason));
+    const onError = (event: ErrorEvent) =>
+      record('error', 'frontend_unhandled_error', event.message || '未处理前端错误');
+    const onRejection = (event: PromiseRejectionEvent) =>
+      record('error', 'frontend_unhandled_rejection', String(event.reason));
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onRejection);
     return () => {
@@ -177,12 +201,19 @@ function App() {
         appOrder={appOrder}
         activeAppId={activeAppId}
         states={states}
-        onSelectApp={selectApp}
+        onSelectApp={(id) => {
+          setShowDebug(false);
+          selectApp(id);
+        }}
         onRefreshStates={refresh}
-        onShowLog={(app) => setLogTarget(targetFromManifest(app))}
+        onShowLog={(app) => {
+          setDebugTarget({ scope: app.ui.mode === 'builtin' ? 'builtin' : 'official', appId: app.id });
+          setShowDebug(true);
+        }}
         onOpenSettings={() => setShowSettings(true)}
         onOpenDeveloperGuide={() => {
           if (!developerGuide) return;
+          setShowDebug(false);
           if (apps.some((app) => app.id === activeAppId)) previousMainAppId.current = activeAppId;
           selectApp(developerGuide.id);
         }}
@@ -194,21 +225,37 @@ function App() {
           setShowSettings(true);
           setCheckUpdate((value) => value + 1);
         }}
+        onOpenDebug={() => {
+          setDebugTarget(undefined);
+          setShowDebug(true);
+        }}
       />
       <div className="flex-1 overflow-hidden">
-        <ContentArea
-          apps={apps}
-          activeApp={activeApp}
-          states={states}
-          theme={resolvedTheme}
-          onFrameRef={registerFrame}
-          onBackToMain={() => {
-            const previousAppId = previousMainAppId.current;
-            selectApp(apps.some((app) => app.id === previousAppId) ? previousAppId : apps[0]?.id ?? null);
-          }}
-        />
+        {showDebug ? (
+          <DebugPage
+            apps={apps}
+            initialTarget={debugTarget}
+            onClose={() => setShowDebug(false)}
+            onOpenSettings={() => {
+              setShowDebug(false);
+              setSettingsCategory('advanced');
+              setShowSettings(true);
+            }}
+          />
+        ) : (
+          <ContentArea
+            apps={apps}
+            activeApp={activeApp}
+            states={states}
+            theme={resolvedTheme}
+            onFrameRef={registerFrame}
+            onBackToMain={() => {
+              const previousAppId = previousMainAppId.current;
+              selectApp(apps.some((app) => app.id === previousAppId) ? previousAppId : apps[0]?.id ?? null);
+            }}
+          />
+        )}
       </div>
-      <LogWorkspace target={logTarget} onClose={() => setLogTarget(null)} />
       <SettingsPanel
         themeMode={themeMode}
         onThemeChange={setTheme}
@@ -220,8 +267,11 @@ function App() {
         onRefreshStates={refresh}
         appOrder={appOrder}
         onReorder={setAppOrder}
-        onShowLog={(app) => setLogTarget(targetFromManifest(app))}
-        onShowAideaLog={() => setLogTarget({ scope: 'aidea', name: 'aIdea' })}
+        onShowLog={(app) => {
+          setShowSettings(false);
+          setDebugTarget({ scope: app.ui.mode === 'builtin' ? 'builtin' : 'official', appId: app.id });
+          setShowDebug(true);
+        }}
         category={settingsCategory}
         checkUpdate={checkUpdate}
       />

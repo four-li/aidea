@@ -8,9 +8,40 @@ pub mod official_market;
 pub mod official_releases;
 pub mod process;
 
+#[cfg(test)]
+mod tests {
+    use super::directory_drop_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn 只接受单个存在的绝对目录() {
+        let directory = std::env::temp_dir();
+
+        assert_eq!(
+            directory_drop_path(&[directory.clone()]),
+            directory.to_str().map(str::to_owned)
+        );
+        assert_eq!(directory_drop_path(&[directory.clone(), directory]), None);
+        assert_eq!(directory_drop_path(&[PathBuf::from("relative")]), None);
+    }
+}
+
 use process::{start_configured_official_apps, ProcessManager};
+use std::path::PathBuf;
 use tauri::menu::{Menu, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
+
+#[derive(Clone, serde::Serialize)]
+struct DirectoryDrop {
+    path: String,
+}
+
+fn directory_drop_path(paths: &[PathBuf]) -> Option<String> {
+    let path = paths.first()?;
+    (paths.len() == 1 && path.is_absolute() && path.is_dir())
+        .then(|| path.to_str().map(str::to_owned))
+        .flatten()
+}
 
 pub fn run() {
     let manager = ProcessManager::default();
@@ -40,6 +71,8 @@ pub fn run() {
             commands::shell::get_shell_config,
             commands::shell::get_log_settings,
             commands::shell::save_log_settings,
+            commands::shell::clear_diagnostic_logs,
+            commands::shell::list_diagnostic_summaries,
             commands::shell::record_builtin_diagnostic,
             commands::shell::record_aidea_diagnostic,
             commands::shell::read_diagnostic_log,
@@ -128,6 +161,14 @@ pub fn run() {
                 let _ = app.emit("aidea:open-settings", ());
             } else if event.id() == "check-aidea-update" {
                 let _ = app.emit("aidea:check-update", ());
+            }
+        })
+        // Finder 路径只能在壳内取得，转给前端后仍由 Bridge 定向发送给官方应用。
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(path) = directory_drop_path(paths) {
+                    let _ = window.emit("aidea:directory-dropped", DirectoryDrop { path });
+                }
             }
         })
         .setup(move |_app| {

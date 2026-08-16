@@ -13,6 +13,9 @@ describe('设置关于页', () => {
     vi.mocked(invoke).mockImplementation((command) => {
       if (command === 'list_apps' || command === 'get_app_states') return Promise.resolve([]);
       if (command === 'get_shell_config') return Promise.resolve({ app_settings: {} });
+      if (command === 'get_log_settings') {
+        return Promise.resolve({ level: 'standard', retention_days: 30, max_total_mb: 500 });
+      }
       if (
         command === 'list_official_apps' ||
         command === 'refresh_official_apps' ||
@@ -135,5 +138,28 @@ describe('设置关于页', () => {
       'focus-visible:ring-0',
       'focus-visible:ring-offset-0',
     );
+  });
+
+  it('点击清理日志后显示应用内确认框', async () => {
+    render(
+      <SettingsPanel
+        themeMode="system"
+        onThemeChange={vi.fn()}
+        open
+        onOpenChange={vi.fn()}
+        onAppsChanged={vi.fn()}
+        onSelectApp={vi.fn()}
+        onShowLog={vi.fn()}
+      />,
+    );
+
+    await screen.findByText('暂无已安装应用');
+    fireEvent.click(screen.getByRole('button', { name: '高级' }));
+    fireEvent.click(await screen.findByRole('button', { name: '清理' }));
+
+    expect(await screen.findByRole('heading', { name: '确认清理日志' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认清理' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '确认清理' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('clear_diagnostic_logs'));
   });
 });

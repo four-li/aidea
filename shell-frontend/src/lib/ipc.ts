@@ -21,7 +21,12 @@ import type {
 } from '../types/official-app';
 import type { DevToolsSettings } from '../types/dev-tools';
 import type { AideaUpdate } from '../types/update';
-import type { DiagnosticLogRequest, LogSettings } from '../types/diagnostics';
+import type {
+  DiagnosticLogLevel,
+  DiagnosticLogRequest,
+  DiagnosticSummary,
+  LogSettings,
+} from '../types/diagnostics';
 
 export const ipc = {
   getAideaVersion: (): Promise<string> => invoke('get_aidea_version'),
@@ -51,12 +56,25 @@ export const ipc = {
   getLogSettings: (): Promise<LogSettings> => invoke<LogSettings>('get_log_settings'),
   saveLogSettings: (settings: LogSettings): Promise<void> =>
     invoke<void>('save_log_settings', { settings }),
+  listDiagnosticSummaries: (): Promise<DiagnosticSummary[]> =>
+    invoke<DiagnosticSummary[]>('list_diagnostic_summaries'),
+  clearDiagnosticLogs: (): Promise<void> => invoke<void>('clear_diagnostic_logs'),
   readDiagnosticLog: (request: DiagnosticLogRequest): Promise<string> =>
     invoke<string>('read_diagnostic_log', { request }),
-  recordBuiltinDiagnostic: (id: string, source: 'frontend' | 'ipc', message: string): Promise<void> =>
-    invoke<void>('record_builtin_diagnostic', { id, source, message }),
-  recordAideaDiagnostic: (source: 'frontend' | 'ipc', message: string): Promise<void> =>
-    invoke<void>('record_aidea_diagnostic', { source, message }),
+  recordBuiltinDiagnostic: (
+    id: string,
+    source: 'frontend' | 'ipc',
+    level: DiagnosticLogLevel,
+    event: string,
+    message: string,
+  ): Promise<void> =>
+    invoke<void>('record_builtin_diagnostic', { id, source, level, event, message }),
+  recordAideaDiagnostic: (
+    source: 'frontend' | 'ipc',
+    level: DiagnosticLogLevel,
+    event: string,
+    message: string,
+  ): Promise<void> => invoke<void>('record_aidea_diagnostic', { source, level, event, message }),
 
   resetAppSettings: (id: string): Promise<void> => invoke<void>('reset_app_settings', { id }),
   saveAppUserSettings: (id: string, settings: AppUserSettings): Promise<void> =>

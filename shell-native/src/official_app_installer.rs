@@ -1,5 +1,5 @@
 use crate::config::data_root;
-use crate::diagnostics::{self, LogChannel, LogOwner};
+use crate::diagnostics::{self, LogChannel, LogLevel, LogOwner};
 use crate::error::{AppError, AppResult};
 use crate::manifest::{AppIssue, AppManifest, AppStatus, ProcessConfig, UiConfig, UiMode};
 use crate::official_market::{load_cached_official_apps, OfficialApp, OfficialAppDefinition};
@@ -260,7 +260,13 @@ async fn install_inner(
     let root = install_root(&def.id)?;
     fs::create_dir_all(&root)?;
     let owner = LogOwner::Official(def.id.clone());
-    diagnostics::append(&owner, LogChannel::Install, "aidea", &format!("开始安装官方应用 {}", def.id))?;
+    diagnostics::append_level(
+        &owner,
+        LogChannel::Install,
+        LogLevel::Info,
+        "aidea",
+        &format!("开始安装官方应用 {}", def.id),
+    )?;
     let staging = root.join(format!("staging-{}", Uuid::new_v4()));
     let old_source = root.join("source");
     let result = async {
@@ -271,7 +277,7 @@ async fn install_inner(
         download_artifact(&def.artifact.url, &archive_path, &mut download_log).await?;
         if !download_log.is_empty() {
             let message = String::from_utf8_lossy(&download_log);
-            diagnostics::append(&owner, LogChannel::Install, "aidea", message.trim_end())?;
+            diagnostics::append_external(&owner, LogChannel::Install, "aidea", message.trim_end())?;
         }
         report_progress(def, on_progress, "checking", "正在校验预编译包…");
         verify_sha256(&archive_path, &def.artifact.sha256)?;
@@ -328,7 +334,13 @@ async fn install_inner(
         if staging.exists() {
             let _ = fs::remove_dir_all(&staging);
         }
-        diagnostics::append(&owner, LogChannel::Install, "aidea", "安装完成")?;
+        diagnostics::append_level(
+            &owner,
+            LogChannel::Install,
+            LogLevel::Info,
+            "aidea",
+            "安装完成",
+        )?;
         report_progress(def, on_progress, "completed", "安装完成");
         Ok((installed, rollback))
     }
@@ -337,7 +349,13 @@ async fn install_inner(
         let _ = fs::remove_dir_all(&staging);
     }
     if let Err(error) = &result {
-        let _ = diagnostics::append(&owner, LogChannel::Install, "aidea", &format!("安装失败: {error}"));
+        let _ = diagnostics::append_level(
+            &owner,
+            LogChannel::Install,
+            LogLevel::Error,
+            "aidea",
+            &format!("安装失败: {error}"),
+        );
         report_progress(def, on_progress, "failed", "安装失败");
     }
     result
@@ -613,10 +631,7 @@ mod tests {
         OfficialApp, OfficialAppDefinition, OfficialArtifact, OfficialProcess,
     };
     use std::fs;
-    use std::sync::Mutex;
     use uuid::Uuid;
-
-    static DATA_DIR_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn 安装记录可序列化() {
@@ -717,7 +732,7 @@ mod tests {
 
     #[test]
     fn 旧安装记录缺少定义快照会显示异常应用() {
-        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let directory = std::env::temp_dir().join(format!("aidea-app-{}", Uuid::new_v4()));
         let app_dir = directory.join("apps/installed/legacy-app");
         fs::create_dir_all(&app_dir).unwrap();
@@ -745,7 +760,7 @@ mod tests {
 
     #[test]
     fn 安装记录_id_与目录不一致时显示异常项() {
-        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let directory = std::env::temp_dir().join(format!("aidea-app-{}", Uuid::new_v4()));
         let app_dir = directory.join("apps/installed/legacy-app");
         fs::create_dir_all(&app_dir).unwrap();
@@ -772,7 +787,7 @@ mod tests {
 
     #[tokio::test]
     async fn 旧安装记录不阻断其他应用并且卸载清理整个安装目录() {
-        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let directory = std::env::temp_dir().join(format!("aidea-app-{}", Uuid::new_v4()));
         let legacy = directory.join("apps/installed/legacy-app");
         let valid = directory.join("apps/installed/valid-app");
@@ -1010,7 +1025,7 @@ mod tests {
 
     #[test]
     fn 更新启动失败会恢复旧源码和安装记录() {
-        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let directory = std::env::temp_dir().join(format!("aidea-update-{}", Uuid::new_v4()));
         let root = directory.join("apps/installed/demo");
         let source = root.join("source");
@@ -1052,7 +1067,7 @@ mod tests {
 
     #[test]
     fn 市场缓存不可用时仍可读取已安装应用日志() {
-        let _guard = DATA_DIR_LOCK.lock().unwrap();
+        let _guard = crate::config::TEST_DATA_DIR_LOCK.lock().unwrap();
         let directory = std::env::temp_dir().join(format!("aidea-app-{}", Uuid::new_v4()));
         let app_dir = directory.join("apps/installed/demo");
         fs::create_dir_all(&app_dir).unwrap();

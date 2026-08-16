@@ -131,6 +131,25 @@ describe('账户菜单', () => {
     expect(screen.getAllByRole('menuitem')[0]).toHaveTextContent('设置');
   });
 
+  it('从账户菜单打开调试页', async () => {
+    const onOpenDebug = vi.fn();
+    render(
+      <AccountMenu
+        onOpenSettings={vi.fn()}
+        onOpenDebug={onOpenDebug}
+        themeMode="system"
+        onThemeChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(await screen.findByRole('button', { name: 'fourli账户菜单' }), {
+      key: 'ArrowDown',
+    });
+    fireEvent.click(screen.getByRole('menuitem', { name: '调试' }));
+
+    expect(onOpenDebug).toHaveBeenCalledTimes(1);
+  });
+
   it('从主题子菜单更新主题模式', async () => {
     function ThemeHarness() {
       const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('system');

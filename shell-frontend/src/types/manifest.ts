@@ -48,6 +48,7 @@ export interface AppIssue {
 
 export interface ShellConfig {
   app_settings: Record<string, AppUserSettings>;
+  log_level: 'minimal' | 'standard' | 'debug';
   log_retention_days: number;
   log_max_total_mb: number;
 }

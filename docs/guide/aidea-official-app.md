@@ -88,6 +88,7 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 | `AIDEA_APP_ID` | 当前应用 ID。 |
 | `AIDEA_APP_DATA_DIR` | 应用数据目录；数据库固定为其中的 `app.db`。 |
 | `AIDEA_APP_LOG_DIR` | 应用日志目录。 |
+| `AIDEA_LOG_LEVEL` | 当前日志级别：`warn`、`info` 或 `debug`；应用应据此控制 stdout/stderr 和自身日志文件的详细程度。 |
 | `AIDEA_AI_GATEWAY_URL` | aIdea AI 网关基础地址；应用按 [AI 网关契约](aidea-ai-gateway.md) 调用 `/api`。 |
 | `AIDEA_AI_GATEWAY_TOKEN` | AI 网关保存的访问令牌；它不是上游 API Key。 |
 | `PATH` | 解压包根目录。 |
@@ -99,7 +100,11 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 应用及其派生子进程必须处理 `SIGTERM`，在收到信号后及时完成必要持久化并退出。停止时 aIdea 向整个
 应用进程组发送 `SIGTERM`；5 秒内仍未退出时发送 `SIGKILL`，之后不保证继续执行清理逻辑。
 
-壳会采集官方应用与 staging 健康检查进程的 stdout/stderr，分别作为运行和安装更新日志保留。应用不得向 stdout、stderr 或 `AIDEA_APP_LOG_DIR` 输出密码、授权码、OAuth 令牌、API Key、邮件正文或通知正文。
+壳会采集官方应用与 staging 健康检查进程的 stdout/stderr，分别作为运行和安装更新日志保留；每行可用 `DEBUG`、`INFO`、`WARN` 或 `ERROR` 前缀声明级别，未声明时按 INFO 处理。应用不得向 stdout、stderr 或 `AIDEA_APP_LOG_DIR` 输出密码、授权码、OAuth 令牌、API Key、邮件正文或通知正文。应用负责业务日志，aIdea 负责平台与生命周期日志；普通业务点击不记录，异常必须记录。
+
+官方应用服务端日志必须按 `LEVEL event key=value` 的单行格式输出，并读取 `AIDEA_LOG_LEVEL`（缺省 `info`）。应用不直接写第二套日志文件；壳负责时间、来源、通道和最终过滤。启动、数据库/迁移、外部请求失败与重试、核心业务失败和退出异常必须记录，底层错误只在最终边界记录一次。不得记录完整 URL 查询参数、完整 Diff、完整响应体或任何业务正文。
+
+官方应用前端的未处理异常不会自动进入壳日志。应用必须提供只监听 `127.0.0.1` 的受限 `POST /api/client-log`，由前端发送脱敏的级别、事件名和短消息，服务端校验长度和级别后输出 stdout/stderr；接口失败不得阻塞业务或循环重试。该接口是应用内部 HTTP 能力，不是 App Bridge 扩展。
 
 ## 壳通信与设置
 

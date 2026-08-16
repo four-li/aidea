@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import {
   ArrowLeft,
+  Bug,
   Ellipsis,
   ExternalLink,
   FileText,
@@ -543,7 +544,8 @@ export function AppManagementPage({
                                   )}
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onSelect={() => onShowLog(app)}>
-                                    日志
+                                    <Bug size={16} />
+                                    调试
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem

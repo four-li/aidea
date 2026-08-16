@@ -5,6 +5,7 @@ import {
   ChevronDown,
   CircleArrowUp,
   CircleHelp,
+  Bug,
   MonitorCog,
   Moon,
   Settings,
@@ -33,6 +34,7 @@ interface Props {
   onThemeChange: (mode: ThemeMode) => void;
   updateAvailable?: boolean;
   onOpenUpdate?: () => void;
+  onOpenDebug?: () => void;
 }
 
 const ISSUE_URL = 'https://gitee.com/aidea-org/aidea-app/issues/new';
@@ -50,6 +52,7 @@ export function AccountMenu({
   onThemeChange,
   updateAvailable = false,
   onOpenUpdate = () => undefined,
+  onOpenDebug = () => undefined,
 }: Props) {
   const [username, setUsername] = useState('本地用户');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -112,6 +115,10 @@ export function AccountMenu({
           <DropdownMenuItem className="gap-3 rounded-md px-3 py-2" onSelect={onOpenSettings}>
             <Settings className="h-4 w-4 shrink-0" />
             设置
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-3 rounded-md px-3 py-2" onSelect={onOpenDebug}>
+            <Bug className="h-4 w-4 shrink-0" />
+            调试
           </DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-3 rounded-md px-3 py-2">

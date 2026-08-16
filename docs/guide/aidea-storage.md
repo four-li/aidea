@@ -25,7 +25,7 @@
 - `runtime/` 只保存市场定义缓存、进程状态等短期信息，不保存业务数据库或 Git 凭据。
 - `backups/` 保存迁移前备份。
 
-日志按日期与内部单文件容量滚动，默认保存 30 天、总容量上限 500 MB。清理只处理 `logs/`：先删除过期的非当前文件，再从最旧的非当前文件开始按容量清理；绝不触及 `app-data/`、`apps/installed/`、`runtime/` 或 `backups/`。历史 `logs/<app-id>/app.log` 和 `install.log` 只兼容读取，不再写入。
+日志按日期与内部单文件容量滚动，默认保存 30 天、总容量上限 500 MB。日志策略为精简（WARN+）、标准（INFO+，默认）和调试（DEBUG+），全局应用于 aIdea、内置应用和官方应用。清理只处理 `logs/`：先删除过期的非当前文件，再从最旧的非当前文件开始按容量清理；“清理日志”会删除整个 `logs/`，绝不触及 `app-data/`、`apps/installed/`、`runtime/` 或 `backups/`。历史 `logs/<app-id>/app.log` 和 `install.log` 只兼容读取，不再写入。
 
 系统日志和缓存位置分别是 `~/Library/Logs/aIdea/` 与 `~/Library/Caches/aIdea/`。
 

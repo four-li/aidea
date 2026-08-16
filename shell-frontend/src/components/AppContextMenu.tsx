@@ -1,5 +1,5 @@
 // 应用图标右键菜单：使用 shadcn ContextMenu
-// 右键触发，支持启动/停止/重启/查看日志
+// 右键触发，支持启动/停止/重启/进入调试
 // ContextMenu 只响应右键（contextmenu 事件），左键切换 tab 和 dnd-kit 拖拽互不干扰
 import { ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -88,7 +88,7 @@ export function AppContextMenu({ app, state, onRefresh, onShowLog, children }: P
           <ContextMenuItem disabled>{state?.status === 'starting' ? '启动中...' : '停止中...'}</ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => onShowLog(app)}>查看日志</ContextMenuItem>
+        <ContextMenuItem onClick={() => onShowLog(app)}>调试</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

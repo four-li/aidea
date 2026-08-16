@@ -100,6 +100,62 @@ describe('useAppBridge', () => {
     );
   });
 
+  it('只向已声明 directory-drop 的 Worktrace 发送目录路径', () => {
+    const worktrace: AppManifest = {
+      ...app,
+      id: 'worktrace',
+      name: '项目追踪',
+      ui: { mode: 'webview', url: 'http://127.0.0.1:43131' },
+    };
+    let controller: ReturnType<typeof useAppBridge> | undefined;
+
+    function DirectoryDropHarness() {
+      controller = useAppBridge('light');
+      return <WebviewFrame app={worktrace} onFrameRef={controller.registerFrame} />;
+    }
+
+    render(<DirectoryDropHarness />);
+    const iframe = screen.getByTitle('项目追踪') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe.contentWindow, 'postMessage', {
+      configurable: true,
+      value: postMessage,
+    });
+
+    const deliverDirectoryDrop = (controller as unknown as {
+      deliverDirectoryDrop: (path: string) => void;
+    }).deliverDirectoryDrop;
+    deliverDirectoryDrop('/tmp/project');
+    expect(postMessage).not.toHaveBeenCalled();
+
+    dispatchMessage(
+      iframe,
+      envelope('ready', { appId: worktrace.id, supported: [] }, { appId: worktrace.id }),
+      'http://127.0.0.1:43131',
+    );
+    postMessage.mockClear();
+    deliverDirectoryDrop('/tmp/project');
+    expect(postMessage).not.toHaveBeenCalled();
+
+    dispatchMessage(
+      iframe,
+      envelope('ready', { appId: worktrace.id, supported: ['directory-drop'] }, { appId: worktrace.id }),
+      'http://127.0.0.1:43131',
+    );
+    postMessage.mockClear();
+    deliverDirectoryDrop('/tmp/project');
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'aidea-shell',
+        appId: 'worktrace',
+        type: 'directory:drop',
+        payload: { path: '/tmp/project' },
+      }),
+      'http://127.0.0.1:43131',
+    );
+  });
+
   it('系统不支持通知点击监听时仍完成 ready 握手', async () => {
     notificationMocks.onAction.mockRejectedValueOnce(new Error('Command not found'));
     render(<Harness theme="dark" />);
