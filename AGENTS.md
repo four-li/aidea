@@ -46,7 +46,7 @@ aIdea 是给本人和少数同事使用的本机桌面应用壳，不是面向�
 | 壳与官方应用通信、主题、通知和应用内搜索 | [docs/guide/aidea-app-bridge.md](docs/guide/aidea-app-bridge.md)、[docs/guide/aidea-search.md](docs/guide/aidea-search.md) |
 | 新增或修改内置应用、manifest、Tauri IPC | [docs/guide/aidea-builtin-app.md](docs/guide/aidea-builtin-app.md)、[docs/guide/aidea-ui.md](docs/guide/aidea-ui.md) |
 | 开发独立官方应用、`aidea.yaml`、市场接入、安装更新 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-platform.md](docs/guide/aidea-platform.md) |
-| 子应用调用 AI、AI 网关、Agent 工具或 Rig 升级 | [docs/guide/aidea-ai-gateway.md](docs/guide/aidea-ai-gateway.md) |
+| 子应用调用 AI、AI Service、Agent 工具或 Rig 升级 | [docs/guide/aidea-ai-service.md](docs/guide/aidea-ai-service.md) |
 | 修改 SQLite、缓存、迁移、备份或敏感值 | [docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |
 | 修改官方应用运行环境、应用数据或设置页 | [docs/guide/aidea-official-app.md](docs/guide/aidea-official-app.md)、[docs/guide/aidea-storage.md](docs/guide/aidea-storage.md) |
 | 修改页面视觉、组件、交互或无障碍 | [docs/guide/aidea-ui.md](docs/guide/aidea-ui.md)，优先复用 shadcn/ui 组件 |

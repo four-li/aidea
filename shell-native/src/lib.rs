@@ -1,3 +1,4 @@
+pub mod ai_service;
 pub mod commands;
 pub mod config;
 pub mod diagnostics;
@@ -29,7 +30,7 @@ mod tests {
 use process::{start_configured_official_apps, ProcessManager};
 use std::path::PathBuf;
 use tauri::menu::{Menu, MenuItem, SubmenuBuilder};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[derive(Clone, serde::Serialize)]
 struct DirectoryDrop {
@@ -85,11 +86,22 @@ pub fn run() {
             commands::dev_tools::get_dev_tools_settings,
             commands::dev_tools::save_dev_tools_settings,
             commands::network::get_network_info,
-            commands::ai::send_ai_http_request,
-            commands::ai::save_ai_config,
-            commands::ai::list_ai_configs,
-            commands::ai::load_ai_config,
-            commands::ai::delete_ai_config,
+            commands::ai_service::list_ai_service_models,
+            commands::ai_service::get_ai_service_model,
+            commands::ai_service::save_ai_service_model,
+            commands::ai_service::fetch_ai_service_provider_models,
+            commands::ai_service::delete_ai_service_model,
+            commands::ai_service::reorder_ai_service_models,
+            commands::ai_service::list_ai_service_services,
+            commands::ai_service::save_ai_service_service_model,
+            commands::ai_service::test_ai_service_model,
+            commands::ai_service::get_ai_service_token,
+            commands::ai_service::get_ai_service_audit_settings,
+            commands::ai_service::save_ai_service_audit_settings,
+            commands::ai_service::list_ai_service_audit_runs,
+            commands::ai_service::get_ai_service_audit_run,
+            commands::ai_service::list_ai_service_pending_approvals,
+            commands::ai_service::resolve_ai_service_approval,
         ])
         .menu(|app| {
             let menu = Menu::default(app)?;
@@ -171,9 +183,19 @@ pub fn run() {
                 }
             }
         })
-        .setup(move |_app| {
+        .setup(move |app| {
             config::migrate_legacy_data()
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
+            let mut ai_service_state = ai_service::AiServiceState::new()
+                .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
+            ai_service_state.set_rg_path(
+                app.path()
+                    .resource_dir()
+                    .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?
+                    .join("resources/rg"),
+            );
+            ai_service::http::start_http_server(ai_service_state.clone());
+            app.manage(ai_service_state);
             let _ = diagnostics::append(
                 &diagnostics::LogOwner::Aidea,
                 diagnostics::LogChannel::Platform,

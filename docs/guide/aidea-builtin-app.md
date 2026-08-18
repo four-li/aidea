@@ -14,11 +14,18 @@ shell-frontend/src/builtin-apps/dev-tools/
 └── tabs/
     ├── data-formatter/
     ├── timestamp-converter/
-    ├── ip-lookup/
-    └── ai-model-tester/
+    └── ip-lookup/
 ```
 
 应用目录使用 kebab-case，业务组件使用 PascalCase。DevTools 内部工具使用 tab 组织；每个 tab 独立目录，相关工具函数放在本目录内。只有确认有共享需求后才建立 `shared/`。
+
+## 开搞中心与应用边界
+
+“开搞中心”是壳级导航容器，不是内置应用：不新增 manifest、应用数据库、业务版本或全局业务菜单协议。顶部只显示一个“开搞中心”入口，进入后由窄图标栏切换普通内置应用。
+
+AI Service、DevTools 和后续内置应用仍然是一个个独立应用，各自维护入口组件、内部菜单、IPC、数据、设置和测试。开搞中心只负责筛选 `ui.mode: builtin` 且不是 `ui.entry: account-menu` 的 manifest，并挂载当前应用页面，不读取或修改应用业务配置。
+
+`developer-guide` 使用 `ui.entry: account-menu`，继续从右上角设置展开按钮组进入，不显示在开搞中心应用栏或应用管理页。开发手册的 Markdown 源仍然是 `docs/guide/`，页面直接渲染该目录内容。
 
 ## Manifest
 
@@ -37,8 +44,8 @@ settings:
 
 - `id` 全局唯一且使用 kebab-case；`name` 是显示名称；开发阶段不因代码改动自动更新 `version`；正式发布时，只要用户可见功能、界面、交互、设置页、数据格式或行为有变化，发布流程必须同步更新 `version`。纯重构、测试和文档不要求升版本。
 - `ui.mode` 固定为 `builtin`；`ui.icon` 使用 lucide-react 图标名或图片路径。
-- `ui.entry` 未声明时从顶部应用栏进入；当前只有 `developer-guide` 使用 `account-menu`，它只从账号菜单的“开发手册”入口进入，不显示在顶部应用栏或应用管理中。
-- 应用管理页为内置应用提供 aIdea 的通用设置详情；没有业务设置的内置应用显示空配置状态。
+- `ui.entry` 未声明时从开搞中心进入；当前只有 `developer-guide` 使用 `account-menu`，它只从账号菜单的“开发手册”入口进入，不显示在开搞中心或应用管理中。
+- 应用管理页只管理官方应用的安装、更新、启停、日志和卸载；内置应用的业务配置和设置入口必须由应用自己的页面提供。
 - 内置应用的业务设置由应用自己负责，统一保存在 `app-data/<app-id>/app.db`，不写入 `shell.config.json` 或壳数据库。DevTools 的工具显示偏好保存在自己的 `app.db`。
 - `settings.reset_command` 只能使用已注册的壳内处理器。aIdea 先完成页面确认，再执行配置重置；处理器不能删除整个应用数据目录或业务数据库。
 
@@ -46,7 +53,7 @@ settings:
 
 内置应用继续使用 Tauri IPC，并统一通过 `shell-frontend/src/lib/ipc.ts` 调用自己的 Rust 业务代码。内置应用不接入官方应用的跨源 App Bridge。
 
-`ai-gateway` 是一个例外：它的页面仍按内置应用使用 Tauri IPC，但其 Rust 后端同时为官方应用提供 [AI 网关契约](aidea-ai-gateway.md) 定义的本机 `/api` 接口。
+`ai-service` 是一个例外：它的页面仍按内置应用使用 Tauri IPC，但其 Rust 后端同时为官方应用提供 [AI Service 契约](aidea-ai-service.md) 定义的本机服务接口，当前为 `/api/agent`。`ai-service` 是产品和内部应用统一使用的 ID。
 
 内置应用需要搜索时，搜索框、快捷键、匹配、高亮和翻页都在该内置应用页面内完成，遵守 [应用内搜索规范](aidea-search.md)。aIdea 壳不提供全局 `Cmd+F` 搜索。
 
@@ -54,9 +61,11 @@ Rust IPC 命令按业务职责放在 `shell-native/src/commands/`，由 `lib.rs`
 
 类型定义放在 `shell-frontend/src/types/`，与 Rust IPC 数据结构保持一致。共享错误使用 `AppError` / `AppResult`。网络请求设置超时，敏感配置不写入普通配置文件。
 
-## 基础设置页
+## 设置归属
 
-应用管理中的设置按钮只属于内置应用：在内置应用设置注册表中按 `app_id` 显式注册一个 React 设置组件。`settings.reset_command` 也只属于内置 manifest，由 aIdea 的确认流程调用已注册处理器。官方应用没有壳内设置按钮，业务设置由自己的主页面组织。
+内置应用不通过应用管理页提供通用设置详情。每个应用在自己的页面中组织业务设置、保存和重置流程；例如 DevTools 在自身页面打开工具显示与排序设置，AI Service 在自身页面组织模型、服务和审计设置。应用管理页只处理官方应用的生命周期操作。
+
+`settings.reset_command` 仍是 manifest 支持的可选字段，只有确实需要壳内重置处理器的内置应用才使用；不要把它重新做成跨应用的通用设置页面或注册表。
 
 ## 测试
 

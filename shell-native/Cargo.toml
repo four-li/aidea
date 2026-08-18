@@ -36,3 +36,6 @@ flate2 = "1"
 futures-util = "0.3"
 tar = "0.4"
 base64 = "0.22"
+axum = "0.8.9"
+rig = "=0.41.0"
+tower = { version = "0.5", features = ["util"] }

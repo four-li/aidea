@@ -123,6 +123,8 @@ vi.mock('../src/hooks/useTheme', () => ({
 vi.mock('../src/lib/ipc', () => ({
   ipc: {
     listApps: (...args: unknown[]) => mockListApps(...args),
+    listAiServicePendingApprovals: vi.fn(() => Promise.resolve([])),
+    resolveAiServiceApproval: vi.fn(() => Promise.resolve()),
     checkAideaUpdate: vi.fn(() => Promise.resolve(null)),
     recordBuiltinDiagnostic: (
       id: string,

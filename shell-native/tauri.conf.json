@@ -32,7 +32,9 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "resources": [
-      "../market-source.yaml"
+      "../market-source.yaml",
+      "resources/rg",
+      "resources/rg-LICENSE"
     ],
     "targets": [
       "app",

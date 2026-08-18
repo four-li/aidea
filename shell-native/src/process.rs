@@ -4,6 +4,7 @@ use crate::error::{AppError, AppResult};
 use crate::manifest::AppIssue;
 use crate::official_market::OfficialApp;
 use crate::{
+    ai_service,
     config::{load_config, StartupMode},
     diagnostics::{self, LogChannel, LogLevel, LogOwner},
     official_app_installer,
@@ -235,6 +236,8 @@ impl ProcessManager {
             .env("AIDEA_APP_ID", &app.id)
             .env("AIDEA_APP_DATA_DIR", &app_data_dir)
             .env("AIDEA_APP_LOG_DIR", &log_dir)
+            .env("AIDEA_AI_SERVICE_URL", ai_service::AI_SERVICE_URL)
+            .env("AIDEA_AI_SERVICE_TOKEN", ai_service::access_token()?)
             .env(
                 "AIDEA_LOG_LEVEL",
                 load_config()?.log_level.child_env_value(),
@@ -591,6 +594,8 @@ pub async fn check_official_source(app: &OfficialApp, source: &Path) -> AppResul
         .env("AIDEA_APP_ID", &app.id)
         .env("AIDEA_APP_DATA_DIR", &data_dir)
         .env("AIDEA_APP_LOG_DIR", &log_dir)
+        .env("AIDEA_AI_SERVICE_URL", ai_service::AI_SERVICE_URL)
+        .env("AIDEA_AI_SERVICE_TOKEN", ai_service::access_token()?)
         .env(
             "AIDEA_LOG_LEVEL",
             load_config()?.log_level.child_env_value(),

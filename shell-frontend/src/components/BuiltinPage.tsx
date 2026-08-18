@@ -1,5 +1,6 @@
 // builtin 模式渲染：壳内置页面
 import type { AppManifest } from '../types/manifest';
+import { AiServicePage } from '../builtin-apps/ai-service';
 import { DeveloperGuidePage } from '../builtin-apps/developer-guide';
 import { DevToolsPage } from '../builtin-apps/dev-tools';
 
@@ -10,6 +11,7 @@ interface Props {
 
 export function BuiltinPage({ app, onBackToMain }: Props) {
   // 根据 app.id 直接渲染对应组件，不用懒加载避免加载问题
+  if (app.id === 'ai-service') return <AiServicePage />;
   if (app.id === 'dev-tools') return <DevToolsPage />;
   if (app.id === 'developer-guide') return <DeveloperGuidePage onBack={onBackToMain} />;
 

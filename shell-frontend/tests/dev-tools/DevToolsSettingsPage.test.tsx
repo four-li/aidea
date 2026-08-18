@@ -27,27 +27,25 @@ describe('DevToolsSettingsPage', () => {
   it('旧配置按默认顺序显示卡片', async () => {
     render(<DevToolsSettingsPage onClose={vi.fn()} />);
 
-    expect(await screen.findAllByTestId('dev-tools-card')).toHaveLength(4);
+    expect(await screen.findAllByTestId('dev-tools-card')).toHaveLength(3);
     expect(screen.getAllByTestId('dev-tools-card').map((card) => card.textContent)).toEqual([
       expect.stringContaining('JSON 格式化'),
       expect.stringContaining('时间戳转换'),
       expect.stringContaining('IP 查询'),
-      expect.stringContaining('AI 模型测试'),
     ]);
   });
 
   it('按持久化顺序显示卡片，隐藏工具仍保留在列表中', async () => {
     mockGetDevToolsSettings.mockResolvedValueOnce({
       hidden_tabs: ['ip'],
-      tab_order: ['ai', 'data', 'unknown', 'data'],
+      tab_order: ['timestamp', 'data', 'unknown', 'data'],
     });
     render(<DevToolsSettingsPage onClose={vi.fn()} />);
 
-    expect(await screen.findAllByTestId('dev-tools-card')).toHaveLength(4);
+    expect(await screen.findAllByTestId('dev-tools-card')).toHaveLength(3);
     expect(screen.getAllByTestId('dev-tools-card').map((card) => card.textContent)).toEqual([
-      expect.stringContaining('AI 模型测试'),
-      expect.stringContaining('JSON 格式化'),
       expect.stringContaining('时间戳转换'),
+      expect.stringContaining('JSON 格式化'),
       expect.stringContaining('IP 查询'),
     ]);
     await waitFor(() =>
@@ -63,7 +61,7 @@ describe('DevToolsSettingsPage', () => {
     await waitFor(() =>
       expect(mockSaveDevToolsSettings).toHaveBeenCalledWith({
         hidden_tabs: ['ip', 'timestamp'],
-        tab_order: ['data', 'timestamp', 'ip', 'ai'],
+        tab_order: ['data', 'timestamp', 'ip'],
       }),
     );
   });
@@ -93,7 +91,7 @@ describe('DevToolsSettingsPage', () => {
     await waitFor(() =>
       expect(mockSaveDevToolsSettings).toHaveBeenCalledWith({
         hidden_tabs: ['ip'],
-        tab_order: ['timestamp', 'data', 'ip', 'ai'],
+        tab_order: ['timestamp', 'data', 'ip'],
       }),
     );
   });
@@ -129,13 +127,12 @@ describe('DevToolsSettingsPage', () => {
       expect.stringContaining('JSON 格式化'),
       expect.stringContaining('时间戳转换'),
       expect.stringContaining('IP 查询'),
-      expect.stringContaining('AI 模型测试'),
     ]);
   });
 
   it('至少保留一个可见工具', async () => {
     mockGetDevToolsSettings.mockResolvedValueOnce({
-      hidden_tabs: ['timestamp', 'ip', 'ai'],
+      hidden_tabs: ['timestamp', 'ip'],
     });
     render(<DevToolsSettingsPage onClose={vi.fn()} />);
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevToolsPage } from '../../src/builtin-apps/dev-tools';
 
@@ -30,13 +30,13 @@ describe('DevToolsPage', () => {
 
     render(<DevToolsPage />);
 
-    expect(await screen.findByRole('tab', { name: 'AI 模型测试' })).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: 'JSON 格式化' })).toBeInTheDocument();
   });
 
   it('顶部工具按持久化顺序显示', async () => {
     mockGetDevToolsSettings.mockResolvedValue({
       hidden_tabs: ['ip'],
-      tab_order: ['ai', 'data', 'timestamp', 'ip'],
+      tab_order: ['timestamp', 'data', 'ip'],
     });
 
     render(<DevToolsPage />);
@@ -44,16 +44,15 @@ describe('DevToolsPage', () => {
     await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
     const tabs = await screen.findAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
-      'AI 模型测试',
-      'JSON 格式化',
       '时间戳转换',
+      'JSON 格式化',
     ]);
   });
 
   it('异常顺序配置会忽略未知和重复工具并补齐已注册工具', async () => {
     mockGetDevToolsSettings.mockResolvedValue({
       hidden_tabs: [],
-      tab_order: ['unknown', 'ai', 'ai'],
+      tab_order: ['unknown', 'timestamp', 'timestamp'],
     });
 
     render(<DevToolsPage />);
@@ -61,9 +60,8 @@ describe('DevToolsPage', () => {
     await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
     const tabs = await screen.findAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
-      'AI 模型测试',
-      'JSON 格式化',
       '时间戳转换',
+      'JSON 格式化',
       'IP 查询',
     ]);
   });
@@ -81,6 +79,18 @@ describe('DevToolsPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('tab', { name: 'IP 查询' })).not.toBeInTheDocument(),
     );
+  });
+
+  it('从 DevTools 自己的页面打开设置', async () => {
+    mockGetDevToolsSettings.mockResolvedValue({ hidden_tabs: [], tab_order: [] });
+
+    render(<DevToolsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'DevTools 设置' }));
+
+    expect(await screen.findByRole('switch', { name: 'JSON 格式化' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '返回 DevTools' }));
+    expect(await screen.findByRole('tab', { name: 'JSON 格式化' })).toBeInTheDocument();
   });
 
 });

@@ -19,9 +19,9 @@
 | 内置应用 | 位于本仓库、随 aIdea 一起构建和发布的独立应用；前端通过 Tauri IPC 调用自身 Rust 业务代码。 | [内置应用规范](aidea-builtin-app.md) |
 | 官方应用 | 位于独立仓库、独立进程、独立发布的自研应用；由 aIdea 安装、启动和展示。 | [官方应用规范](aidea-official-app.md) |
 | App Bridge | 壳与官方应用 Web 页面之间的 `postMessage` 通信契约。 | [App Bridge](aidea-app-bridge.md) |
-| AI 网关 | aIdea 的独立内置应用，为官方应用提供统一本机 AI Agent 接口；不向子应用暴露模型配置或 API Key。 | [AI 网关契约](aidea-ai-gateway.md) |
+| AI Service | aIdea 的独立内置应用，为官方应用提供统一本机 AI Agent 接口；不向子应用暴露模型配置或 API Key。 | [AI Service 契约](aidea-ai-service.md) |
 
-内置应用、官方应用、DevTools、AI 网关和开发手册都是独立应用。DevTools 不是其他内置应用的容器，AI 网关也不是 DevTools 的一个工具页。
+“开搞中心”是 aIdea 壳提供的统一入口和窄图标栏，不是一个内置应用，不拥有 manifest、数据库或业务设置。DevTools、AI Service 以及后续内置应用仍然各自独立维护页面、IPC、数据和设置；开发手册是从右上角设置菜单打开的壳内文档页面，不属于开搞中心应用栏。
 
 ## 阅读路由
 
@@ -31,7 +31,7 @@
 | 新增或修改内置应用、manifest、Tauri IPC | [内置应用规范](aidea-builtin-app.md)、[UI 规范](aidea-ui.md) |
 | 新增或修改官方应用、`aidea.yaml`、安装、启动、更新 | [官方应用规范](aidea-official-app.md)、[平台规范](aidea-platform.md) |
 | 官方应用与壳通信、主题、通知、应用内跳转 | [App Bridge](aidea-app-bridge.md) |
-| 子应用调用 AI、模型配置、Agent 工具、Rig 升级 | [AI 网关契约](aidea-ai-gateway.md) |
+| 子应用调用 AI、模型配置、Agent 工具、Rig 升级 | [AI Service 契约](aidea-ai-service.md) |
 | 数据库、迁移、备份、缓存、敏感信息 | [数据与存储规范](aidea-storage.md) |
 | 页面视觉、组件、交互、主题、无障碍 | [UI 规范](aidea-ui.md) |
 | 应用内搜索 | [应用内搜索规范](aidea-search.md) |
@@ -46,7 +46,7 @@
 | [内置应用规范](aidea-builtin-app.md) | 内置应用目录、注册、IPC、设置和测试约定。 |
 | [官方应用规范](aidea-official-app.md) | 官方应用 manifest、包结构、安装运行和官方应用发布。 |
 | [App Bridge](aidea-app-bridge.md) | 官方应用 WebView 运行时通信协议。 |
-| [AI 网关契约](aidea-ai-gateway.md) | 子应用 AI 接口、网关 Agent、内部 Rig 依赖和升级纪律。 |
+| [AI Service 契约](aidea-ai-service.md) | 子应用 AI 接口、AI Service Agent、内部 Rig 依赖和升级纪律。 |
 | [数据与存储规范](aidea-storage.md) | 数据目录、SQLite、迁移、缓存、备份和敏感数据。 |
 | [UI 规范](aidea-ui.md) | 视觉与交互基线、主题、shadcn/ui 和无障碍。 |
 | [应用内搜索规范](aidea-search.md) | 搜索交互的统一行为。 |

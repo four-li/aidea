@@ -52,7 +52,51 @@ describe('TopBar', () => {
     expect(await screen.findByLabelText('邮件中心：启动中')).toBeInTheDocument();
   });
 
-  it('官方应用在标签右侧显示状态，内置应用不显示状态位', () => {
+  it('顶部只显示开搞中心和官方应用入口', () => {
+    const onOpenBuiltinHub = vi.fn();
+    render(
+      <TopBar
+        apps={[
+          {
+            id: 'dev-tools',
+            name: 'DevTools',
+            version: '0.1.0',
+            category: '开发',
+            status: 'active',
+            ui: { mode: 'builtin', icon: 'Wrench' },
+          },
+          {
+            id: 'mail-center',
+            name: '邮件中心',
+            version: '0.1.0',
+            category: '效率',
+            status: 'active',
+            ui: { mode: 'webview' },
+            process: {},
+          },
+        ]}
+        appOrder={['dev-tools', 'mail-center']}
+        activeAppId="mail-center"
+        states={{}}
+        onSelectApp={vi.fn()}
+        onOpenBuiltinHub={onOpenBuiltinHub}
+        onRefreshStates={vi.fn()}
+        onShowLog={vi.fn()}
+        onOpenSettings={vi.fn()}
+        themeMode="system"
+        onThemeChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '开搞中心' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /邮件中心/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /DevTools/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '开搞中心' }));
+    expect(onOpenBuiltinHub).toHaveBeenCalledTimes(1);
+  });
+
+  it('官方应用在标签右侧显示状态，内置应用由开搞中心统一收纳', () => {
     render(
       <TopBar
         apps={[
@@ -86,9 +130,10 @@ describe('TopBar', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /DevTools/ })).toHaveClass(
+    expect(screen.getByRole('button', { name: '开搞中心' })).toHaveClass(
       'focus-visible:ring-offset-0',
     );
+    expect(screen.queryByRole('button', { name: /DevTools/ })).not.toBeInTheDocument();
     expect(screen.getByLabelText('邮件中心：运行中')).toHaveClass('ml-auto');
     expect(screen.queryByLabelText('DevTools：已停止')).not.toBeInTheDocument();
   });

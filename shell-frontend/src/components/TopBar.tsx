@@ -1,6 +1,6 @@
 // 顶部横排导航栏：Chrome 风格标签页
 // macOS 圆点（左侧）+ 子应用标签（中间）
-import { LoaderCircle, TriangleAlert } from 'lucide-react';
+import { LoaderCircle, PanelLeft, TriangleAlert } from 'lucide-react';
 import { AppIcon, processStatusLabel } from './AppIcon';
 import { AppContextMenu } from './AppContextMenu';
 import { AccountMenu } from './AccountMenu';
@@ -12,8 +12,10 @@ interface Props {
   apps: AppManifest[];
   appOrder: string[];
   activeAppId: string | null;
+  showBuiltinHub?: boolean;
   states: Record<string, AppState>;
   onSelectApp: (id: string) => void;
+  onOpenBuiltinHub?: () => void;
   onRefreshStates: () => void;
   onShowLog: (app: AppManifest) => void;
   onOpenSettings: () => void;
@@ -61,8 +63,10 @@ export function TopBar({
   apps,
   appOrder,
   activeAppId,
+  showBuiltinHub = false,
   states,
   onSelectApp,
+  onOpenBuiltinHub = () => undefined,
   onRefreshStates,
   onShowLog,
   onOpenSettings,
@@ -75,7 +79,8 @@ export function TopBar({
 }: Props) {
   const sortedApps = appOrder
     .map((id) => apps.find((a) => a.id === id))
-    .filter((a): a is AppManifest => a !== undefined);
+    .filter((a): a is AppManifest => a !== undefined)
+    .filter((app) => app.ui.mode !== 'builtin');
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -83,8 +88,21 @@ export function TopBar({
       {/* macOS 拖拽区（红绿圆点浮在这里） */}
       <div className="w-20 h-full flex-shrink-0" data-tauri-drag-region />
 
-      {/* 子应用标签（仅用于切换） */}
+      {/* 开搞中心与官方应用标签 */}
       <div className="flex-1 flex items-center gap-1 overflow-x-auto min-w-0 px-1">
+        <button
+          type="button"
+          aria-label="开搞中心"
+          onClick={onOpenBuiltinHub}
+          className={`h-full min-w-[120px] px-3.5 flex select-none items-center gap-2 text-tab flex-shrink-0 transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 ${
+            showBuiltinHub
+              ? 'bg-card text-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+          }`}
+        >
+          <PanelLeft size={16} />
+          <span className="max-w-[120px] truncate">开搞中心</span>
+        </button>
         {sortedApps.map((app) => (
           <AppContextMenu
             key={app.id}

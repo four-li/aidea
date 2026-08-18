@@ -2,7 +2,6 @@ export const DEV_TOOLS_TABS = [
   { id: 'data', label: 'JSON 格式化' },
   { id: 'timestamp', label: '时间戳转换' },
   { id: 'ip', label: 'IP 查询' },
-  { id: 'ai', label: 'AI 模型测试' },
 ] as const;
 
 export const DEV_TOOLS_SETTINGS_CHANGED = 'aidea:dev-tools-settings-changed';

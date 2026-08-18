@@ -33,7 +33,7 @@
 - Tauri IPC 仅供 aIdea 壳和内置应用使用。内置应用前端统一通过 `shell-frontend/src/lib/ipc.ts` 调用，不得在业务组件直接调用 `invoke`。
 - 官方应用不得依赖 `@tauri-apps/api`、`window.__TAURI__`、Rust 命令名或壳前端 IPC 封装。这些都是壳的内部实现。
 - 官方应用与 aIdea 壳之间的运行时通信统一使用 [App Bridge](aidea-app-bridge.md)；当前实现 `ready`、`theme`、`notify`、`navigate` 和受能力声明限制的 `directory:drop`。搜索不属于 App Bridge，按 [应用内搜索规范](aidea-search.md) 由应用自己实现。
-- 官方应用调用 aIdea AI 能力时使用 [AI 网关契约](aidea-ai-gateway.md) 的本机 `/api` 接口；不直接访问上游 AI 服务、API Key 或 Codex app-server。
+- 官方应用调用 aIdea AI 能力时使用 [AI Service 契约](aidea-ai-service.md) 的本机服务接口（当前为 `/api/agent`）；不直接访问上游 AI 服务、API Key 或 Codex app-server。
 - 官方应用只能使用 aIdea 注入的应用数据和日志目录；应用业务代码直接读写自己的数据库。
 - 内置应用的页面不能直接访问本地文件，所以通过 `ipc.ts` 调用自己的 Rust 业务模块；这不改变数据库归属。
 - 两类应用都不得读取 aIdea 壳配置或其他应用的数据库。
@@ -48,7 +48,7 @@ binary 包只接受 Gitee、GitHub 或 GitLab（包括自建实例）同仓库 R
 
 日志始终开启。右上角“调试”和应用管理菜单都进入同一个全屏调试页，左侧按 aIdea、内置应用、官方应用切换来源；不做跨应用总聚合。官方应用分别查看运行、安装更新和平台事件，内置应用分别查看运行和平台事件，aIdea 查看平台事件。左侧计数只统计当前保留日志中的 WARN 及 ERROR。高级设置统一配置精简（WARN+）、标准（INFO+，默认）和调试（DEBUG+）三档，以及保留天数和总容量；清理日志只删除 `logs/`。壳必须保留启动、更新、安装、健康检查、生命周期失败、端口占用、市场 HTTP 错误和未处理前端异常的可复制证据。
 
-子应用日志统一使用单行文本，首字段为 `DEBUG`、`INFO`、`WARN` 或 `ERROR`，后面跟稳定事件名和有限的 `key=value` 上下文，例如 `ERROR sync_failed status=403 reason=forbidden`。应用读取壳注入的 `AIDEA_LOG_LEVEL`，缺省为 `info`；壳负责追加 `YYYY-MM-DD HH:MM:SS`、来源、通道、保存、滚动和最终级别过滤。应用第一阶段只向 stdout/stderr 输出，不自行维护第二套日志文件。普通点击不记录，启动、数据库/迁移、外部请求、重试、核心业务失败和退出异常必须记录；同一错误只在最终边界记录一次。任何日志都不得包含密码、授权码、OAuth 令牌、API Key、邮件正文、通知正文、完整 URL 查询参数、完整 Diff 或完整响应体。
+子应用日志统一使用单行文本，首字段为 `DEBUG`、`INFO`、`WARN` 或 `ERROR`，后面跟稳定事件名和有限的 `key=value` 上下文，例如 `ERROR sync_failed status=403 reason=forbidden`。应用读取壳注入的 `AIDEA_LOG_LEVEL`，缺省为 `info`；壳负责追加 `YYYY-MM-DD HH:MM:SS`、来源、通道、保存、滚动和最终级别过滤。应用第一阶段只向 stdout/stderr 输出，不自行维护第二套日志文件。运行期非预期异常包括数据库/迁移、文件系统、进程、网络、远端服务、请求处理和后台任务失败，必须在最终处理边界记录；外部请求耗尽重试后只记录一次。API 返回的 5xx 和远端请求失败由后端记录，前端不得重复记录已收到 HTTP 响应的 API 错误；前端只补充未拿到 HTTP 响应的网络故障。预期参数校验、用户取消、未配置和正常 404 不作为 `ERROR` 记录。不得增加全量 access log。任何日志都不得包含密码、授权码、OAuth 令牌、API Key、邮件正文、通知正文、完整 URL 查询参数、完整 Diff 或完整响应体。
 
 官方应用的前端不能使用 Tauri IPC，也不会自动接入壳的浏览器异常捕获。应用应提供只监听本机端口的受限 `POST /api/client-log`，接收脱敏后的前端异常并由服务端按上述格式输出 stdout/stderr。接口必须限制级别、事件名和消息长度；转发失败不得阻塞业务或循环重试。内置应用继续通过 `shell-frontend/src/lib/ipc.ts` 的日志封装记录前端和 IPC 边界。
 

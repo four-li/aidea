@@ -5,6 +5,7 @@ import { TriangleAlert } from 'lucide-react';
 import type { AppManifest, AppState } from '../types/manifest';
 import { WebviewFrame } from './WebviewFrame';
 import { BuiltinPage } from './BuiltinPage';
+import { BuiltinHubPage } from './BuiltinHubPage';
 import { EmptyState } from './EmptyState';
 import type { AppFrameRef } from '../hooks/useAppBridge';
 import type { ThemeMode } from '../hooks/useTheme';
@@ -12,15 +13,32 @@ import type { ThemeMode } from '../hooks/useTheme';
 interface Props {
   apps: AppManifest[];
   activeApp: AppManifest | null;
+  showBuiltinHub?: boolean;
+  builtinAppId?: string | null;
+  onSelectBuiltinApp?: (id: string) => void;
   states: Record<string, AppState>;
   theme?: Exclude<ThemeMode, 'system'>;
   onFrameRef?: AppFrameRef;
   onBackToMain?: () => void;
 }
 
-export function ContentArea({ apps, activeApp, states, theme, onFrameRef, onBackToMain }: Props) {
+export function ContentArea({
+  apps,
+  activeApp,
+  showBuiltinHub = false,
+  builtinAppId = null,
+  onSelectBuiltinApp = () => undefined,
+  states,
+  theme,
+  onFrameRef,
+  onBackToMain,
+}: Props) {
   // 所有 webview 子应用都挂载，用 CSS 控制显隐，避免切换时 iframe 重载
   const webviewApps = useMemo(() => apps.filter((a) => a.ui.mode === 'webview'), [apps]);
+
+  if (showBuiltinHub) {
+    return <BuiltinHubPage apps={apps} activeAppId={builtinAppId} onSelectApp={onSelectBuiltinApp} />;
+  }
 
   if (!activeApp) {
     return <EmptyState />;

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 const BUILTIN_MANIFESTS: &[&str] = &[
+    include_str!("../../apps/builtin/ai-service.yaml"),
     include_str!("../../apps/builtin/dev-tools.yaml"),
     include_str!("../../apps/builtin/developer-guide.yaml"),
 ];
@@ -207,5 +208,17 @@ mod tests {
 
         assert_eq!(guide.ui.mode, UiMode::Builtin);
         assert_eq!(guide.ui.entry, Some(UiEntry::AccountMenu));
+    }
+
+    #[test]
+    fn ai_service_is_registered_as_builtin_app() {
+        let ai_service = load_all_manifests()
+            .unwrap()
+            .into_iter()
+            .find(|manifest| manifest.id == "ai-service")
+            .expect("AI Service manifest 应已注册");
+
+        assert_eq!(ai_service.ui.mode, UiMode::Builtin);
+        assert_eq!(ai_service.ui.entry, None);
     }
 }

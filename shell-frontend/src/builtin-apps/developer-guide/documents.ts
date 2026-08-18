@@ -1,5 +1,5 @@
 import appBridge from '../../../../docs/guide/aidea-app-bridge.md?raw';
-import aiGateway from '../../../../docs/guide/aidea-ai-gateway.md?raw';
+import aiService from '../../../../docs/guide/aidea-ai-service.md?raw';
 import builtinApp from '../../../../docs/guide/aidea-builtin-app.md?raw';
 import officialApp from '../../../../docs/guide/aidea-official-app.md?raw';
 import platform from '../../../../docs/guide/aidea-platform.md?raw';
@@ -22,7 +22,7 @@ export const GUIDE_DOCUMENTS: GuideDocument[] = [
   { id: 'aidea-builtin-app.md', label: '内置应用规范', content: builtinApp },
   { id: 'aidea-official-app.md', label: '官方应用规范', content: officialApp },
   { id: 'aidea-app-bridge.md', label: 'App Bridge', content: appBridge },
-  { id: 'aidea-ai-gateway.md', label: 'AI 网关契约', content: aiGateway },
+  { id: 'aidea-ai-service.md', label: 'AI Service 契约', content: aiService },
   { id: 'aidea-storage.md', label: '数据与存储规范', content: storage },
   { id: 'aidea-ui.md', label: 'UI 规范', content: ui },
   { id: 'aidea-search.md', label: '应用内搜索规范', content: search },

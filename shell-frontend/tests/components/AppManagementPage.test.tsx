@@ -231,7 +231,7 @@ describe('AppManagementPage', () => {
     expect(screen.queryByRole('button', { name: '安装 邮件管理' })).not.toBeInTheDocument();
   });
 
-  it('内置应用在卡片底部显示图标设置入口，列表不直接显示重置按钮', async () => {
+  it('内置应用不显示在应用管理中', async () => {
     mockListApps.mockResolvedValue([
       {
         id: 'with-settings',
@@ -254,15 +254,9 @@ describe('AppManagementPage', () => {
 
     render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
 
-    await screen.findByText('有设置');
-    expect(screen.getByRole('button', { name: '有设置 设置' })).not.toHaveTextContent(
-      '应用设置',
-    );
-    expect(screen.getByRole('button', { name: '无设置 设置' })).not.toHaveTextContent(
-      '应用设置',
-    );
-    expect(screen.getByText('用于测试简介展示')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '重置设置' })).not.toBeInTheDocument();
+    await screen.findByText('暂无已安装应用');
+    expect(screen.queryByText('有设置')).not.toBeInTheDocument();
+    expect(screen.queryByText('无设置')).not.toBeInTheDocument();
   });
 
   it('官方应用只在菜单中管理启动偏好，不提供壳内设置页', async () => {
@@ -505,26 +499,6 @@ describe('AppManagementPage', () => {
     await waitFor(() => expect(screen.getByRole('menu')).toBeInTheDocument());
   });
 
-  it('内置应用设置页通过显式注册表打开', async () => {
-    mockListApps.mockResolvedValue([
-      {
-        id: 'dev-tools',
-        name: 'DevTools',
-        version: '1.0.0',
-        category: '开发',
-        status: 'active',
-        ui: { mode: 'builtin' },
-      },
-    ]);
-
-    render(<AppManagementPage onAppsChanged={vi.fn()} onShowLog={vi.fn()} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'DevTools 设置' }));
-
-    await waitFor(() => expect(mockGetDevToolsSettings).toHaveBeenCalled());
-    expect(screen.getByRole('switch', { name: 'JSON 格式化' })).toBeChecked();
-  });
-
   it('官方应用的进程和卸载操作收进更多菜单', async () => {
     mockListApps.mockResolvedValue([
       {
@@ -716,7 +690,7 @@ describe('AppManagementPage', () => {
     expect(onSelectApp).toHaveBeenCalledWith('available-app');
   });
 
-  it('按外部顺序显示应用并提供拖拽手柄', async () => {
+  it('按外部顺序显示官方应用并提供拖拽手柄', async () => {
     mockListApps.mockResolvedValue([
       {
         id: 'first',
@@ -724,7 +698,7 @@ describe('AppManagementPage', () => {
         version: '1.0.0',
         category: 'test',
         status: 'active',
-        ui: { mode: 'builtin' },
+        ui: { mode: 'webview', url: 'http://127.0.0.1:43120' },
       },
       {
         id: 'second',
@@ -732,7 +706,7 @@ describe('AppManagementPage', () => {
         version: '1.0.0',
         category: 'test',
         status: 'active',
-        ui: { mode: 'builtin' },
+        ui: { mode: 'webview', url: 'http://127.0.0.1:43121' },
       },
     ]);
 

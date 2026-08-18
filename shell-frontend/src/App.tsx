@@ -6,6 +6,7 @@ import { ContentArea } from './components/ContentArea';
 import { DebugPage, type DebugTarget } from './components/DebugPage';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toaster } from './components/ui/sonner';
+import { ApprovalDialog } from './builtin-apps/ai-service/ApprovalDialog';
 import { useApps } from './hooks/useApps';
 import { useActiveApp } from './hooks/useActiveApp';
 import { useProcessStatus } from './hooks/useProcessStatus';
@@ -24,6 +25,15 @@ function App() {
   const { mode: themeMode, resolvedTheme, setTheme } = useTheme();
   const [developerGuide, setDeveloperGuide] = useState<AppManifest | null>(null);
   const previousMainAppId = useRef<string | null>(null);
+  const [showBuiltinHub, setShowBuiltinHub] = useState(true);
+  const [activeBuiltinAppId, setActiveBuiltinAppId] = useState<string | null>(null);
+
+  const builtinApps = useMemo(
+    () => apps.filter((app) => app.ui.mode === 'builtin' && app.ui.entry !== 'account-menu'),
+    [apps],
+  );
+  const defaultBuiltinAppId =
+    builtinApps.find((app) => app.id === 'ai-service')?.id ?? builtinApps[0]?.id ?? null;
 
   useEffect(() => {
     void ipc
@@ -41,6 +51,7 @@ function App() {
     async ({ appId }: { appId: string; path?: string }) => {
       const app = apps.find((item) => item.id === appId);
       if (!app) return;
+      setShowBuiltinHub(false);
       selectApp(appId);
       if (app.process && states[appId]?.status !== 'running') {
         try {
@@ -76,12 +87,18 @@ function App() {
     };
   }, [activeAppId, deliverDirectoryDrop]);
 
-  // apps 加载完成后，自动选中第一个（仅当还没选中时）
+  // 默认打开开搞中心，并优先选中 AI Service。
   useEffect(() => {
-    if (!loading && apps.length > 0 && activeAppId === null) {
-      selectApp(apps[0].id);
+    if (loading || apps.length === 0) return;
+    setActiveBuiltinAppId((currentId) => {
+      if (builtinApps.some((app) => app.id === currentId)) return currentId;
+      if (builtinApps.some((app) => app.id === activeAppId)) return activeAppId;
+      return defaultBuiltinAppId;
+    });
+    if (activeAppId === null) {
+      selectApp(defaultBuiltinAppId ?? apps[0].id);
     }
-  }, [loading, apps, activeAppId, selectApp]);
+  }, [loading, apps, activeAppId, activeBuiltinAppId, builtinApps, defaultBuiltinAppId, selectApp]);
 
   const [debugTarget, setDebugTarget] = useState<DebugTarget | undefined>();
   const [showSettings, setShowSettings] = useState(false);
@@ -200,10 +217,25 @@ function App() {
         apps={apps}
         appOrder={appOrder}
         activeAppId={activeAppId}
+        showBuiltinHub={showBuiltinHub}
         states={states}
         onSelectApp={(id) => {
           setShowDebug(false);
+          setShowBuiltinHub(false);
           selectApp(id);
+        }}
+        onOpenBuiltinHub={() => {
+          if (!defaultBuiltinAppId) return;
+          setShowDebug(false);
+          setShowBuiltinHub(true);
+          setActiveBuiltinAppId((id) =>
+            builtinApps.some((app) => app.id === id) ? id : defaultBuiltinAppId,
+          );
+          selectApp(
+            builtinApps.some((app) => app.id === activeBuiltinAppId)
+              ? activeBuiltinAppId
+              : defaultBuiltinAppId,
+          );
         }}
         onRefreshStates={refresh}
         onShowLog={(app) => {
@@ -214,7 +246,9 @@ function App() {
         onOpenDeveloperGuide={() => {
           if (!developerGuide) return;
           setShowDebug(false);
-          if (apps.some((app) => app.id === activeAppId)) previousMainAppId.current = activeAppId;
+          if (showBuiltinHub) previousMainAppId.current = activeBuiltinAppId;
+          else if (apps.some((app) => app.id === activeAppId)) previousMainAppId.current = activeAppId;
+          setShowBuiltinHub(false);
           selectApp(developerGuide.id);
         }}
         themeMode={themeMode}
@@ -246,11 +280,26 @@ function App() {
           <ContentArea
             apps={apps}
             activeApp={activeApp}
+            showBuiltinHub={showBuiltinHub}
+            builtinAppId={activeBuiltinAppId}
+            onSelectBuiltinApp={(id) => {
+              setActiveBuiltinAppId(id);
+              setShowBuiltinHub(true);
+              selectApp(id);
+            }}
             states={states}
             theme={resolvedTheme}
             onFrameRef={registerFrame}
             onBackToMain={() => {
               const previousAppId = previousMainAppId.current;
+              const previousBuiltinApp = builtinApps.find((app) => app.id === previousAppId);
+              if (previousBuiltinApp) {
+                setActiveBuiltinAppId(previousBuiltinApp.id);
+                setShowBuiltinHub(true);
+                selectApp(previousBuiltinApp.id);
+                return;
+              }
+              setShowBuiltinHub(false);
               selectApp(apps.some((app) => app.id === previousAppId) ? previousAppId : apps[0]?.id ?? null);
             }}
           />
@@ -275,6 +324,7 @@ function App() {
         category={settingsCategory}
         checkUpdate={checkUpdate}
       />
+      <ApprovalDialog />
       <Toaster />
     </div>
   );

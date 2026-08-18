@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import {
-  ArrowLeft,
   Bug,
   Ellipsis,
   ExternalLink,
@@ -13,7 +12,6 @@ import {
   RefreshCw,
   Rocket,
   RotateCcw,
-  Settings,
   Square,
   Trash2,
 } from 'lucide-react';
@@ -36,9 +34,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
 import { ipc } from '../lib/ipc';
+import { getAppPort } from '../lib/app-port';
 import type { AppManifest, AppState, AppUserSettings } from '../types/manifest';
 import type { InstalledApp, OfficialApp, OfficialRelease } from '../types/official-app';
-import { BUILTIN_SETTINGS_PAGES } from '../builtin-apps/settings';
 import { AppIcon, ProcessStatusIndicator } from './AppIcon';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
@@ -101,7 +99,6 @@ export function AppManagementPage({
   const [settings, setSettings] = useState<Record<string, AppUserSettings>>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
   const [officialApps, setOfficialApps] = useState<OfficialApp[]>([]);
   const [installedOfficialApps, setInstalledOfficialApps] = useState<InstalledApp[]>([]);
   const [marketRefreshing, setMarketRefreshing] = useState(false);
@@ -120,7 +117,7 @@ export function AppManagementPage({
   const load = useCallback(async () => {
     try {
       const [allApps, config] = await Promise.all([ipc.listApps(), ipc.getShellConfig()]);
-      setApps(allApps.filter((app) => app.ui.entry !== 'account-menu'));
+      setApps(allApps.filter((app) => app.ui.mode !== 'builtin'));
       setSettings(config.app_settings);
     } catch (error) {
       toast.error('读取应用状态失败', { description: String(error) });
@@ -318,20 +315,6 @@ export function AppManagementPage({
     }
   };
 
-  const resetSettings = async (app: AppManifest) => {
-    setPendingId(app.id);
-    try {
-      await ipc.resetAppSettings(app.id);
-      await load();
-      onAppsChanged();
-    } catch (error) {
-      toast.error('重置设置失败', { description: String(error) });
-    } finally {
-      setPendingId(null);
-    }
-  };
-
-  const detailApp = apps.find((app) => app.id === detailId && app.ui.mode === 'builtin') ?? null;
   const orderedIds = [
     ...(appOrder?.length ? appOrder : []),
     ...apps.map((app) => app.id).filter((id) => !appOrder?.includes(id)),
@@ -342,7 +325,7 @@ export function AppManagementPage({
   const availableOfficialApps = officialApps.filter(
     (app) =>
       !installedOfficialApps.some((record) => record.id === app.id) &&
-      !apps.some((installed) => installed.ui.mode !== 'builtin' && installed.id === app.id),
+      !apps.some((installed) => installed.id === app.id),
   );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -355,17 +338,6 @@ export function AppManagementPage({
     const newIndex = orderedIds.indexOf(String(over.id));
     if (oldIndex >= 0 && newIndex >= 0) onReorder(arrayMove(orderedIds, oldIndex, newIndex));
   };
-
-  if (detailApp) {
-    return (
-      <AppSettingsDetail
-        app={detailApp}
-        pending={pendingId === detailApp.id}
-        onBack={() => setDetailId(null)}
-        onResetSettings={() => void resetSettings(detailApp)}
-      />
-    );
-  }
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -393,13 +365,14 @@ export function AppManagementPage({
             <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {orderedApps.map((app) => {
-                  const builtin = app.ui.mode === 'builtin';
                   const officialApp = officialApps.find((item) => item.id === app.id);
                   const appSettings = settings[app.id] ?? defaultSettings;
                   const state = states[app.id];
                   const running = state?.status === 'running';
-                  const transitioning = state?.status === 'starting' || state?.status === 'stopping';
+                  const transitioning =
+                    state?.status === 'starting' || state?.status === 'stopping';
                   const issue = app.issue ?? state?.issue;
+                  const port = officialApp ? getAppPort(officialApp.process.ready_url) : null;
                   const portOccupied = issue?.message.includes('端口') ?? false;
                   const pending = pendingId === app.id;
                   return (
@@ -413,14 +386,20 @@ export function AppManagementPage({
                             <div className="flex items-center gap-2">
                               <span className="truncate text-sm font-medium">{app.name}</span>
                               <span className="shrink-0 text-xs text-muted-foreground">
-                                {builtin ? '内置应用' : '官方应用'}
+                                官方应用
                               </span>
                               {issue && <Badge variant="outline">异常</Badge>}
                             </div>
                             <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                               v{app.version}
-                              {!builtin && <span>·</span>}
-                              {!builtin && <ProcessStatusIndicator state={state} issue={!!issue} />}
+                              <span>·</span>
+                              <ProcessStatusIndicator state={state} issue={!!issue} />
+                              {port && (
+                                <>
+                                  <span>·</span>
+                                  <span>端口 {port}</span>
+                                </>
+                              )}
                               {!appSettings.visible && ' · 已隐藏'}
                             </div>
                             {app.description && (
@@ -452,145 +431,125 @@ export function AppManagementPage({
                                 {appSettings.visible ? '显示在主页' : '从主页隐藏'}
                               </TooltipContent>
                             </Tooltip>
-                            {!builtin && (
-                              <DropdownMenu
-                                open={openMenuId === app.id}
-                                onOpenChange={(open) => setOpenMenuId(open ? app.id : null)}
-                              >
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    aria-label={`${app.name} 更多操作`}
-                                    disabled={pending}
-                                  >
-                                    <Ellipsis size={16} />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {!running && !transitioning && (
-                                    <DropdownMenuItem
-                                      onSelect={() => void controlProcess(app, 'start')}
-                                    >
-                                      <Play size={16} />
-                                      {issue ? '重试启动' : '启动'}
-                                    </DropdownMenuItem>
-                                  )}
-                                  {running && !transitioning && (
-                                    <>
-                                      <DropdownMenuItem
-                                        onSelect={() => void controlProcess(app, 'stop')}
-                                      >
-                                        <Square size={16} />
-                                        停止
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onSelect={() => void controlProcess(app, 'restart')}
-                                      >
-                                        <RotateCcw size={16} />
-                                        重启
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                  {transitioning && (
-                                    <DropdownMenuItem disabled>
-                                      {state.status === 'starting' ? '启动中...' : '停止中...'}
-                                    </DropdownMenuItem>
-                                  )}
-                                  {!running && !transitioning && portOccupied && (
-                                    <DropdownMenuItem
-                                      onSelect={(event) => {
-                                        event.preventDefault();
-                                        setPortReleaseApp(app);
-                                      }}
-                                    >
-                                      <Square size={16} />
-                                      释放端口
-                                    </DropdownMenuItem>
-                                  )}
-                                  {app.process && <DropdownMenuSeparator />}
-                                  {app.process && (
-                                    <DropdownMenuItem
-                                      disabled={pending}
-                                      onSelect={(event) => {
-                                        event.preventDefault();
-                                        void saveSettings(app, {
-                                          ...appSettings,
-                                          startup_mode:
-                                            appSettings.startup_mode === 'with-aidea'
-                                              ? 'manual'
-                                              : 'with-aidea',
-                                        });
-                                      }}
-                                    >
-                                      <Rocket
-                                        size={16}
-                                        className={
-                                          appSettings.startup_mode === 'with-aidea'
-                                            ? 'text-primary'
-                                            : 'text-muted-foreground'
-                                        }
-                                      />
-                                      随开搞启动
-                                    </DropdownMenuItem>
-                                  )}
-                                  {officialApp?.update_available && (
-                                    <DropdownMenuItem
-                                      onSelect={() => void installOfficialApp(officialApp, true)}
-                                    >
-                                      <RefreshCw size={16} />
-                                      更新
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onSelect={() => onShowLog(app)}>
-                                    <Bug size={16} />
-                                    调试
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onSelect={() => setUninstallApp(app)}
-                                  >
-                                    <Trash2 size={16} />
-                                    卸载
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-border pl-1">
-                          {builtin ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
+                            <DropdownMenu
+                              open={openMenuId === app.id}
+                              onOpenChange={(open) => setOpenMenuId(open ? app.id : null)}
+                            >
+                              <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 text-muted-foreground"
-                                  aria-label={`${app.name} 设置`}
+                                  aria-label={`${app.name} 更多操作`}
                                   disabled={pending}
-                                  onClick={() => setDetailId(app.id)}
                                 >
-                                  <Settings size={15} />
+                                  <Ellipsis size={16} />
                                 </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>应用设置</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            officialApp && officialApp.available !== false && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-1.5 text-xs text-muted-foreground"
-                                onClick={() => void openReleaseHistory(officialApp)}
-                              >
-                                <History size={14} />
-                                更新日志
-                              </Button>
-                            )
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {!running && !transitioning && (
+                                  <DropdownMenuItem
+                                    onSelect={() => void controlProcess(app, 'start')}
+                                  >
+                                    <Play size={16} />
+                                    {issue ? '重试启动' : '启动'}
+                                  </DropdownMenuItem>
+                                )}
+                                {running && !transitioning && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onSelect={() => void controlProcess(app, 'stop')}
+                                    >
+                                      <Square size={16} />
+                                      停止
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() => void controlProcess(app, 'restart')}
+                                    >
+                                      <RotateCcw size={16} />
+                                      重启
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {transitioning && (
+                                  <DropdownMenuItem disabled>
+                                    {state.status === 'starting' ? '启动中...' : '停止中...'}
+                                  </DropdownMenuItem>
+                                )}
+                                {!running && !transitioning && portOccupied && (
+                                  <DropdownMenuItem
+                                    onSelect={(event) => {
+                                      event.preventDefault();
+                                      setPortReleaseApp(app);
+                                    }}
+                                  >
+                                    <Square size={16} />
+                                    释放端口
+                                  </DropdownMenuItem>
+                                )}
+                                {app.process && <DropdownMenuSeparator />}
+                                {app.process && (
+                                  <DropdownMenuItem
+                                    disabled={pending}
+                                    onSelect={(event) => {
+                                      event.preventDefault();
+                                      void saveSettings(app, {
+                                        ...appSettings,
+                                        startup_mode:
+                                          appSettings.startup_mode === 'with-aidea'
+                                            ? 'manual'
+                                            : 'with-aidea',
+                                      });
+                                    }}
+                                  >
+                                    <Rocket
+                                      size={16}
+                                      className={
+                                        appSettings.startup_mode === 'with-aidea'
+                                          ? 'text-primary'
+                                          : 'text-muted-foreground'
+                                      }
+                                    />
+                                    随开搞启动
+                                  </DropdownMenuItem>
+                                )}
+                                {officialApp?.update_available && (
+                                  <DropdownMenuItem
+                                    onSelect={() => void installOfficialApp(officialApp, true)}
+                                  >
+                                    <RefreshCw size={16} />
+                                    更新
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onSelect={() => onShowLog(app)}>
+                                  <Bug size={16} />
+                                  调试
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={() => setUninstallApp(app)}
+                                >
+                                  <Trash2 size={16} />
+                                  卸载
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-border pl-1">
+                          {officialApp && officialApp.available !== false && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-1.5 text-xs text-muted-foreground"
+                              onClick={() => void openReleaseHistory(officialApp)}
+                            >
+                              <History size={14} />
+                              更新日志
+                            </Button>
                           )}
-                          {!builtin && officialApp?.update_available && (
+                          {officialApp?.update_available && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -789,10 +748,14 @@ export function AppManagementPage({
             {releaseApp && !releaseLoading && !releaseError && (
               <div className="max-h-[60vh] space-y-3 overflow-auto pr-1">
                 {(releaseCache[releaseApp.id] ?? []).map((release) => (
-                  <article key={`${release.version}-${release.url}`} className="border-b border-border pb-3 last:border-0">
+                  <article
+                    key={`${release.version}-${release.url}`}
+                    className="border-b border-border pb-3 last:border-0"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-medium">
-                        {release.title} <span className="text-muted-foreground">({release.version})</span>
+                        {release.title}{' '}
+                        <span className="text-muted-foreground">({release.version})</span>
                       </h3>
                       <button
                         type="button"
@@ -822,88 +785,6 @@ export function AppManagementPage({
         </Dialog>
       </div>
     </TooltipProvider>
-  );
-}
-
-function AppSettingsDetail({
-  app,
-  pending,
-  onBack,
-  onResetSettings,
-}: {
-  app: AppManifest;
-  pending: boolean;
-  onBack: () => void;
-  onResetSettings: () => void;
-}) {
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
-  const BuiltinSettingsPage = BUILTIN_SETTINGS_PAGES[app.id];
-
-  return (
-    <>
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="mb-6 flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label="返回应用管理" onClick={onBack}>
-            <ArrowLeft size={16} />
-          </Button>
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold">{app.name}设置</h2>
-            <p className="mt-1 text-xs text-muted-foreground">应用配置详情</p>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto">
-          <div className="min-h-[360px]">
-            {BuiltinSettingsPage ? (
-              <BuiltinSettingsPage embedded onClose={onBack} />
-            ) : (
-              <div className="flex h-full min-h-[360px] items-center justify-center p-6">
-                <p className="text-sm text-muted-foreground">该应用暂无可配置项</p>
-              </div>
-            )}
-          </div>
-
-          {app.settings?.reset_command && (
-            <div className="mt-8 border-t border-border pt-6">
-              <Button
-                variant="destructive"
-                disabled={pending}
-                onClick={() => setConfirmResetOpen(true)}
-              >
-                重置
-              </Button>
-              <p className="mt-2 text-xs text-muted-foreground">只重置应用配置，不删除业务数据</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Dialog open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>确认重置应用配置</DialogTitle>
-            <DialogDescription>
-              重置后将清除当前应用的所有用户配置，并恢复默认设置。此操作不可撤销。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmResetOpen(false)} disabled={pending}>
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setConfirmResetOpen(false);
-                onResetSettings();
-              }}
-              disabled={pending}
-            >
-              确认重置
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 

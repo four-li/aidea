@@ -89,8 +89,8 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 | `AIDEA_APP_DATA_DIR` | 应用数据目录；数据库固定为其中的 `app.db`。 |
 | `AIDEA_APP_LOG_DIR` | 应用日志目录。 |
 | `AIDEA_LOG_LEVEL` | 当前日志级别：`warn`、`info` 或 `debug`；应用应据此控制 stdout/stderr 和自身日志文件的详细程度。 |
-| `AIDEA_AI_GATEWAY_URL` | aIdea AI 网关基础地址；应用按 [AI 网关契约](aidea-ai-gateway.md) 调用 `/api`。 |
-| `AIDEA_AI_GATEWAY_TOKEN` | AI 网关保存的访问令牌；它不是上游 API Key。 |
+| `AIDEA_AI_SERVICE_URL` | aIdea AI Service 基础地址；应用按 [AI Service 契约](aidea-ai-service.md) 调用当前服务路径 `/api/agent`。 |
+| `AIDEA_AI_SERVICE_TOKEN` | AI Service 保存的访问令牌；它不是上游 API Key。 |
 | `PATH` | 解压包根目录。 |
 
 子进程环境会被清空，应用不得依赖上表以外的环境变量，包括 `HOME`、`LANG` 和 `TMPDIR`。临时文件、
@@ -102,7 +102,7 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 
 壳会采集官方应用与 staging 健康检查进程的 stdout/stderr，分别作为运行和安装更新日志保留；每行可用 `DEBUG`、`INFO`、`WARN` 或 `ERROR` 前缀声明级别，未声明时按 INFO 处理。应用不得向 stdout、stderr 或 `AIDEA_APP_LOG_DIR` 输出密码、授权码、OAuth 令牌、API Key、邮件正文或通知正文。应用负责业务日志，aIdea 负责平台与生命周期日志；普通业务点击不记录，异常必须记录。
 
-官方应用服务端日志必须按 `LEVEL event key=value` 的单行格式输出，并读取 `AIDEA_LOG_LEVEL`（缺省 `info`）。应用不直接写第二套日志文件；壳负责时间、来源、通道和最终过滤。启动、数据库/迁移、外部请求失败与重试、核心业务失败和退出异常必须记录，底层错误只在最终边界记录一次。不得记录完整 URL 查询参数、完整 Diff、完整响应体或任何业务正文。
+官方应用服务端日志必须按 `LEVEL event key=value` 的单行格式输出，并读取 `AIDEA_LOG_LEVEL`（缺省 `info`）。应用不直接写第二套日志文件；壳负责时间、来源、通道和最终过滤。运行期非预期异常（包括数据库/迁移、文件系统、进程、网络、远端服务、请求处理和后台任务失败）必须记录；启动、外部请求失败与重试、核心业务失败和退出异常也必须记录。API 返回的 5xx 和远端请求失败由后端在最终处理边界记录，前端不得重复记录已收到 HTTP 响应的 API 错误；未拿到 HTTP 响应的网络故障由前端补充记录。底层错误只在最终边界记录一次，不增加全量 access log。预期参数校验、用户取消、未配置和正常 404 不作为 `ERROR` 记录。不得记录完整 URL 查询参数、完整 Diff、完整响应体或任何业务正文。
 
 官方应用前端的未处理异常不会自动进入壳日志。应用必须提供只监听 `127.0.0.1` 的受限 `POST /api/client-log`，由前端发送脱敏的级别、事件名和短消息，服务端校验长度和级别后输出 stdout/stderr；接口失败不得阻塞业务或循环重试。该接口是应用内部 HTTP 能力，不是 App Bridge 扩展。
 
@@ -112,7 +112,7 @@ aIdea 下载附件后先校验 SHA-256，再受限解压到 staging，使用临�
 aIdea Rust 命令或壳前端封装。壳与官方应用的运行期通信只使用
 [App Bridge](aidea-app-bridge.md) 的 `postMessage` 契约。
 
-官方应用调用 AI 能力时，按 [AI 网关契约](aidea-ai-gateway.md) 使用注入的 AI 网关地址和令牌；不得直接访问上游 AI 服务或读取 API Key。
+官方应用调用 AI 能力时，按 [AI Service 契约](aidea-ai-service.md) 使用注入的 AI Service 地址和令牌；不得直接访问上游 AI 服务或读取 API Key。
 
 aIdea 首次加载时追加 `aidea_theme=light|dark`，页面 `ready` 后由 Bridge 的 `theme` 保持同步。
 搜索是应用自身能力，不经 Bridge。账户、同步和其他业务设置由应用主页面进入、校验并保存；

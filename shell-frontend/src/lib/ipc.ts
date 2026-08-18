@@ -8,11 +8,15 @@ import type {
 } from '../types/manifest';
 import type { NetworkInfo } from '../types/network';
 import type {
-  AiConfigHistoryItem,
-  AiHttpRequest,
-  AiHttpResponse,
-  AiTestConfig,
-} from '../types/ai-test';
+  AiServiceApprovalRequest,
+  AiServiceAuditRunDetail,
+  AiServiceAuditRunSummary,
+  AiServiceDefinition,
+  AiServiceModel,
+  AiServiceModelSummary,
+  AiServiceModelTestRequest,
+  AiServiceModelTestResult,
+} from '../types/ai-service';
 import type {
   InstalledApp,
   OfficialApp,
@@ -97,17 +101,35 @@ export const ipc = {
 
   /** 查询本机网络信息：内网 IP 列表 + 公网 IP 详情 */
   getNetworkInfo: (): Promise<NetworkInfo> => invoke<NetworkInfo>('get_network_info'),
-  /** 通过 Rust 后端发送模板渲染后的 HTTP 请求，避免 Key 暴露给 WebView 网络层 */
-  sendAiHttpRequest: (request: AiHttpRequest): Promise<AiHttpResponse> =>
-    invoke<AiHttpResponse>('send_ai_http_request', { request }),
-  /** 保存 DevTools 自己的 AI 配置。 */
-  saveAiConfig: (config: AiTestConfig): Promise<void> => invoke<void>('save_ai_config', { config }),
-  /** 获取 AI 配置历史元数据。 */
-  listAiConfigs: (): Promise<AiConfigHistoryItem[]> =>
-    invoke<AiConfigHistoryItem[]>('list_ai_configs'),
-  /** 读取 DevTools 自己数据库中的 AI 配置。 */
-  loadAiConfig: (id: string): Promise<AiTestConfig> =>
-    invoke<AiTestConfig>('load_ai_config', { id }),
-  /** 删除 AI 配置历史。 */
-  deleteAiConfig: (id: string): Promise<void> => invoke<void>('delete_ai_config', { id }),
+  listAiServiceModels: (): Promise<AiServiceModelSummary[]> =>
+    invoke<AiServiceModelSummary[]>('list_ai_service_models'),
+  getAiServiceModel: (id: string): Promise<AiServiceModel> =>
+    invoke<AiServiceModel>('get_ai_service_model', { id }),
+  saveAiServiceModel: (model: AiServiceModel): Promise<void> =>
+    invoke<void>('save_ai_service_model', { model }),
+  fetchAiServiceProviderModels: (request: { base_url: string; api_key: string }): Promise<string[]> =>
+    invoke<string[]>('fetch_ai_service_provider_models', { request }),
+  deleteAiServiceModel: (id: string): Promise<void> =>
+    invoke<void>('delete_ai_service_model', { id }),
+  reorderAiServiceModels: (ids: string[]): Promise<void> =>
+    invoke<void>('reorder_ai_service_models', { ids }),
+  listAiServiceServices: (): Promise<AiServiceDefinition[]> =>
+    invoke<AiServiceDefinition[]>('list_ai_service_services'),
+  saveAiServiceServiceModel: (serviceId: string, modelId: string | null): Promise<void> =>
+    invoke<void>('save_ai_service_service_model', { serviceId, modelId }),
+  testAiServiceModel: (request: AiServiceModelTestRequest): Promise<AiServiceModelTestResult> =>
+    invoke<AiServiceModelTestResult>('test_ai_service_model', { request }),
+  getAiServiceToken: (): Promise<string> => invoke<string>('get_ai_service_token'),
+  getAiServiceAuditSettings: (): Promise<boolean> =>
+    invoke<boolean>('get_ai_service_audit_settings'),
+  saveAiServiceAuditSettings: (enabled: boolean): Promise<void> =>
+    invoke<void>('save_ai_service_audit_settings', { enabled }),
+  listAiServiceAuditRuns: (): Promise<AiServiceAuditRunSummary[]> =>
+    invoke<AiServiceAuditRunSummary[]>('list_ai_service_audit_runs'),
+  getAiServiceAuditRun: (id: string): Promise<AiServiceAuditRunDetail | null> =>
+    invoke<AiServiceAuditRunDetail | null>('get_ai_service_audit_run', { id }),
+  listAiServicePendingApprovals: (): Promise<AiServiceApprovalRequest[]> =>
+    invoke<AiServiceApprovalRequest[]>('list_ai_service_pending_approvals'),
+  resolveAiServiceApproval: (id: string, approved: boolean): Promise<void> =>
+    invoke<void>('resolve_ai_service_approval', { id, approved }),
 };

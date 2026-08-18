@@ -19,10 +19,10 @@ describe('开发手册', () => {
 
     fireEvent.click(
       within(screen.getByRole('navigation', { name: '开发手册目录' })).getByRole('button', {
-        name: 'AI 网关契约',
+        name: 'AI Service 契约',
       }),
     );
 
-    expect(screen.getByRole('heading', { name: 'aIdea AI 网关契约' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'aIdea AI Service 契约' })).toBeInTheDocument();
   });
 });

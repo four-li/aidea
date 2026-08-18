@@ -1,0 +1,9 @@
+id: ai-service
+name: AI Service
+description: 为内置和官方应用提供本机 AI 能力
+version: 0.1.0
+category: 开发
+status: active
+ui:
+  mode: builtin
+  icon: Sparkles
