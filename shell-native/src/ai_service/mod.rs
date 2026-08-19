@@ -63,6 +63,13 @@ pub struct AiServiceState {
     token: Arc<Mutex<String>>,
     audit_enabled: Arc<AtomicBool>,
     approvals: ApprovalManager,
+    status: Arc<Mutex<AiServiceRuntimeStatus>>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AiServiceRuntimeStatus {
+    pub state: String,
+    pub error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -172,7 +179,42 @@ impl AiServiceState {
             token: Arc::new(Mutex::new(token)),
             audit_enabled: Arc::new(AtomicBool::new(audit_enabled)),
             approvals: ApprovalManager::default(),
+            status: Arc::new(Mutex::new(AiServiceRuntimeStatus {
+                state: "ready".into(),
+                error: None,
+            })),
         })
+    }
+
+    pub fn unavailable(error: String) -> Self {
+        Self {
+            db_path: PathBuf::new(),
+            rg_path: PathBuf::new(),
+            token: Arc::new(Mutex::new(String::new())),
+            audit_enabled: Arc::new(AtomicBool::new(false)),
+            approvals: ApprovalManager::default(),
+            status: Arc::new(Mutex::new(AiServiceRuntimeStatus {
+                state: "unavailable".into(),
+                error: Some(error),
+            })),
+        }
+    }
+
+    pub fn status(&self) -> AiServiceRuntimeStatus {
+        self.status
+            .lock()
+            .map(|status| status.clone())
+            .unwrap_or_else(|_| AiServiceRuntimeStatus {
+                state: "unavailable".into(),
+                error: Some("AI Service 状态不可用".into()),
+            })
+    }
+
+    pub fn mark_unavailable(&self, error: String) {
+        if let Ok(mut status) = self.status.lock() {
+            status.state = "unavailable".into();
+            status.error = Some(error);
+        }
     }
 
     pub fn db_path(&self) -> &Path {
@@ -188,6 +230,12 @@ impl AiServiceState {
     }
 
     pub fn access_token(&self) -> AppResult<String> {
+        let status = self.status();
+        if status.state != "ready" {
+            return Err(AppError::Config(
+                status.error.unwrap_or_else(|| "AI Service 不可用".into()),
+            ));
+        }
         self.token
             .lock()
             .map(|value| value.clone())
@@ -421,6 +469,12 @@ impl AiServiceState {
     }
 
     fn connection(&self) -> AppResult<Connection> {
+        let status = self.status();
+        if status.state != "ready" {
+            return Err(AppError::Config(
+                status.error.unwrap_or_else(|| "AI Service 不可用".into()),
+            ));
+        }
         open_database_at(&self.db_path)
     }
 }
@@ -621,5 +675,13 @@ mod tests {
         let second = load_or_create_access_token(&root).unwrap();
         assert_eq!(first, second);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn 不可用状态不打开数据库并返回失败原因() {
+        let state = AiServiceState::unavailable("数据库初始化失败".into());
+        assert_eq!(state.status().state, "unavailable");
+        assert_eq!(state.status().error.as_deref(), Some("数据库初始化失败"));
+        assert!(state.list_models().is_err());
     }
 }

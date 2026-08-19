@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 /* 全局样式 */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   margin: 0;
   padding: 0;
@@ -124,4 +126,19 @@ html, body, #root {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
+}
+
+@keyframes ai-service-request {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[ai-service-request_1\.2s_linear_infinite\] {
+    animation: none;
+  }
 }

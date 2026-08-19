@@ -54,7 +54,7 @@
 ## 交互与无障碍
 
 - 图标按钮必须有可访问名称；不熟悉的图标放在 `TooltipProvider` 内并说明用途。
-- 覆盖 shadcn Button 的焦点环时，`focus-visible:ring-0` 必须同时使用 `focus-visible:ring-offset-0`，避免菜单关闭或点击后焦点恢复产生额外边线。原生导航按钮、Dialog/Sheet 关闭按钮也必须使用 `focus-visible` 焦点样式，不得使用常驻 `focus:ring`，避免弹窗首次打开或关闭后出现默认边框。
+- 所有交互控件（包括 `Button`、`Select`、`Input`、`Textarea`、`Tabs`、`Switch` 和 `Checkbox`）默认只使用 `focus-visible:*` 焦点样式，不得使用常驻 `focus:ring`，避免鼠标点击后出现蓝色焦点环。覆盖 shadcn Button 或其他控件的焦点环时，`focus-visible:ring-0` 必须同时使用 `focus-visible:ring-offset-0`；即使刻意隐藏焦点环，也必须保留键盘用户可见的焦点反馈，不能无条件移除 `outline`。原生导航按钮、Dialog/Sheet 关闭按钮同样遵守这条规则。
 - 全屏二级页（非弹窗）必须提供返回主页面的按钮；返回目标由其父页面管理，避免页面自行维护导航状态。
 - 所有输入和操作控件必须有清晰的 label、placeholder 或 `aria-label`。
 - 错误、成功、加载和空状态都要有明确反馈；重复操作不能因异步结果造成布局跳动。

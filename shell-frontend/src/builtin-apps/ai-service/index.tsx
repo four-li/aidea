@@ -1,5 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ipc } from '../../lib/ipc';
+import type { AiServiceRuntimeStatus } from '../../types/ai-service';
 import { AuditPage } from './AuditPage';
 import { ModelConfigPage } from './ModelConfigPage';
 import { ModelTestPage } from './ModelTestPage';
@@ -17,6 +20,11 @@ type AiServiceTab = (typeof tabs)[number]['id'];
 export function AiServicePage() {
   const [activeTab, setActiveTab] = useState<AiServiceTab>('models');
   const [testServiceId, setTestServiceId] = useState<string | undefined>();
+  const [status, setStatus] = useState<AiServiceRuntimeStatus | null>(null);
+
+  useEffect(() => {
+    void ipc.getAiServiceStatus().then(setStatus).catch(() => setStatus(null));
+  }, []);
 
   const testService = (serviceId: string) => {
     setTestServiceId(serviceId);
@@ -43,6 +51,15 @@ export function AiServicePage() {
         </TabsList>
 
         <div className="min-h-0 flex-1 overflow-auto p-6">
+          {status?.state === 'unavailable' && (
+            <div className="mb-4 flex items-start gap-2 border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-medium">AI Service 当前不可用</p>
+                <p className="mt-1">{status.error ?? '未提供失败原因'}</p>
+              </div>
+            </div>
+          )}
           <TabsContent value="models" className="mt-0 min-h-full"><ModelConfigPage /></TabsContent>
           <TabsContent value="services" className="mt-0 min-h-full"><ServiceListPage onTestService={testService} /></TabsContent>
           <TabsContent value="test" className="mt-0 h-full min-h-0"><ModelTestPage serviceId={testServiceId} /></TabsContent>

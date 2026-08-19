@@ -1,5 +1,6 @@
 use super::agent::{run_agent, AgentError};
 use super::{AiServiceState, AI_SERVICE_URL};
+use crate::diagnostics::{self, LogChannel, LogLevel, LogOwner};
 use crate::error::AppResult;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -54,12 +55,28 @@ pub fn start_http_server(state: AiServiceState) {
         let listener = match tokio::net::TcpListener::bind("127.0.0.1:43880").await {
             Ok(listener) => listener,
             Err(error) => {
-                eprintln!("AI Service 无法监听 {AI_SERVICE_URL}: {error}");
+                let message = format!("AI Service 无法监听 {AI_SERVICE_URL}: {error}");
+                state.mark_unavailable(message.clone());
+                let _ = diagnostics::append_level(
+                    &LogOwner::Aidea,
+                    LogChannel::Platform,
+                    LogLevel::Error,
+                    "ai_service",
+                    &message,
+                );
                 return;
             }
         };
-        if let Err(error) = axum::serve(listener, router(state)).await {
-            eprintln!("AI Service HTTP 服务已停止: {error}");
+        if let Err(error) = axum::serve(listener, router(state.clone())).await {
+            let message = format!("AI Service HTTP 服务已停止: {error}");
+            state.mark_unavailable(message.clone());
+            let _ = diagnostics::append_level(
+                &LogOwner::Aidea,
+                LogChannel::Platform,
+                LogLevel::Error,
+                "ai_service",
+                &message,
+            );
         }
     });
 }
@@ -69,6 +86,16 @@ async fn handle_agent(
     headers: HeaderMap,
     request: Result<Json<AgentRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
+    let status = state.status();
+    if status.state != "ready" {
+        return response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            AgentResponse::error(
+                1005,
+                status.error.unwrap_or_else(|| "AI Service 不可用".into()),
+            ),
+        );
+    }
     if !authorized(&headers, &state) {
         return response(
             StatusCode::UNAUTHORIZED,
@@ -214,6 +241,17 @@ mod tests {
         assert_ne!(body.code, 0);
         assert_eq!(body.data, "");
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn ai_service不可用时_agent返回_503而不是认证错误() {
+        let state = AiServiceState::unavailable("数据库初始化失败".into());
+        let response = post(&state, "/api/agent", None, r#"{"message":"测试"}"#).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let body: AgentResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body.code, 1005);
+        assert_eq!(body.message.as_deref(), Some("数据库初始化失败"));
     }
 
     #[tokio::test]

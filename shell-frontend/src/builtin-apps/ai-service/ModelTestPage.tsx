@@ -62,6 +62,8 @@ export function ModelTestPage({ serviceId }: ModelTestPageProps) {
   const [serviceRequest, setServiceRequest] = useState(defaultServiceRequest);
   const [result, setResult] = useState<AiServiceModelTestResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [editing, setEditing] = useState<AiServiceModel | null>(null);
 
   const loadModels = async (selectedId?: string) => {
@@ -86,6 +88,12 @@ export function ModelTestPage({ serviceId }: ModelTestPageProps) {
   useEffect(() => {
     if (serviceId) setMode('service');
   }, [serviceId]);
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setElapsedSeconds((seconds) => seconds + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
 
   const saveModel = async (model: AiServiceModel) => {
     if (
@@ -132,10 +140,16 @@ export function ModelTestPage({ serviceId }: ModelTestPageProps) {
 
     setRunning(true);
     setResult(null);
+    setRequestError(null);
+    setElapsedSeconds(0);
     try {
-      setResult(await ipc.testAiServiceModel(testRequest));
+      const nextResult = await ipc.testAiServiceModel(testRequest);
+      setResult(nextResult);
+      setRequestError(nextResult.error ?? null);
     } catch (error) {
-      toast.error('模型测试失败', { description: String(error) });
+      const message = String(error);
+      setRequestError(message);
+      toast.error('模型测试失败', { description: message });
     } finally {
       setRunning(false);
     }
@@ -224,14 +238,33 @@ export function ModelTestPage({ serviceId }: ModelTestPageProps) {
               <div className="flex items-center justify-between gap-3">
                 <Label>响应参数</Label>
                 <div className="flex items-center gap-2">
-                  {result?.error && (
-                    <span className="text-xs text-destructive">{result.error}</span>
-                  )}
-                  {result && <Badge variant="outline">耗时 {result.elapsed_ms} ms</Badge>}
+                  {running ? (
+                    <span role="status" className="flex items-center gap-1.5 text-xs text-primary">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      请求中
+                      <span className="text-muted-foreground">已等待 {elapsedSeconds} 秒</span>
+                    </span>
+                  ) : requestError ? (
+                    <span className="text-xs text-destructive">请求失败：{requestError}</span>
+                  ) : result ? (
+                    <Badge variant="outline">请求完成 · 耗时 {result.elapsed_ms} ms</Badge>
+                  ) : null}
                 </div>
               </div>
+              {running && (
+                <div
+                  role="progressbar"
+                  aria-label="模型请求进度"
+                  aria-valuetext={`请求中，已等待 ${elapsedSeconds} 秒`}
+                  className="h-1 overflow-hidden rounded-full bg-primary/15"
+                >
+                  <div className="h-full w-2/5 animate-[ai-service-request_1.2s_linear_infinite] rounded-full bg-primary" />
+                </div>
+              )}
               <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-4 font-mono text-xs leading-5 text-foreground">
-                {result ? JSON.stringify(result.response, null, 2) : '尚未执行测试。'}
+                {result
+                  ? JSON.stringify(result.response, null, 2)
+                  : (requestError ?? (running ? '请求发送中，正在等待响应。' : '尚未执行测试。'))}
               </pre>
             </div>
           </div>

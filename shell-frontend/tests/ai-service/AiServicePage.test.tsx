@@ -4,6 +4,7 @@ import { BuiltinPage } from '../../src/components/BuiltinPage';
 import type { AppManifest } from '../../src/types/manifest';
 
 const mocks = vi.hoisted(() => ({
+  getAiServiceStatus: vi.fn(),
   listModels: vi.fn(),
   getModel: vi.fn(),
   saveModel: vi.fn(),
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/lib/ipc', () => ({
   ipc: {
+    getAiServiceStatus: mocks.getAiServiceStatus,
     listAiServiceModels: mocks.listModels,
     getAiServiceModel: mocks.getModel,
     saveAiServiceModel: mocks.saveModel,
@@ -53,6 +55,7 @@ const aiServiceManifest: AppManifest = {
 describe('AI Service 内置应用', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getAiServiceStatus.mockResolvedValue({ state: 'ready', error: null });
     mocks.listModels.mockResolvedValue([]);
     mocks.getModel.mockResolvedValue({
       id: 'model-1',
@@ -100,6 +103,17 @@ describe('AI Service 内置应用', () => {
     expect(screen.getByRole('tab', { name: '服务列表' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '模型测试' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '审计记录' })).toBeInTheDocument();
+  });
+
+  it('模型选择框只使用键盘焦点样式，不显示常驻蓝色焦点环', async () => {
+    render(<BuiltinPage app={aiServiceManifest} />);
+
+    const testTab = screen.getByRole('tab', { name: '模型测试' });
+    fireEvent.mouseDown(testTab, { button: 0 });
+    fireEvent.click(testTab);
+    const trigger = await screen.findByRole('combobox', { name: '测试模型' });
+    expect(trigger.className).toContain('focus-visible:ring-2');
+    expect(trigger.className).not.toContain('focus:ring-2');
   });
 
   it('新增模型后通过 AI Service IPC 保存配置', async () => {
@@ -310,6 +324,53 @@ describe('AI Service 内置应用', () => {
     );
   });
 
+  it('模型测试请求中显示动画进度和已等待时间', async () => {
+    mocks.listModels.mockResolvedValue([
+      {
+        id: 'model-1',
+        provider: 'openai',
+        base_url: 'https://api.openai.com/v1',
+        model: 'gpt-5',
+        sort_order: 0,
+        enabled: true,
+        key_hint: '...key',
+      },
+    ]);
+    let resolveRequest: (value: unknown) => void = () => undefined;
+    mocks.testModel.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+    render(<BuiltinPage app={aiServiceManifest} />);
+
+    const testTab = screen.getByRole('tab', { name: '模型测试' });
+    fireEvent.mouseDown(testTab, { button: 0 });
+    fireEvent.click(testTab);
+    await waitFor(() => expect(screen.getByRole('button', { name: '开始测试' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '开始测试' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('请求中');
+    expect(screen.getByText('已等待 0 秒')).toBeInTheDocument();
+    const progress = screen.getByRole('progressbar', { name: '模型请求进度' });
+    expect(progress).toHaveAttribute('aria-valuetext', '请求中，已等待 0 秒');
+    expect(progress).not.toHaveAttribute('aria-valuenow');
+    expect(progress.firstElementChild).toHaveClass(
+      'animate-[ai-service-request_1.2s_linear_infinite]',
+    );
+
+    resolveRequest({
+      data: 'OK',
+      elapsed_ms: 1,
+      request: {},
+      response: { status: 200, body: {} },
+    });
+
+    expect(await screen.findByText(/^请求完成/)).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: '模型请求进度' })).not.toBeInTheDocument();
+  });
+
   it('服务列表说明调用契约，并带着服务进入服务调用测试', async () => {
     mocks.listModels.mockResolvedValue([
       {
@@ -401,7 +462,7 @@ describe('AI Service 内置应用', () => {
         request: { model: 'gpt-5-mini', messages: [{ role: 'user', content: '测试' }] },
       }),
     );
-    expect(await screen.findByText('上游返回 HTTP 401')).toBeInTheDocument();
+    expect(await screen.findByText('请求失败：上游返回 HTTP 401')).toBeInTheDocument();
     expect(document.body.textContent).toContain('invalid API key');
   });
 });

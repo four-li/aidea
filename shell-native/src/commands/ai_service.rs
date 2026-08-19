@@ -1,4 +1,6 @@
-use crate::ai_service::{AiServiceState, ModelConfig, PendingApproval, ServiceSummary};
+use crate::ai_service::{
+    AiServiceRuntimeStatus, AiServiceState, ModelConfig, PendingApproval, ServiceSummary,
+};
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,6 +83,11 @@ pub fn list_ai_service_models(
     state: tauri::State<'_, AiServiceState>,
 ) -> AppResult<Vec<crate::ai_service::ModelConfigSummary>> {
     state.list_models()
+}
+
+#[tauri::command]
+pub fn get_ai_service_status(state: tauri::State<'_, AiServiceState>) -> AiServiceRuntimeStatus {
+    state.status()
 }
 
 #[tauri::command]

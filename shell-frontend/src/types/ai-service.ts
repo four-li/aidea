@@ -8,6 +8,11 @@ export interface AiServiceModel {
   enabled: boolean;
 }
 
+export interface AiServiceRuntimeStatus {
+  state: 'ready' | 'unavailable';
+  error: string | null;
+}
+
 export interface AiServiceModelSummary {
   id: string;
   provider: string;

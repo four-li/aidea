@@ -87,6 +87,7 @@ pub fn run() {
             commands::dev_tools::save_dev_tools_settings,
             commands::network::get_network_info,
             commands::ai_service::list_ai_service_models,
+            commands::ai_service::get_ai_service_status,
             commands::ai_service::get_ai_service_model,
             commands::ai_service::save_ai_service_model,
             commands::ai_service::fetch_ai_service_provider_models,
@@ -186,14 +187,23 @@ pub fn run() {
         .setup(move |app| {
             config::migrate_legacy_data()
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
-            let mut ai_service_state = ai_service::AiServiceState::new()
-                .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?;
-            ai_service_state.set_rg_path(
-                app.path()
-                    .resource_dir()
-                    .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)?
-                    .join("resources/rg"),
-            );
+            let mut ai_service_state = match ai_service::AiServiceState::new() {
+                Ok(state) => state,
+                Err(error) => {
+                    let message = format!("AI Service 初始化失败: {error}");
+                    let _ = diagnostics::append_level(
+                        &diagnostics::LogOwner::Aidea,
+                        diagnostics::LogChannel::Platform,
+                        diagnostics::LogLevel::Error,
+                        "ai_service",
+                        &message,
+                    );
+                    ai_service::AiServiceState::unavailable(message)
+                }
+            };
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                ai_service_state.set_rg_path(resource_dir.join("resources/rg"));
+            }
             ai_service::http::start_http_server(ai_service_state.clone());
             app.manage(ai_service_state);
             let _ = diagnostics::append(

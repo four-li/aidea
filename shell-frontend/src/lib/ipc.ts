@@ -16,6 +16,7 @@ import type {
   AiServiceModelSummary,
   AiServiceModelTestRequest,
   AiServiceModelTestResult,
+  AiServiceRuntimeStatus,
 } from '../types/ai-service';
 import type {
   InstalledApp,
@@ -103,6 +104,8 @@ export const ipc = {
   getNetworkInfo: (): Promise<NetworkInfo> => invoke<NetworkInfo>('get_network_info'),
   listAiServiceModels: (): Promise<AiServiceModelSummary[]> =>
     invoke<AiServiceModelSummary[]>('list_ai_service_models'),
+  getAiServiceStatus: (): Promise<AiServiceRuntimeStatus> =>
+    invoke<AiServiceRuntimeStatus>('get_ai_service_status'),
   getAiServiceModel: (id: string): Promise<AiServiceModel> =>
     invoke<AiServiceModel>('get_ai_service_model', { id }),
   saveAiServiceModel: (model: AiServiceModel): Promise<void> =>
